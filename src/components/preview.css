@@ -1,0 +1,56 @@
+.preview-editor {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.preview-notice {
+  padding: 8px 22px;
+  font-size: 10px;
+  color: #7e8e96;
+  background: #0e1d24;
+  border-bottom: 1px solid #1a2d34;
+}
+.preview-editor textarea {
+  resize: none;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  outline: 0;
+  padding: 22px;
+  color: #c6ccd3;
+  background: #091014;
+  font:
+    13px/24px "SFMono-Regular",
+    Consolas,
+    monospace;
+  tab-size: 4;
+  white-space: pre;
+}
+.preview-terminal {
+  padding: 20px;
+  font:
+    12px/22px "SFMono-Regular",
+    Consolas,
+    monospace;
+  color: #a9b7c6;
+}
+.preview-terminal p:first-child {
+  margin-bottom: 12px;
+  color: #80cbc4;
+}
+
+.preview-find {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #14242b;
+}
+.preview-find input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #324753;
+  border-radius: 4px;
+  background: #091014;
+}

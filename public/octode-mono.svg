@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="194 76 800 800"><title>Octode octopus</title>
+  <g fill="none" stroke="currentColor" stroke-width="24" stroke-linejoin="round">
+    <path d="M422 453V328a172 172 0 0 1 344 0v125Z" stroke-linejoin="miter"/>
+    <circle cx="525" cy="364" r="29"/>
+    <circle cx="663" cy="364" r="29"/>
+    <path d="M339 389h-55q-30 0-30 30v39q0 35-20 47 20 12 20 47v44q0 30 30 30h105c70 0 108-73 119-146"/>
+    <path d="M849 389h55q30 0 30 30v39q0 35 20 47-20 12-20 47v44q0 30-30 30H799c-70 0-108-73-119-146"/>
+    <path d="M353 449h-8q-27 0-27 29v53q0 30 30 30h41c37 0 56-40 60-81"/>
+    <path d="M835 449h8q27 0 27 29v53q0 30-30 30h-41c-37 0-56-40-60-81"/>
+    <path d="M566 480v17c0 38-43 107-76 169h-43q-31 0-31 31v40"/>
+    <path d="M622 480v17c0 38 43 107 76 169h43q31 0 31 31v40"/>
+    <path d="M416 737v27q0 23 23 23h24M772 737v27q0 23-23 23h-22" opacity=".35" stroke-width="18"/>
+    <path d="M551 620l24-47v182q0 44-44 44h-68v-24h68q20 0 20-20Z" fill="currentColor" stroke="none"/>
+    <path d="M637 620l-24-47v182q0 44 44 44h70v-24h-70q-20 0-20-20Z" fill="currentColor" stroke="none"/>
+  </g>
+  <g fill="currentColor">
+    <circle cx="339" cy="389" r="21"/><circle cx="849" cy="389" r="21"/>
+    <circle cx="353" cy="449" r="21"/><circle cx="835" cy="449" r="21"/>
+    <circle cx="416" cy="737" r="21"/><circle cx="772" cy="737" r="21"/>
+    <circle cx="463" cy="787" r="21"/><circle cx="727" cy="787" r="21"/>
+  </g>
+</svg>

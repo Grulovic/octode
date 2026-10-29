@@ -1,0 +1,319 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { expect, it, vi } from "vitest";
+import TerminalPanel from "./TerminalPanel";
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+it("middle-click closes only its terminal and respects cancellation", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  try {
+    await act(async () =>
+      root.render(
+        <TerminalPanel
+          project={{ id: "p", name: "P", roots: ["/project"], updatedAt: 0 }}
+          initialRoot="/project"
+          visible
+          onError={() => {}}
+          onHide={() => {}}
+        />,
+      ),
+    );
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>('[aria-label="New terminal"]')!
+        .click(),
+    );
+    const tabs = () =>
+      host.querySelectorAll<HTMLElement>(".local-terminal-tabs > div");
+    expect(tabs()).toHaveLength(2);
+    await act(async () =>
+      tabs()[0].dispatchEvent(
+        new MouseEvent("auxclick", {
+          button: 1,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(tabs()).toHaveLength(2);
+    confirm.mockReturnValue(true);
+    await act(async () =>
+      tabs()[0].dispatchEvent(
+        new MouseEvent("mouseup", {
+          button: 1,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(tabs()).toHaveLength(1);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(tabs()[0].classList.contains("selected")).toBe(true);
+    expect(
+      host.querySelector('[aria-label="Resize local terminal"]'),
+    ).not.toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    confirm.mockRestore();
+  }
+});
+it("Cmd+W closes the focused terminal tab only after confirmation", async () => {
+  const { installCloseTabShortcut } = await import("../lib/closeTab");
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const time = vi.spyOn(performance, "now").mockReturnValue(2_000_000);
+  const stop = installCloseTabShortcut();
+  try {
+    await act(async () =>
+      root.render(
+        <TerminalPanel
+          project={{ id: "p", name: "P", roots: ["/project"], updatedAt: 0 }}
+          initialRoot="/project"
+          visible
+          onError={() => {}}
+          onHide={() => {}}
+        />,
+      ),
+    );
+    host
+      .querySelector<HTMLButtonElement>(".local-terminal-tabs button")!
+      .focus();
+    const close = async () =>
+      act(async () => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "w",
+            metaKey: true,
+            cancelable: true,
+          }),
+        );
+      });
+    await close();
+    expect(host.querySelectorAll(".local-terminal-tabs > div")).toHaveLength(1);
+    expect(confirm).toHaveBeenCalledOnce();
+    confirm.mockReturnValue(true);
+    time.mockReturnValue(2_001_000);
+    await close();
+    expect(host.querySelectorAll(".local-terminal-tabs > div")).toHaveLength(0);
+    expect(host.querySelector(".terminal-panel")).not.toBeNull();
+  } finally {
+    stop();
+    await act(async () => root.unmount());
+    host.remove();
+    confirm.mockRestore();
+    time.mockRestore();
+  }
+});
+
+it("launches in a fresh tab once per request and rejects unavailable roots or full capacity", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host),
+    onError = vi.fn(),
+    handled = vi.fn();
+  const project = {
+    id: "launch",
+    name: "Launch",
+    roots: ["/api", "/frontend"],
+    updatedAt: 0,
+  };
+  const render = (id: number, path = "/frontend") =>
+    root.render(
+      <TerminalPanel
+        project={project}
+        initialRoot="/api"
+        visible
+        onHide={() => {}}
+        onError={onError}
+        launchRequest={{ id, root: path, command: "codex --resume" }}
+        onLaunchHandled={handled}
+      />,
+    );
+  const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
+  try {
+    await act(async () => render(1));
+    expect(tabs()).toHaveLength(2);
+    expect(tabs()[0].textContent).toBe("api 1");
+    expect(tabs()[1].classList.contains("selected")).toBe(true);
+    expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
+    expect(handled).toHaveBeenCalledExactlyOnceWith(1);
+    await act(async () => render(1));
+    expect(tabs()).toHaveLength(2);
+    await act(async () => render(2, "/unregistered"));
+    expect(tabs()).toHaveLength(2);
+    expect(onError).toHaveBeenLastCalledWith(
+      expect.stringContaining("available project folder"),
+    );
+    for (let id = 3; id <= 6; id++) await act(async () => render(id));
+    expect(tabs()).toHaveLength(6);
+    await act(async () => render(7));
+    expect(tabs()).toHaveLength(6);
+    expect(onError).toHaveBeenLastCalledWith(
+      expect.stringContaining("six terminal tabs"),
+    );
+    expect(handled).toHaveBeenLastCalledWith(7);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
+
+it("Cmd/Ctrl+T opens plain tabs only in the focused visible terminal and respects the tab limit", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const outside = document.createElement("input");
+  document.body.append(outside);
+  const root = createRoot(host),
+    onError = vi.fn();
+  const project = {
+    id: "shortcut",
+    name: "Shortcut",
+    roots: ["/api", "/frontend"],
+    updatedAt: 0,
+  };
+  const render = (visible = true) =>
+    root.render(
+      <TerminalPanel
+        project={project}
+        initialRoot="/api"
+        visible={visible}
+        onError={onError}
+        onHide={() => {}}
+      />,
+    );
+  const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
+  const focus = () =>
+    host
+      .querySelector<HTMLButtonElement>(".local-terminal-tabs button")!
+      .focus();
+  const key = async (extra: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", {
+      key: "t",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+      ...extra,
+    });
+    await act(async () => window.dispatchEvent(event));
+    return event;
+  };
+  try {
+    await act(async () => render());
+    outside.focus();
+    expect((await key()).defaultPrevented).toBe(false);
+    expect(tabs()).toHaveLength(1);
+    const folder = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="Folder for new terminal"]',
+    )!;
+    await act(async () => {
+      folder.value = "/frontend";
+      folder.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    focus();
+    expect((await key()).defaultPrevented).toBe(true);
+    expect(tabs()).toHaveLength(2);
+    expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
+    expect(tabs()[1].classList.contains("selected")).toBe(true);
+    await key({ repeat: true });
+    await key({ shiftKey: true });
+    expect(tabs()).toHaveLength(2);
+    await key({ metaKey: false, ctrlKey: true });
+    expect(tabs()).toHaveLength(3);
+    const modal = document.createElement("div");
+    modal.setAttribute("aria-modal", "true");
+    document.body.append(modal);
+    await key();
+    expect(tabs()).toHaveLength(3);
+    modal.remove();
+    await act(async () => render(false));
+    await key();
+    expect(tabs()).toHaveLength(3);
+    await act(async () => render());
+    focus();
+    for (let i = 0; i < 4; i++) await key();
+    expect(tabs()).toHaveLength(6);
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("six terminal tabs"),
+    );
+    expect(host.textContent).not.toContain("Launch command:");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    outside.remove();
+  }
+});
+
+it("Cmd+T creates the first session from an empty pane without needing an existing tab to focus", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const outside = document.createElement("input");
+  document.body.append(outside);
+  const root = createRoot(host),
+    confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const project = {
+    id: "empty",
+    name: "Empty",
+    roots: ["/project"],
+    updatedAt: 0,
+  };
+  const render = (visible = true) =>
+    root.render(
+      <TerminalPanel
+        project={project}
+        initialRoot="/project"
+        visible={visible}
+        onError={() => {}}
+        onHide={() => {}}
+      />,
+    );
+  const count = () =>
+    host.querySelectorAll(".local-terminal-tabs > div").length;
+  const key = async () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "t",
+      metaKey: true,
+      cancelable: true,
+    });
+    await act(async () => window.dispatchEvent(event));
+    return event;
+  };
+  try {
+    await act(async () => render());
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>('[aria-label="Close terminal 1"]')!
+        .click(),
+    );
+    expect(count()).toBe(0);
+    expect(document.activeElement).toBe(host.querySelector(".terminal-panel"));
+    const modal = document.createElement("div");
+    modal.setAttribute("aria-modal", "true");
+    document.body.append(modal);
+    expect((await key()).defaultPrevented).toBe(false);
+    expect(count()).toBe(0);
+    modal.remove();
+    await act(async () => render(false));
+    expect((await key()).defaultPrevented).toBe(false);
+    expect(count()).toBe(0);
+    await act(async () => render());
+    outside.focus();
+    expect((await key()).defaultPrevented).toBe(true);
+    expect(count()).toBe(1);
+    expect(
+      host
+        .querySelector(".local-terminal-tabs > div")
+        ?.classList.contains("selected"),
+    ).toBe(true);
+  } finally {
+    await act(async () => root.unmount());
+    confirm.mockRestore();
+    host.remove();
+    outside.remove();
+  }
+});

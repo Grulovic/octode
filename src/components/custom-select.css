@@ -1,0 +1,113 @@
+.custom-select-native[hidden] {
+  display: none !important;
+}
+.custom-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 32px 7px 10px;
+  border: 1px solid #1a2d34;
+  border-radius: 6px;
+  background: #091014;
+  color: #c6ccd3;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.custom-select.custom-select.custom-select {
+  padding-right: 32px;
+}
+.custom-select:hover:not(:disabled),
+.custom-select[aria-expanded="true"] {
+  border-color: #324753;
+}
+.custom-select:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.custom-select-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.custom-select > svg {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.custom-select-popup {
+  position: fixed;
+  z-index: 500;
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid #324753;
+  border-radius: 8px;
+  background: #0e1d24;
+  color: #c6ccd3;
+  box-shadow: 0 12px 36px #0008;
+}
+.custom-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 34px;
+  padding: 9px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: left;
+}
+.custom-select-option > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.custom-select-option.active:not(:disabled) {
+  background: #1a2d34;
+  color: #80cbc4;
+}
+.custom-select-option[aria-selected="true"] > svg {
+  color: #80cbc4;
+  flex-shrink: 0;
+}
+.custom-select-popup > p {
+  padding: 10px;
+  font-size: 12px;
+  color: #7e8e96;
+}
+.custom-select-option[data-method="GET"] {
+  color: #98d792;
+}
+.custom-select-option[data-method="POST"] {
+  color: #e7d175;
+}
+.custom-select-option[data-method="PUT"] {
+  color: #68caff;
+}
+.custom-select-option[data-method="PATCH"] {
+  color: #dca9dc;
+}
+.custom-select-option[data-method="DELETE"] {
+  color: #ff787d;
+}
+.custom-select-option[data-method="HEAD"] {
+  color: #80cbc4;
+}
+.custom-select-option[data-method="OPTIONS"] {
+  color: #fb9551;
+}
+.terminal-toolbar .custom-select {
+  min-height: 26px;
+  height: 26px;
+  width: auto;
+  max-width: 160px;
+}
