@@ -5,12 +5,13 @@ import GitDiffHunk from "./GitDiffHunk";
 import {
   type ReactNode,
   useCallback,
+  useId,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { Minus } from "lucide-react";
-import { GitBranch, Plus, RefreshCw, X, RotateCcw } from "./DesignIcons";
+import { GitBranch, Plus, RefreshCw, X, RotateCcw, ArrowRight } from "./DesignIcons";
 import { desktop, invoke } from "../lib/bridge";
 import { confirmAction } from "./ToolLayout";
 import type { GitEntry, GitSnapshot, GitConflict } from "../devTypes";
@@ -375,6 +376,8 @@ export default function GitPanel({
       await onOpen(`${root}/${entry.path}`);
       setMerge({ path: entry.path, data });
     });
+  const pushDialogId = useId();
+  const stagedCount = state?.entries.filter((entry) => !entry.conflict && entry.index !== " " && entry.index !== "?").length ?? 0;
   return (
     <div className="git-tools">
       <div className="git-heading">
@@ -718,7 +721,7 @@ export default function GitPanel({
             }}
           >
             <header>
-              <strong>Commit and Push</strong>
+              <strong>Commit and push</strong>
               <button
                 type="button"
                 aria-label="Close commit and push"
@@ -728,13 +731,15 @@ export default function GitPanel({
               </button>
             </header>
             <div className="git-push-options">
-              <p>
-                Commit the staged changes in {filename(root)} and push branch{" "}
-                <strong>{state.branch}</strong>.
-              </p>
-              <label>
-                Remote
+              <div className="git-push-summary">
+                <code>{filename(root)}</code>
+                <ArrowRight size={14} aria-hidden="true" />
+                <span>push <strong>{state.branch}</strong> · {stagedCount} staged {stagedCount === 1 ? "file" : "files"}</span>
+              </div>
+              <div className="git-push-fields">
+                <label htmlFor={`${pushDialogId}-remote`}>Remote</label>
                 <CustomSelect
+                  id={`${pushDialogId}-remote`}
                   aria-label="Commit push remote"
                   value={remote}
                   onChange={(event) => setRemote(event.target.value)}
@@ -743,11 +748,12 @@ export default function GitPanel({
                     <option key={name}>{name}</option>
                   ))}
                 </CustomSelect>
-              </label>
-              <pre>{commit}</pre>
+                <span className="git-push-field-label" id={`${pushDialogId}-message`}>Message</span>
+                <pre aria-labelledby={`${pushDialogId}-message`}>{commit}</pre>
+              </div>
             </div>
             <footer>
-              <button type="button" onClick={() => setPushPrompt(false)}>
+              <button className="secondary-button" type="button" onClick={() => setPushPrompt(false)}>
                 Cancel
               </button>
               <button
@@ -755,7 +761,7 @@ export default function GitPanel({
                 type="submit"
                 disabled={busy || !state.remotes.includes(remote)}
               >
-                Commit and Push
+                Commit and push
               </button>
             </footer>
           </form>

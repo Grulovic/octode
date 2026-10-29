@@ -480,3 +480,23 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .api-inherited-headers { margin-bottom: var(--oc-space-5); padding-bottom: var(--oc-space-4); border-bottom: 1px solid var(--oc-border); }
 .app-shell .inherited-header-row input[readonly] { color: var(--oc-muted); cursor: default; }
 .inherited-header-lock { display: flex; align-items: center; justify-content: center; color: var(--oc-muted); }
+
+/* Commit review follows the original dialog reference. */
+.app-shell .git-push-modal { width: min(560px, 92vw); max-height: 90vh; display: flex; flex-direction: column; background: var(--oc-raised); color: var(--oc-text); }
+.app-shell .git-push-modal > header { height: 48px; min-height: 48px; flex-shrink: 0; padding: 0 12px 0 18px; border-color: var(--oc-border-strong); }
+.app-shell .git-push-modal > header strong { font: var(--oc-text-dialog-title); color: var(--oc-text-strong); }
+.app-shell .git-push-modal > header button { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--oc-muted); background: transparent; }
+.app-shell .git-push-modal > header button svg { width: 14px; height: 14px; }
+.app-shell .git-push-options { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; overflow: auto; color: var(--oc-text); font-size: 12.5px; }
+.app-shell .git-push-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.app-shell .git-push-summary code { padding: 2px 6px; border: 1px solid var(--oc-border-strong); border-radius: 4px; background: var(--oc-surface); font: 500 11px/16px var(--oc-font-mono); overflow-wrap: anywhere; }
+.app-shell .git-push-summary > svg { flex-shrink: 0; color: var(--oc-muted); }
+.app-shell .git-push-summary strong { font-weight: 600; color: var(--oc-text-strong); }
+.app-shell .git-push-fields { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; align-items: center; }
+.app-shell .git-push-fields > label, .app-shell .git-push-field-label { display: block; padding: 0; margin: 0; color: var(--oc-muted); font: 500 11px/16px var(--oc-font-ui); }
+.app-shell .git-push-fields .custom-select { height: 28px; min-height: 28px; padding: 0 32px 0 9px; border: 1px solid var(--oc-border-strong); background: var(--oc-surface); color: var(--oc-text); font: 400 12.5px/18px var(--oc-font-mono); }
+.app-shell .git-push-fields pre { margin: 0; padding: 7px 9px; border-radius: 6px; background: var(--oc-panel); border: 1px solid var(--oc-border); color: var(--oc-text); font: 400 12.5px/18px var(--oc-font-mono); overflow-wrap: anywhere; }
+.app-shell .git-push-modal > footer { flex-shrink: 0; gap: 8px; padding: 12px 18px; border-color: var(--oc-border-strong); background: var(--oc-raised); }
+.app-shell .git-push-modal > footer button { height: 32px; min-height: 32px; padding: 0 14px; border-radius: 6px; font: 500 12.5px/18px var(--oc-font-ui); }
+.app-shell .git-push-modal > footer .secondary-button { border: 1px solid var(--oc-border-strong); background: var(--oc-surface); color: var(--oc-text); }
+.app-shell .git-push-modal > footer .primary-button { border: 1px solid var(--oc-accent); background: var(--oc-accent); color: var(--oc-accent-ink); font-weight: 600; }
