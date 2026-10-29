@@ -1,17 +1,10 @@
+import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
 import type { SearchEntry } from "../lib/searchEverywhere";
 import { useToolView } from "../hooks/useToolView";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import {
-  Copy,
-  ArrowUp,
-  Download,
-  Folder,
-  Plus,
-  RefreshCw,
-  Upload,
-  Trash2,
-} from "lucide-react";
+import { ArrowUp, Download, Upload } from "lucide-react";
+import { Copy, Folder, Plus, RefreshCw, Trash2 } from "./DesignIcons";
 import { useToolDocument } from "../hooks/useToolDocument";
 import { serverDocument, serverConnection } from "../lib/toolDefaults";
 import { nativeTool } from "../lib/toolsBridge";
@@ -36,6 +29,7 @@ export default function ServersWorkspace({
 }: ToolProps) {
   const {
     document: doc,
+    savedDocument = doc,
     setDocument: set,
     loading,
     saving,
@@ -44,6 +38,7 @@ export default function ServersWorkspace({
     dirty,
     save,
   } = useToolDocument(project, "servers", serverDocument, onError, onDirty);
+  const dirtyConnections = changedIds(doc.connections, savedDocument.connections);
   const [selected, select] = useToolView(
     project.id,
     "ServersWorkspace:selected",
@@ -294,6 +289,7 @@ export default function ServersWorkspace({
                     {item.username}@{item.host || "Host not set"}
                   </small>
                 </span>
+                {dirtyConnections.has(item.id) && <span className="tool-unsaved-dot" role="img" aria-label={`Unsaved changes in ${item.name}`}/>}
               </button>
             </div>
           ))}
@@ -313,7 +309,13 @@ export default function ServersWorkspace({
             <div>
               <div className="connection-title">
                 <h2>{current.name}</h2>
-                <button
+              </div>
+              <p className="service-hint">
+                {session ? "SSH connected" : "Not connected"} · Changes require
+                Save
+              </p>
+            </div>
+            <div className="connection-header-buttons">                <button
                   title="Duplicate server"
                   aria-label={`Duplicate server ${current.name}`}
                   disabled={busy}
@@ -329,13 +331,7 @@ export default function ServersWorkspace({
                 >
                   <Trash2 size={18} />
                 </button>
-              </div>
-              <p className="service-hint">
-                {session ? "SSH connected" : "Not connected"} · Changes require
-                Save
-              </p>
-            </div>
-            <div className="connection-header-buttons">
+
               <button
                 className="primary-button"
                 disabled={busy}
@@ -478,24 +474,7 @@ export default function ServersWorkspace({
                 Check fingerprint
               </button>
             </div>
-            <div className="connection-actions">
-              <button
-                className="secondary-button danger-outline"
-                disabled={!!session || busy}
-                onClick={() => void remove()}
-              >
-                <Trash2 size={17} />
-                Delete connection
-              </button>
-              <button
-                className="secondary-button"
-                disabled={busy}
-                onClick={duplicate}
-              >
-                <Copy size={17} />
-                Duplicate connection
-              </button>
-            </div>
+
           </div>
           {Object.entries(sessions).map(([connectionId, sessionId]) => (
             <div

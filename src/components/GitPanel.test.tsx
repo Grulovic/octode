@@ -345,8 +345,24 @@ it.each([
       });
     }
     expect(button.disabled).toBe(true);
-    expect(document.querySelectorAll(".git-group-heading button")).toHaveLength(
+    expect(document.querySelectorAll(".git-group-heading button:not([aria-expanded])")).toHaveLength(
       2,
     );
   },
 );
+
+it("opens a diff in the editor host while keeping staging controls available", async () => {
+  harness.entries = [{ path: "test.php", index: " ", worktree: "M", conflict: false }];
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => command === "git_hunks"
+    ? { patch: "@@ -1 +1 @@\n-before\n+after\n", header: "", hunks: ["@@ -1 +1 @@\n-before\n+after\n"], supported: true }
+    : original(command, args));
+  const editorHost = document.createElement("section");
+  document.body.append(editorHost);
+  await act(async () => root.render(<GitPanel {...props} overlayHost={editorHost} />));
+  await act(async () => document.querySelector<HTMLButtonElement>(".git-change > button")!.click());
+  expect(editorHost.querySelector('[aria-label="Git diff"]')).not.toBeNull();
+  expect(document.querySelector(".git-group-heading button:not([aria-expanded])")).not.toBeNull();
+  await act(async () => editorHost.querySelector<HTMLButtonElement>('[aria-label="Close Git diff"]')!.click());
+  expect(editorHost.querySelector('[aria-label="Git diff"]')).toBeNull();
+});

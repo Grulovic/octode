@@ -261,7 +261,7 @@ describe("browser sandbox workflows", () => {
         .value,
     ).toBe("roomName");
     expect(document.querySelector(".service-state")?.textContent).toBe(
-      "Unsaved changes",
+      "1 unsaved change",
     );
   });
 
@@ -324,7 +324,7 @@ describe("browser sandbox workflows", () => {
     );
     expect(
       document
-        .querySelector('[aria-label="API workspace"] .workspace-terminal-dock')
+        .querySelector('.main-workspace > .workspace-terminal-dock')
         ?.getAttribute("style"),
     ).toContain("flex");
   });
@@ -346,6 +346,9 @@ describe("browser sandbox workflows", () => {
       document.querySelector(".local-terminal-session"),
     );
     await click('[aria-label="New terminal"]');
+    const dock = document.querySelector(".main-workspace > .workspace-terminal-dock");
+    expect(dock?.querySelector(".workspace-terminal-host")).not.toBeNull();
+    expect(document.querySelectorAll(".workspace-terminal-dock")).toHaveLength(1);
     for (const [shortcut, title] of [
       ["3", "Servers"],
       ["4", "Database"],
@@ -354,19 +357,20 @@ describe("browser sandbox workflows", () => {
       await key(shortcut);
       await waitFor(() =>
         document.querySelector(
-          `[aria-label="${title} workspace"] .workspace-terminal-host`,
+          `[aria-label="${title} workspace"]`,
         ),
       );
       expect(document.querySelectorAll(".local-terminal-session")).toHaveLength(
         2,
       );
       expect(document.querySelector(".local-terminal-session")).toBe(first);
+      expect(document.querySelector(".main-workspace > .workspace-terminal-dock")).toBe(dock);
     }
     await key("2");
     expect(
       (
         document.querySelector(
-          '[aria-label="API workspace"] .workspace-terminal-dock',
+          '.main-workspace > .workspace-terminal-dock',
         ) as HTMLElement
       ).style.display,
     ).toBe("none");
@@ -495,15 +499,15 @@ describe("browser sandbox workflows", () => {
     await click(".database-connections-list button");
     const actions = [
       ...window.document.querySelectorAll<HTMLButtonElement>(
-        ".connection-actions button",
+        ".connection-header-buttons button:not(.primary-button)",
       ),
     ];
-    expect(actions.map((button) => button.textContent?.trim())).toEqual([
-      "Delete connection",
-      "Duplicate connection",
+    expect(actions.map((button) => button.title)).toEqual([
+      "Duplicate database",
+      "Delete database",
     ]);
-    expect(actions[0].classList.contains("danger-outline")).toBe(true);
-    await act(async () => actions[1].click());
+    expect(actions.every((button) => button.querySelector("svg"))).toBe(true);
+    await act(async () => actions[0].click());
     expect(
       window.document.querySelector(".connection-header h2")?.textContent,
     ).toBe("Original database copy");
@@ -620,7 +624,7 @@ describe("browser sandbox workflows", () => {
     ).toHaveLength(0);
     expect(
       document.querySelector(".database-table-search-empty")?.textContent,
-    ).toBe("No matching tables.");
+    ).toContain("No matching tables.");
     await type('[aria-label="Search tables"]', "THIN");
     expect(
       document.querySelectorAll(".database-table-list .service-list-item"),
@@ -811,6 +815,38 @@ describe("browser sandbox workflows", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("edits and inherits environment headers when sending requests", async () => {
+    const send = vi.spyOn(toolsBridge, "nativeTool").mockResolvedValue({ status: 200, statusText: "OK", headers: [], body: "ok", bytes: 2, elapsedMs: 1, truncated: false, contentType: "text/plain", binary: false });
+    await enterCode();
+    await click('[aria-label="API"]');
+    await click('[aria-label="API workspace"] button[title="New request"]');
+    await type('[aria-label="Request URL"]', "https://example.test");
+    await click('[aria-label="New environment"]');
+    const headers = [...document.querySelectorAll<HTMLElement>(".value-rows")].find((section) => section.querySelector("strong")?.textContent === "Headers")!;
+    await act(async () => headers.querySelector<HTMLButtonElement>("button")!.click());
+    await type('[aria-label="Headers 1 name"]', "X-Workspace");
+    await type('[aria-label="Headers 1 value"]', "octode");
+    const back = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Back to request")!;
+    await act(async () => back.click());
+    await click(".request-bar .primary-button");
+    expect(send).toHaveBeenCalledWith("api_send", expect.objectContaining({ request: expect.objectContaining({ headers: [expect.objectContaining({ name: "X-Workspace", value: "octode", enabled: true })] }) }));
+    const headersTab = [...document.querySelectorAll<HTMLButtonElement>(".api-request-tabs button")].find((button) => button.textContent?.startsWith("Headers"))!;
+    await act(async () => headersTab.click());
+    const inherited = document.querySelector<HTMLElement>('[aria-label="Inherited headers"]')!;
+    expect(inherited.textContent).toContain("Inherited from New environment");
+    expect(inherited.querySelector<HTMLInputElement>('[aria-label="Inherited headers 1 name"]')!.readOnly).toBe(true);
+    expect(inherited.querySelector<HTMLInputElement>('[aria-label="Inherited headers 1 value"]')!.readOnly).toBe(true);
+    expect(inherited.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
+    expect(inherited.querySelector('[aria-label="Locked inherited header"]')).not.toBeNull();
+    expect(inherited.querySelector("button")).toBeNull();
+    const add = document.querySelector<HTMLButtonElement>(".api-request-body .value-rows button")!;
+    await act(async () => add.click());
+    await type('[aria-label="Headers 1 name"]', "x-workspace");
+    await type('[aria-label="Headers 1 value"]', "request override");
+    expect(document.querySelector('[aria-label="Inherited headers"]')).toBeNull();
+    await click(".request-bar .primary-button");
+    expect(send).toHaveBeenLastCalledWith("api_send", expect.objectContaining({ request: expect.objectContaining({ headers: [expect.objectContaining({ name: "x-workspace", value: "request override" })] }) }));
+  });
   it("manages API environments above the dropdown without an environment sidebar or request tab", async () => {
     await enterCode();
     await click('[aria-label="API"]');
@@ -891,8 +927,8 @@ describe("browser sandbox workflows", () => {
     await click(".project-card");
     await waitFor(() => document.querySelector(".tree-root"));
     expect(
-      (document.querySelector(".project-nav-name") as HTMLElement).style.color,
-    ).toBe("rgb(104, 202, 255)");
+      (document.querySelector(".project-nav-name") as HTMLElement).style.getPropertyValue("--project-color"),
+    ).toBe("#68caff");
   });
 
   it("removes the Code title row, puts Collapse All first, and middle-click closes a file through autosave", async () => {
@@ -1478,7 +1514,7 @@ describe("browser sandbox workflows", () => {
     expect(document.querySelectorAll(".api-route-row")).toHaveLength(0);
     expect(
       document.querySelector(".api-request-search-empty")?.textContent,
-    ).toBe("No matching requests.");
+    ).toContain("No matching requests.");
     await click('[aria-label="Clear request search"]');
     expect(document.activeElement).toBe(
       document.querySelector('[aria-label="Search requests"]'),
@@ -2095,8 +2131,8 @@ describe("browser sandbox workflows", () => {
         await act(async () => button.click());
       };
       await context(`.file-tree [title="${source}"]`);
-      expect(document.querySelectorAll('[role="menuitem"]')).toHaveLength(7);
-      expect(document.activeElement?.textContent).toBe("Copy");
+      expect(document.querySelectorAll('[role="menuitem"]')).toHaveLength(10);
+      expect(document.activeElement?.textContent).toBe("New File");
       await act(async () =>
         document.activeElement!.dispatchEvent(
           new KeyboardEvent("keydown", {
@@ -2106,7 +2142,24 @@ describe("browser sandbox workflows", () => {
           }),
         ),
       );
-      expect(document.activeElement?.textContent).toBe("Cut");
+      expect(document.activeElement?.textContent).toBe("New Folder");
+      await action("New Folder");
+      expect(document.querySelector(".file-operation-modal header strong")?.textContent).toBe("New Folder");
+      expect(document.querySelector(".file-operation-modal > p")?.textContent).toBe(folder);
+      await type('[aria-label="File name or destination"]', "new-sibling-folder");
+      await click('.file-operation-modal button[type="submit"]');
+      await waitFor(() => !document.querySelector(".file-operation-modal"));
+      expect((await bridge.listDirectory(project, folder)).some((entry) => entry.name === "new-sibling-folder" && entry.directory)).toBe(true);
+      await context(`.file-tree [title="${source}"]`);
+      await action("New File");
+      expect(document.querySelector(".file-operation-modal header strong")?.textContent).toBe("New File");
+      expect(document.querySelector(".file-operation-modal > p")?.textContent).toBe(folder);
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+      await type('[aria-label="File name or destination"]', "new-sibling.ts");
+      await click('.file-operation-modal button[type="submit"]');
+      await waitFor(() => document.querySelector('[aria-label="Edit new-sibling.ts"]'));
+      expect(await bridge.readFile(project, `${folder}/new-sibling.ts`)).toBe("");
+      await context(`.file-tree [title="${source}"]`);
       await action("Copy");
       await context(`.file-tree [title="${destination}"]`);
       await action("Paste");
@@ -2149,6 +2202,17 @@ describe("browser sandbox workflows", () => {
         document.querySelector(`.document-tab [title="${renamed}"]`),
       );
       expect(await bridge.readFile(project, renamed)).toBe("new unsaved code");
+      await context(`.document-tab [title="${renamed}"]`);
+      await action("Delete File");
+      expect(document.querySelector(".file-operation-modal header strong")?.textContent).toBe("Delete File");
+      expect(await bridge.readFile(project, renamed)).toBe("new unsaved code");
+      await click('[aria-label="Cancel file operation"]');
+      expect(await bridge.readFile(project, renamed)).toBe("new unsaved code");
+      await context(`.document-tab [title="${renamed}"]`);
+      await action("Delete File");
+      await click('.file-operation-modal button[type="submit"]');
+      await waitFor(() => !document.querySelector(`.document-tab [title="${renamed}"]`));
+      await expect(bridge.readFile(project, renamed)).rejects.toThrow("unavailable");
       expect(document.querySelector('[role="alert"]')).toBeNull();
     } finally {
       if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
@@ -2296,7 +2360,7 @@ describe("browser sandbox workflows", () => {
     const result = await waitFor(() =>
       document.querySelector<HTMLButtonElement>(".search-results button"),
     );
-    expect(result.textContent).toContain("WelcomeController.php");
+    expect(result.closest(".search-file-group")?.querySelector("h3")?.textContent).toContain("WelcomeController.php");
     await act(async () => {
       result.click();
     });
@@ -2313,4 +2377,14 @@ describe("browser sandbox workflows", () => {
     );
     expect(document.querySelectorAll(".search-results button")).toHaveLength(0);
   });
+});
+
+it("Cmd+2 opens the terminal even while a settings dialog is open", async () => {
+  await enterCode();
+  await click('[aria-label="Settings"]');
+  expect(document.querySelector('[aria-label="Settings"][role="dialog"]')).not.toBeNull();
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", {key:"2",metaKey:true,bubbles:true,cancelable:true})));
+  await waitFor(() => document.querySelector(".local-terminal-session"));
+  expect(document.querySelector<HTMLElement>(".workspace-terminal-dock")?.style.display).toBe("flex");
+  expect(document.querySelector('[aria-label="Settings"][role="dialog"]')).not.toBeNull();
 });

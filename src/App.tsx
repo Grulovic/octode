@@ -21,24 +21,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import {
-  RotateCcw,
-  ArrowDownUp,
-  ArrowRight,
-  Code2,
-  Database,
-  Folder,
-  FolderOpen,
-  Grid2X2,
-  Keyboard,
-  Plus,
-  Pencil,
-  Settings2,
-  Search,
-  Server,
-  TerminalSquare,
-  X,
-} from "lucide-react";
+import { AlertTriangle, RotateCcw, ArrowDownUp, ArrowRight, Code2, Database, Folder, FolderOpen, Grid2X2, Keyboard, Plus, Pencil, Settings2, Search, Server, TerminalSquare, X } from "./components/DesignIcons";
 import {
   createProject,
   desktop,
@@ -49,8 +32,10 @@ import {
 import { projectColors, projectColor } from "./lib/projectColors";
 import {
   useProjectTerminal,
+  TerminalDock,
   WorkspaceTerminalContext,
 } from "./components/WorkspaceTerminal";
+import { useRootBranches } from "./hooks/useRootBranches";
 import { filename, filterProjects } from "./lib/workspace";
 import type { Project, Tool } from "./types";
 import { useWorkspaceSession } from "./hooks/useWorkspaceSession";
@@ -103,6 +88,10 @@ const modifier = navigator.platform.toLowerCase().includes("mac")
   ? "⌘"
   : "Ctrl";
 
+function ProjectFolders({ project, visible }: { project: Project; visible: boolean }) {
+  const branches = useRootBranches(project, visible, 0);
+  return <div className="project-folder-chips">{project.roots.map((root) => <span key={root} title={root}><Folder size={11}/>{filename(root)}{branches[root] && <small>{branches[root]}</small>}</span>)}</div>;
+}
 export default function App() {
   useEffect(installCaseShortcut, []);
   useEffect(installCloseTabShortcut, []);
@@ -164,6 +153,7 @@ export default function App() {
             onProjectChanged={projectChanged}
             onProjectRemoved={projectRemoved}
             runtime={runtime}
+            parkedProjectIds={slots.filter((slot) => slot.project).map((slot) => slot.key)}
           />,
           slot.host,
           slot.key,
@@ -173,6 +163,7 @@ export default function App() {
   );
 }
 function WorkspaceApp({
+  parkedProjectIds,
   initialProject,
   active,
   onOpenProject,
@@ -181,6 +172,7 @@ function WorkspaceApp({
   onProjectRemoved,
   runtime,
 }: {
+  parkedProjectIds: string[];
   initialProject: Project | null;
   active: boolean;
   onOpenProject: (project: Project) => void;
@@ -326,6 +318,11 @@ function WorkspaceApp({
         .then(setProjects)
         .catch((reason) => setError(String(reason)));
   }, [active, project]);
+  useEffect(() => {
+    const refresh = () => { void listProjects().then(setProjects).catch((reason) => setError(String(reason))); };
+    window.addEventListener("octode-app-data-imported", refresh);
+    return () => window.removeEventListener("octode-app-data-imported", refresh);
+  }, []);
   const restoredSection = useRef(false);
   useEffect(() => {
     if (!session || restoredSection.current || !project) return;
@@ -424,7 +421,7 @@ function WorkspaceApp({
         terminal.value.toggle,
         terminal.value.launch,
         () =>
-          active && !!project && !document.querySelector('[aria-modal="true"]'),
+          active && !!project,
       ),
     [project, active, terminal.value.toggle, terminal.value.launch],
   );
@@ -602,12 +599,12 @@ function WorkspaceApp({
                     aria-current={tool === "home" ? "page" : undefined}
                     onClick={() => navigate("code")}
                     style={{
-                      color: projectColor(
+                      "--project-color": projectColor(
                         initialProject?.color ?? project.color,
                       ),
-                    }}
+                    } as React.CSSProperties}
                   >
-                    {initialProject?.name ?? project.name}
+                    <span className="project-pill-name">{initialProject?.name ?? project.name}</span>
                   </button>
                   {tool !== "home" && (
                     <>
@@ -639,6 +636,9 @@ function WorkspaceApp({
               }
             }}
           />
+          <button className="titlebar-search" aria-label="Search everywhere" disabled={!project} onClick={() => setEverywhere(true)}>
+            <Search size={13} /><span>Search everywhere</span><kbd>⇧⇧</kbd>
+          </button>
         </header>
         <div className="app-body">
           <nav className="rail" aria-label="Main navigation">
@@ -687,22 +687,21 @@ function WorkspaceApp({
                     )}
                   </span>
                 </button>
-                {item.id === "code" && (
-                  <button
-                    className={`rail-button ${terminal.value.visible ? "active" : ""}`}
-                    disabled={!project}
-                    aria-label="Local terminal"
-                    title={`Local terminal (${modifier}2)`}
-                    onClick={terminal.value.toggle}
-                  >
-                    <span className="rail-icon-box">
-                      <TerminalSquare size={20} />
-                    </span>
-                  </button>
-                )}
               </Fragment>
             ))}
             <div className="rail-bottom">
+              <button
+                className={`rail-button ${terminal.value.visible ? "terminal-open" : ""}`}
+                disabled={!project}
+                aria-label="Local terminal"
+                title={`Local terminal (${modifier}2)`}
+                onClick={terminal.value.toggle}
+              >
+                <span className="rail-icon-box">
+                  <TerminalSquare size={20} />
+                  {terminal.value.hasOutput && <span className="rail-unsaved-dot" role="img" aria-label="New terminal output" title="New terminal output" />}
+                </span>
+              </button>
               <button
                 className="rail-button"
                 title="Settings (Cmd/Ctrl+,)"
@@ -793,8 +792,8 @@ function WorkspaceApp({
                           <FolderOpen size={24} />
                         </span>
                         <ArrowRight className="card-arrow" size={18} />
-                        <h3>{item.name}</h3>
-                        <span className="project-path">{item.roots[0]}</span>
+                        <div className="project-title-row"><h3>{item.name}</h3>{parkedProjectIds.includes(item.id) && <span className="project-parked">Open · workspace parked</span>}</div>
+                        <ProjectFolders project={item} visible={active}/>
                         <div className="project-card-footer">
                           <span>
                             {item.roots.length}{" "}
@@ -817,6 +816,7 @@ function WorkspaceApp({
                       >
                         <Pencil size={14} />
                       </button>
+                      <button className="secondary-button project-open-button" onClick={() => void openProject(item)}>Open workspace <ArrowRight size={13}/></button>
                     </div>
                   ))}
                 </div>
@@ -918,6 +918,7 @@ function WorkspaceApp({
                 )}
               </>
             )}
+            {project && tool !== "home" && <TerminalDock />}
           </main>
         </div>
         {project && everywhere && (
@@ -948,7 +949,7 @@ function WorkspaceApp({
               <RotateCcw size={12} />
               {restarting ? "Restarting…" : "Restart"}
             </button>
-            {!desktop && "Browser preview"}
+            {!desktop && "Browser preview"}<span className="section-status">{project ? `${tools.find((item) => item.id === tool)?.title ?? "Code"} · ${tool !== "home" && unsaved[tool] ? "unsaved changes" : "saved"}` : "Projects"}</span>
           </span>
           <span>
             Octode <span className="muted">/</span> a calmer place to build
@@ -1033,14 +1034,17 @@ function WorkspaceApp({
         {creating && (
           <div className="modal-backdrop" onClick={() => setCreating(false)}>
             <form
-              className="modal"
+              className="modal project-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingProject ? "Edit project" : "Create project"}
               onSubmit={(event) => void saveProject(event)}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-heading">
                 <span className="project-icon">
                   <FolderOpen size={24} />
-                </span>
+                </span><div><h2>{editingProject ? "Edit project" : "A new place to build."}</h2><p>Group your code folders into one workspace.</p></div>
                 <button
                   type="button"
                   aria-label="Close"
@@ -1049,11 +1053,7 @@ function WorkspaceApp({
                   <X size={20} />
                 </button>
               </div>
-              <h2>
-                {editingProject ? "Edit project" : "A new place to build."}
-              </h2>
-              <p>Group your code folders into one workspace.</p>
-              <label className="field-label">
+              <div className="project-dialog-body"><label className="field-label">
                 Project name
                 <input
                   autoFocus
@@ -1064,7 +1064,7 @@ function WorkspaceApp({
                   onChange={(event) => setName(event.target.value)}
                 />
               </label>
-              <span className="field-label">Project color</span>
+              <div className="project-color-field"><span className="field-label">Project color</span>
               <div
                 className="project-colors"
                 role="group"
@@ -1082,12 +1082,12 @@ function WorkspaceApp({
                   />
                 ))}
               </div>
-              <label className="field-label">Folders</label>
+              </div><div className="project-folder-field"><span className="field-label">Folders {roots.length > 0 && <span className="muted">{roots.length}</span>}</span>
               <div className="root-list">
                 {roots.map((root) => (
                   <div key={root}>
                     <Folder size={15} />
-                    <span>{root}</span>
+                    <span><strong>{filename(root)}</strong><small>{root.replace(/^\/Users\/[^/]+(?=\/|$)/, "~")}</small></span>
                     <button
                       type="button"
                       aria-label={`Remove ${root}`}
@@ -1109,14 +1109,15 @@ function WorkspaceApp({
               >
                 <Plus size={16} /> Add folders
               </button>
+              </div>
               {editingProject && (
                 <>
-                  <p className="service-hint">
+                  <p className="service-hint project-folder-warning"><AlertTriangle size={13} aria-hidden="true"/><span>
                     Folder changes reset the saved file layout and close this
                     project's parked workspace. Source folders stay on disk.
-                  </p>
-                  <button
-                    className="danger-action"
+                  </span></p>
+                  <div className="project-remove-row"><span><strong>Remove project from Octode</strong><small>Folders on disk are not touched.</small></span><button
+                    className="secondary-button danger-outline"
                     type="button"
                     disabled={busy}
                     onClick={async () => {
@@ -1145,14 +1146,15 @@ function WorkspaceApp({
                       }
                     }}
                   >
-                    Remove project from Octode…
-                  </button>
+                    Remove…
+                  </button></div>
                 </>
               )}
+              </div>
               <div className="modal-footer">
                 <button
                   type="button"
-                  className="text-button"
+                  className="secondary-button"
                   onClick={() => setCreating(false)}
                 >
                   Cancel
@@ -1182,39 +1184,20 @@ function WorkspaceApp({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-heading">
-                <Keyboard size={25} />
+                <h2>Keep your hands on the keys</h2>
                 <button aria-label="Close" onClick={() => setShortcuts(false)}>
                   <X size={20} />
                 </button>
               </div>
-              <h2>Keep your hands on the keys.</h2>
-              {[
-                ["Projects", "0"],
-                ["Local terminal", "2"],
-                ...tools.map((item) => [item.title, String(item.number)]),
-                ["Save Code immediately", "S"],
-                ["Cycle selected text case", "Option Shift U"],
-                ["Find in file", "F"],
-                ["Quick open file", "P"],
-                ["Search project", "Shift F"],
-                ["Search all sections", "Shift Shift"],
-                ["Close active tab", "W"],
-                ["New tab in focused terminal", "T"],
-                ["Run terminal launch command", "2 2"],
-              ].map(([title, key]) => (
-                <div className="shortcut-row" key={title}>
-                  <span>{title}</span>
-                  <kbd>
-                    {key === "Shift Shift"
-                      ? "Shift ⇧ Shift"
-                      : key === "Option Shift U"
-                        ? navigator.platform.toLowerCase().includes("mac")
-                          ? "⌥ ⇧ U"
-                          : "Alt Shift U"
-                        : `${modifier} ${key}`}
-                  </kbd>
-                </div>
-              ))}
+
+              <div className="shortcut-columns">
+                {[
+                  {title: "Sections", items: [["Projects", "0"], ["Code", "1"], ["Local terminal", "2"], ["Servers", "3"], ["Database", "4"], ["API", "5"]]},
+                  {title: "Edit & search", items: [["Save Code immediately", "S"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
+                ].map((group) => <section className="shortcut-group" key={group.title}><h3>{group.title}</h3>{group.items.map(([title, key]) => (
+                  <div className="shortcut-row" key={title}><span>{title}</span><kbd>{key === "Shift Shift" ? "⇧ ⇧" : key === "Option Shift U" ? navigator.platform.toLowerCase().includes("mac") ? "⌥ ⇧ U" : "Alt Shift U" : `${modifier} ${key.replace("Shift", "⇧")}`}</kbd></div>
+                ))}</section>)}
+              </div>
             </section>
           </div>
         )}

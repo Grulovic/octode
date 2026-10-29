@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { filename, folderBranchLabel } from "../lib/workspace";
 import CustomSelect from "./CustomSelect";
 import GitDiffHunk from "./GitDiffHunk";
@@ -8,7 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { GitBranch, Plus, Minus, RefreshCw, X, RotateCcw } from "lucide-react";
+import { Minus } from "lucide-react";
+import { GitBranch, Plus, RefreshCw, X, RotateCcw } from "./DesignIcons";
 import { desktop, invoke } from "../lib/bridge";
 import { confirmAction } from "./ToolLayout";
 import type { GitEntry, GitSnapshot, GitConflict } from "../devTypes";
@@ -16,6 +18,7 @@ import type { Project } from "../types";
 import "./code-tools.css";
 export default function GitPanel({
   project,
+  overlayHost,
   root,
   visible,
   revision,
@@ -24,10 +27,12 @@ export default function GitPanel({
   onChanged,
   onOpen,
   onBusy,
+  onCount,
   renderMerge,
   onChooseVersion,
 }: {
   project: Project;
+  overlayHost?: Element;
   root: string;
   visible: boolean;
   revision: number;
@@ -35,11 +40,13 @@ export default function GitPanel({
   beforeAction: () => Promise<boolean>;
   onChanged: () => Promise<void>;
   onBusy: (busy: boolean) => void;
+  onCount?: (count: number) => void;
   onOpen: (path: string) => Promise<void>;
   renderMerge: (path: string) => ReactNode;
   onChooseVersion: (path: string, text: string) => void;
 }) {
   const [state, setState] = useState<GitSnapshot | null>(null);
+  useEffect(() => { if (state) onCount?.(state.entries.length); }, [state, onCount]);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,6 +63,7 @@ export default function GitPanel({
     hunks?: { header: string; hunks: string[]; supported: boolean };
     historical?: boolean;
   } | null>(null);
+  const [collapsed, setCollapsed] = useState<string[]>([]);
   const [chosenHunks, setChosenHunks] = useState<number[]>([]);
   const [merge, setMerge] = useState<{
     path: string;
@@ -449,9 +457,7 @@ export default function GitPanel({
             return (
               <div className="git-group" key={group}>
                 <div className="git-group-heading">
-                  <strong>
-                    {group} <span>{entries.length}</span>
-                  </strong>
+                  <button aria-expanded={!collapsed.includes(group)} onClick={() => setCollapsed((old) => old.includes(group) ? old.filter((name) => name !== group) : [...old, group])}><span aria-hidden="true">{collapsed.includes(group) ? "›" : "⌄"}</span>{group[0].toUpperCase() + group.slice(1)} <span>{entries.length}</span></button>
                   {group !== "conflicts" && (
                     <button
                       disabled={busy || !entries.length}
@@ -468,7 +474,7 @@ export default function GitPanel({
                     </button>
                   )}
                 </div>
-                {entries.map((entry) => (
+                {!collapsed.includes(group) && entries.map((entry) => (
                   <div className="git-change" key={entry.path}>
                     <button
                       disabled={busy}
@@ -672,7 +678,7 @@ export default function GitPanel({
             className="git-wide"
             onClick={() => setHistory((value) => !value)}
           >
-            Recent commits
+            Recent commits ({state.history.length})
           </button>
           {activeHistory &&
             state.history.map((item) => (
@@ -755,8 +761,8 @@ export default function GitPanel({
           </form>
         </div>
       )}
-      {view && (
-        <div className="code-modal-backdrop">
+      {view && createPortal(
+        <div className="code-modal-backdrop git-editor-diff">
           <section
             className="code-review-modal"
             role="dialog"
@@ -868,7 +874,7 @@ export default function GitPanel({
             </footer>
           </section>
         </div>
-      )}
+      , overlayHost ?? document.body)}
       {merge && (
         <div className="code-modal-backdrop">
           <section

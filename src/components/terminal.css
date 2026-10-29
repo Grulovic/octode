@@ -1,0 +1,199 @@
+/* Ink well terminal, from the supplied T1 design reference. */
+.app-shell .workspace-terminal-dock {
+  position: relative;
+  z-index: 70;
+  width: 100%;
+  background: #050b0e;
+  box-shadow: 0 -18px 36px rgb(0 0 0 / 45%);
+}
+.workspace-terminal-host .terminal-panel {
+  min-width: 0;
+  border-top: 1px solid rgb(128 203 196 / 55%);
+  background: #050b0e;
+  color: #d4dae0;
+}
+.workspace-terminal-host .terminal-toolbar {
+  height: 36px;
+  min-height: 36px;
+  justify-content: flex-start;
+  padding: 0 6px 0 0;
+  gap: 2px;
+  background: #182b33;
+  border-bottom: 1px solid #26414b;
+}
+.workspace-terminal-host .terminal-heading {
+  flex: none;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #8d9aa3;
+}
+.workspace-terminal-host .local-terminal-tabs {
+  flex: 0 1 auto;
+  align-items: flex-end;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.workspace-terminal-host .local-terminal-tabs > div {
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 210px;
+  height: 30px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+}
+.workspace-terminal-host .local-terminal-tabs > div.selected {
+  background: #050b0e;
+  border-color: #26414b;
+  border-bottom-color: #050b0e;
+  box-shadow: inset 0 2px 0 #80cbc4;
+}
+.workspace-terminal-host .local-terminal-tabs > div > button:first-child { padding: 0 8px 0 10px; }
+.workspace-terminal-host .terminal-tab-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border: 1px solid #8d9aa3;
+  border-radius: 50%;
+}
+.workspace-terminal-host .terminal-tab-dot[data-connected='true'] { background: #c3e88d; border-color: #c3e88d; }
+.workspace-terminal-host .local-terminal-tabs > div > button:last-child { flex-basis: 24px; }
+.workspace-terminal-host .local-terminal-tabs .terminal-tab-label { color: #8d9aa3; font-size: 12px; }
+.workspace-terminal-host .local-terminal-tabs > div.selected .terminal-tab-label { color: #e3e7ea; }
+.workspace-terminal-host .terminal-toolbar > .terminal-add,
+.workspace-terminal-host .terminal-toolbar-actions > button:not(.custom-select) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  color: #8d9aa3;
+}
+.workspace-terminal-host .terminal-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-left: auto;
+  gap: 4px;
+  padding-left: 8px;
+}
+.workspace-terminal-host .terminal-toolbar .custom-select {
+  margin-left: 0;
+  max-width: 180px;
+  height: 24px;
+  min-height: 24px;
+  padding-left: 8px;
+  border: 1px solid #1f363f;
+  border-radius: 6px;
+  background: #0b1519;
+  color: #c6ccd3;
+  font: 400 11.5px var(--oc-font-mono);
+}
+.workspace-terminal-host .terminal-folder-label { gap: 6px; overflow: hidden; white-space: nowrap; }
+.workspace-terminal-host .terminal-content,
+.workspace-terminal-host .terminal-mount .xterm,
+.workspace-terminal-host .terminal-mount .xterm-viewport { background: #050b0e; }
+.workspace-terminal-host .terminal-content { padding: 0 16px 12px; }
+.workspace-terminal-host .terminal-search {
+  flex: none;
+  height: 38px;
+  padding: 0;
+  margin: 0 -4px;
+  gap: 6px;
+  font-size: 11.5px;
+}
+.workspace-terminal-host .terminal-search-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 260px;
+  min-width: 100px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border: 1px solid #1f363f;
+  border-radius: 6px;
+  background: #0b1519;
+}
+.workspace-terminal-host .terminal-search-field:focus-within { border-color: #80cbc4; }
+.workspace-terminal-host .terminal-search-field > svg { flex: none; }
+.workspace-terminal-host .terminal-search-field > input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #c6ccd3;
+  font-size: 12px;
+  outline: none;
+  box-shadow: none;
+}
+.workspace-terminal-host .terminal-search > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #8d9aa3;
+}
+.workspace-terminal-host .terminal-search > button:last-child { padding: 0 8px; color: #c6ccd3; }
+.workspace-terminal-host .terminal-previous-icon { transform: rotate(180deg); }
+.workspace-terminal-host .terminal-search > .terminal-search-result { flex: 1; }
+.workspace-terminal-host .terminal-search > .terminal-status {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  margin-right: 4px;
+  padding-right: 10px;
+  border-right: 1px solid #1f363f;
+  color: #8d9aa3;
+  font-size: 11.5px;
+}
+.workspace-terminal-host .terminal-state-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8d9aa3;
+}
+.workspace-terminal-host [data-connected='true'] .terminal-state-dot { background: #c3e88d; }
+.workspace-terminal-host .terminal-toolbar button:hover:not(:disabled),
+.workspace-terminal-host .terminal-search > button:hover { background: #26414b; color: #e3e7ea; }
+.workspace-terminal-host .terminal-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: #3a5a66;
+}
+@media (max-width: 720px) {
+  .workspace-terminal-host .terminal-heading { padding: 0 8px; font-size: 10px; }
+  .workspace-terminal-host .terminal-toolbar .custom-select { max-width: 110px; }
+  .workspace-terminal-host .terminal-search > .terminal-status { max-width: 120px; font-size: 10px; }
+}
+
+.workspace-terminal-host .terminal-output-dot,
+.workspace-terminal-host .terminal-tab-dot.terminal-output-dot,
+.workspace-terminal-host [data-connected='true'] .terminal-output-dot,
+.terminal-output-dot { display: inline-block; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--oc-unsaved, #fb9551); border-color: var(--oc-unsaved, #fb9551); }
+.remote-terminal-status { display: inline-flex; align-items: center; gap: 8px; }

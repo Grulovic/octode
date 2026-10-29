@@ -25,6 +25,19 @@ pub fn find(roots: &[String], source: &Path, query: &str) -> Result<Targets, Str
         targets: Vec::new(),
         truncated: false,
     };
+    // Resolve the clicked binding before searching every project declaration.
+    // Otherwise common names in unrelated files turn a direct jump into a chooser.
+    if let Ok(text) = fs::read_to_string(source) {
+        if let Some(target) = imported_target(roots, source, &text, query) {
+            result.targets.push(target);
+            return Ok(result);
+        }
+        let local = declarations(&text, query);
+        if local.len() == 1 {
+            result.targets.push(target(source, &text, query, local[0]));
+            return Ok(result);
+        }
+    }
     if query.contains('/') || query.contains('.') {
         let parent = source.parent().ok_or("File has no parent")?;
         for base in [
@@ -173,6 +186,99 @@ pub fn find(roots: &[String], source: &Path, query: &str) -> Result<Targets, Str
         .dedup_by(|a, b| a.path == b.path && a.line == b.line);
     Ok(result)
 }
+fn target(path: &Path, text: &str, label: &str, line: usize) -> Target {
+    Target {
+        path: path.to_string_lossy().into_owned(),
+        line,
+        label: label.into(),
+        preview: text
+            .lines()
+            .nth(line - 1)
+            .unwrap_or_default()
+            .chars()
+            .take(180)
+            .collect(),
+    }
+}
+
+fn imported_target(roots: &[String], source: &Path, text: &str, query: &str) -> Option<Target> {
+    let imports =
+        regex::Regex::new(r#"(?m)^\s*import\s+(?:type\s+)?([^;]+?)\s+from\s*["']([^"']+)["']"#)
+            .ok()?;
+    for import in imports.captures_iter(text) {
+        let clause = import[1].trim();
+        let module = &import[2];
+        if !module.starts_with('.') {
+            continue;
+        }
+        let named = clause
+            .split_once('{')
+            .and_then(|(_, rest)| rest.split_once('}'))
+            .and_then(|(names, _)| {
+                names.split(',').find_map(|binding| {
+                    let binding = binding
+                        .trim()
+                        .strip_prefix("type ")
+                        .unwrap_or(binding.trim());
+                    let (original, local) =
+                        binding.split_once(" as ").unwrap_or((binding, binding));
+                    (local.trim() == query).then_some(original.trim())
+                })
+            });
+        let default = clause.split(',').next().unwrap_or("").trim() == query;
+        if named.is_none() && !default {
+            continue;
+        }
+        let base = source.parent()?.join(module);
+        let mut candidates = vec![base.clone()];
+        // TypeScript commonly imports .js while the source file is .ts/.tsx.
+        if base
+            .extension()
+            .is_some_and(|extension| extension == "js" || extension == "jsx")
+        {
+            candidates.push(base.with_extension("ts"));
+            candidates.push(base.with_extension("tsx"));
+        }
+        for suffix in [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            "/index.ts",
+            "/index.tsx",
+            "/index.js",
+        ] {
+            candidates.push(source.parent()?.join(format!("{module}{suffix}")));
+        }
+        for path in candidates {
+            let Ok(path) = path.canonicalize() else {
+                continue;
+            };
+            if !path.is_file() || !roots.iter().any(|root| path.starts_with(root)) {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let lines = declarations(&content, named.unwrap_or(query));
+            if lines.len() == 1 {
+                return Some(target(&path, &content, query, lines[0]));
+            }
+            if default {
+                if let Some(index) = content
+                    .lines()
+                    .position(|line| line.trim_start().starts_with("export default "))
+                {
+                    return Some(target(&path, &content, query, index + 1));
+                }
+            }
+            // The import is unambiguous even when the declaration is a re-export.
+            return Some(target(&path, &content, query, 1));
+        }
+    }
+    None
+}
 fn declarations(text: &str, symbol: &str) -> Vec<usize> {
     let mut words = Vec::<(String, usize)>::new();
     let mut token = String::new();
@@ -284,6 +390,50 @@ mod tests {
             .unwrap()
             .targets
             .is_empty());
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn follows_import_alias_instead_of_unrelated_declarations() {
+        let directory = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&directory).unwrap();
+        let directory = directory.canonicalize().unwrap();
+        let source = directory.join("index.ts");
+        fs::write(
+            &source,
+            "import { greet as hello } from './greeting.js';\nhello();",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("greeting.ts"),
+            "// greeting\nexport function greet() {}\n",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("other.ts"),
+            "function hello() {}\nfunction greet() {}\n",
+        )
+        .unwrap();
+        let roots = vec![directory.to_string_lossy().into_owned()];
+        let found = find(&roots, &source, "hello").unwrap();
+        assert_eq!(found.targets.len(), 1);
+        assert_eq!(
+            found.targets[0].path,
+            directory.join("greeting.ts").to_string_lossy()
+        );
+        assert_eq!(found.targets[0].line, 2);
+        fs::write(&source, "import Greeting from './greeting';\nGreeting();").unwrap();
+        fs::write(
+            directory.join("greeting.ts"),
+            "// default\nexport default function Greeting() {}\n",
+        )
+        .unwrap();
+        let found = find(&roots, &source, "Greeting").unwrap();
+        assert_eq!(found.targets.len(), 1);
+        assert_eq!(found.targets[0].line, 2);
+        fs::write(&source, "function hello() {}\nhello();").unwrap();
+        let found = find(&roots, &source, "hello").unwrap();
+        assert_eq!(found.targets.len(), 1);
+        assert_eq!(found.targets[0].path, source.to_string_lossy());
         fs::remove_dir_all(directory).unwrap();
     }
 }

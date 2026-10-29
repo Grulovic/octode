@@ -148,3 +148,7 @@ Native metadata is stored in `octode.sqlite` in Tauri's application-data directo
 - Native Windows/Linux behavior is unverified. Installers, app signing, and automatic updates are not configured.
 
 See [the roadmap](docs/ROADMAP.md) for the next implementation steps.
+
+### October 29 design handoff
+
+The Deep Ocean redesign uses runtime theme tokens, local fonts, and shared icons across the app. See [implementation and verification notes](docs/REDESIGN.md). Original design references are maintained separately from this repository.

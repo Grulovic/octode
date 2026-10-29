@@ -1,7 +1,8 @@
 import CustomSelect from "./CustomSelect";
+import "./terminal.css";
 import { registerTabCloser } from "../lib/closeTab";
 import { lazy, Suspense, useState, useRef, useEffect } from "react";
-import { Plus, RotateCcw, X } from "lucide-react";
+import { Plus, RotateCcw, X, TerminalSquare, Folder, ChevronDown } from "./DesignIcons";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import { middleClose } from "../lib/middleClose";
 import { desktop } from "../lib/bridge";
@@ -24,6 +25,7 @@ export default function TerminalPanel({
   visible,
   onError,
   onHide,
+  onActivityChange,
 }: {
   project: Project;
   initialRoot: string;
@@ -32,17 +34,22 @@ export default function TerminalPanel({
   visible: boolean;
   onError: (error: string) => void;
   onHide: () => void;
+  onActivityChange?: (active: boolean) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = usePanelSize(
     "octode-layout:terminal-height",
-    260,
+    368,
   );
   const [tabs, setTabs] = useState<
     { id: string; root: string; generation: number; startupCommand?: string }[]
   >(() => [{ id: crypto.randomUUID(), root: initialRoot, generation: 0 }]);
   const [active, setActive] = useState<string>(() => tabs[0].id);
   const [newRoot, setNewRoot] = useState(initialRoot);
+  const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [activity, setActivity] = useState<Record<string, boolean>>({});
+  const hasOutput = tabs.some((tab) => activity[tab.id]);
+  useEffect(() => { onActivityChange?.(hasOutput); }, [hasOutput, onActivityChange]);
   const current = tabs.find((item) => item.id === active);
   const add = () => {
     if (tabs.length >= 6) return;
@@ -144,6 +151,7 @@ export default function TerminalPanel({
         className="terminal-resize"
       />
       <div className="terminal-toolbar">
+        <span className="terminal-heading"><TerminalSquare size={14} />Terminal</span>
         <div className="local-terminal-tabs">
           {tabs.map((tab, index) => (
             <div
@@ -164,6 +172,7 @@ export default function TerminalPanel({
               }
             >
               <button title={tab.root} onClick={() => setActive(tab.id)}>
+                <span className={`terminal-tab-dot ${activity[tab.id] ? "terminal-output-dot" : ""}`} title={activity[tab.id] ? "New terminal output" : undefined} data-connected={statuses[tab.id] === "Connected"} aria-label={statuses[tab.id] ?? "Starting shell"} />
                 <span className="terminal-tab-label">
                   {filename(tab.root)} {index + 1}
                 </span>
@@ -177,18 +186,8 @@ export default function TerminalPanel({
             </div>
           ))}
         </div>
-        <CustomSelect
-          aria-label="Folder for new terminal"
-          value={newRoot}
-          onChange={(event) => setNewRoot(event.target.value)}
-        >
-          {project.roots.map((root) => (
-            <option key={root} value={root}>
-              {filename(root)}
-            </option>
-          ))}
-        </CustomSelect>
         <button
+          className="terminal-add"
           aria-label="New terminal"
           title="New terminal (Cmd/Ctrl+T while terminal is focused; up to six)"
           disabled={tabs.length >= 6}
@@ -196,31 +195,45 @@ export default function TerminalPanel({
         >
           <Plus size={14} />
         </button>
-        <button
-          title="Restart current terminal"
-          aria-label="Restart terminal"
-          disabled={!current}
-          onClick={async () => {
-            if (
-              current &&
-              (await confirmAction(
-                "Restart this terminal? Commands running in it will be interrupted.",
-              ))
-            )
-              setTabs((previous) =>
-                previous.map((tab) =>
-                  tab.id === active
-                    ? { ...tab, generation: tab.generation + 1 }
-                    : tab,
-                ),
-              );
-          }}
-        >
-          <RotateCcw size={13} />
-        </button>
-        <button aria-label="Hide terminal" onClick={onHide}>
-          <X size={14} />
-        </button>
+        <div className="terminal-toolbar-actions">
+          <CustomSelect
+            aria-label="Folder for new terminal"
+            value={newRoot}
+            onChange={(event) => setNewRoot(event.target.value)}
+            renderLabel={(_path, label) => <span className="terminal-folder-label"><Folder size={12} />{label}</span>}
+          >
+            {project.roots.map((root) => (
+              <option key={root} value={root}>
+                {filename(root)}
+              </option>
+            ))}
+          </CustomSelect>
+          <button
+            title="Restart current terminal"
+            aria-label="Restart terminal"
+            disabled={!current}
+            onClick={async () => {
+              if (
+                current &&
+                (await confirmAction(
+                  "Restart this terminal? Commands running in it will be interrupted.",
+                ))
+              )
+                setTabs((previous) =>
+                  previous.map((tab) =>
+                    tab.id === active
+                      ? { ...tab, generation: tab.generation + 1 }
+                      : tab,
+                  ),
+                );
+            }}
+          >
+            <RotateCcw size={13} />
+          </button>
+          <button aria-label="Hide terminal" title="Hide terminal (Cmd/Ctrl+2)" onClick={onHide}>
+            <ChevronDown size={14} />
+          </button>
+        </div>
       </div>
       {tabs.map((tab) => (
         <div
@@ -237,6 +250,8 @@ export default function TerminalPanel({
               startupCommand={tab.startupCommand}
               visible={visible && active === tab.id}
               onError={onError}
+              onActivityChange={(active) => setActivity((previous) => previous[tab.id] === active ? previous : { ...previous, [tab.id]: active })}
+              onStatusChange={(status) => setStatuses((previous) => previous[tab.id] === status ? previous : { ...previous, [tab.id]: status })}
             />
           </Suspense>
         </div>

@@ -1,3 +1,4 @@
+import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
 import DatabaseDataGrid from "./DatabaseDataGrid";
 import { registerSearchList } from "../lib/searchDocuments";
@@ -12,19 +13,9 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  ChevronLeft,
-  ArrowLeft,
-  ChevronRight,
-  Play,
-  Plus,
-  Copy,
-  Save,
-  Search,
-  X,
-  Table2,
-  Trash2,
-} from "lucide-react";
+
+import { Play, Table2 } from "./DesignIcons";
+import { ChevronLeft, ArrowLeft, ChevronRight, Plus, Copy, Save, Search, X, Trash2 } from "./DesignIcons";
 import { useToolDocument } from "../hooks/useToolDocument";
 import {
   databaseDocument,
@@ -79,6 +70,7 @@ export default function DatabaseWorkspace({
   );
   const {
     document: doc,
+    savedDocument = doc,
     setDocument: set,
     loading,
     saving,
@@ -106,6 +98,8 @@ export default function DatabaseWorkspace({
   const sshRef = useRef<string | null>(null);
   const alive = useRef(true);
   const browseVersion = useRef(0);
+  const [queryError, setQueryError] = useState("");
+  const dirtyConnections = changedIds(doc.connections, savedDocument.connections);
   const [browseError, setBrowseError] = useState("");
   const [metadataError, setMetadataError] = useState("");
   const [loadingRows, setLoadingRows] = useState(false);
@@ -432,6 +426,7 @@ export default function DatabaseWorkspace({
   };
   const run = (statement = sql) =>
     task(async () => {
+      setQueryError("");
       if (!session) return;
       browseVersion.current++;
       setMetadata(null);
@@ -440,6 +435,7 @@ export default function DatabaseWorkspace({
         !current?.readOnly &&
         !(await confirmAction(
           "Run this SQL against the connected database? Writes take effect immediately.",
+          "Run SQL",
         ))
       )
         return;
@@ -476,7 +472,7 @@ export default function DatabaseWorkspace({
             ...previous,
           ].slice(0, 20),
         );
-        throw reason;
+        setQueryError(String(reason));
       } finally {
         operation.current = null;
       }
@@ -570,7 +566,7 @@ export default function DatabaseWorkspace({
                 onClick={() => setScreen("connections")}
               >
                 <ArrowLeft size={16} />
-                <span>{current?.name}</span>
+                <span className="connection-dot connected" aria-hidden="true"/><span>{current?.name}</span><span className="connection-engine">{current?.engine}</span>
               </button>
               <div className="service-tabs">
                 {["tables", "console"].map((value) => (
@@ -582,7 +578,7 @@ export default function DatabaseWorkspace({
                       showDataTab(value);
                     }}
                   >
-                    {value === "tables" ? "Tables" : "Console"}
+                    {value === "tables" ? `Tables ${tables.length}` : "Console"}
                   </button>
                 ))}
               </div>
@@ -613,6 +609,7 @@ export default function DatabaseWorkspace({
                   {item.name}
                   <small>{item.engine}</small>
                 </span>
+                {dirtyConnections.has(item.id) && <span className="tool-unsaved-dot" role="img" aria-label={`Unsaved changes in ${item.name}`}/>}
               </button>
             ))}
           </div>
@@ -627,6 +624,7 @@ export default function DatabaseWorkspace({
                   value={tableSearch}
                   onChange={(event) => setTableSearch(event.target.value)}
                 />
+                <span className="search-count">{filteredTables.length}</span>
                 {tableSearch && (
                   <button
                     type="button"
@@ -642,29 +640,29 @@ export default function DatabaseWorkspace({
                   </button>
                 )}
               </div>
-              {filteredTables.map((item) => (
-                <button
-                  key={`${item.schema}.${item.name}`}
-                  disabled={busy}
-                  className={`service-list-item ${table?.name === item.name && table.schema === item.schema && tab === "tables" ? "selected" : ""}`}
-                  onClick={() => {
-                    setFilter("");
-                    setResult(null);
-                    void task(() => browse(item, 0, "", false, ""));
-                  }}
-                >
-                  <Table2 size={13} />
-                  <span>
-                    {item.name}
-                    <small>{item.schema}</small>
-                  </span>
-                </button>
-              ))}
-              {tableSearch.trim() && !filteredTables.length && (
-                <p className="database-table-search-empty">
-                  No matching tables.
-                </p>
-              )}
+              <div className="database-table-scroll">
+                {filteredTables.map((item) => (
+                  <button
+                    key={`${item.schema}.${item.name}`}
+                    disabled={busy}
+                    className={`service-list-item ${table?.name === item.name && table.schema === item.schema && tab === "tables" ? "selected" : ""}`}
+                    onClick={() => {
+                      setFilter("");
+                      setResult(null);
+                      void task(() => browse(item, 0, "", false, ""));
+                    }}
+                  >
+                    <Table2 size={13} />
+                    <span>
+                      {item.name}
+                      <small>{item.schema}</small>
+                    </span>
+                  </button>
+                ))}
+                {tableSearch.trim() && !filteredTables.length && (
+                  <div className="database-table-search-empty">No matching tables.<button className="search-empty-clear" onClick={() => setTableSearch("")}>Clear search</button></div>
+                )}
+              </div>
             </div>
           )}
           <div
@@ -733,6 +731,41 @@ export default function DatabaseWorkspace({
               </span>
             </div>
             <div className="connection-header-buttons">
+              <button
+                title="Duplicate database"
+                aria-label={`Duplicate database ${current.name}`}
+                disabled={!!session || busy}
+                onClick={duplicateConnection}
+              >
+                <Copy size={18} />
+              </button>
+              <button
+                title="Delete database"
+                aria-label={`Delete database ${current.name}`}
+                disabled={!!session || busy}
+                onClick={() =>
+                  void task(async () => {
+                    if (
+                      await confirmAction(
+                        `Delete “${current.name}” and its saved queries?`,
+                      )
+                    ) {
+                      set((previous) => ({
+                        ...previous,
+                        connections: previous.connections.filter(
+                          (item) => item.id !== current.id,
+                        ),
+                        queries: previous.queries.filter(
+                          (item) => item.connectionId !== current.id,
+                        ),
+                      }));
+                      select("");
+                    }
+                  })
+                }
+              >
+                <Trash2 size={18} />
+              </button>
               <button
                 className="primary-button"
                 disabled={
@@ -951,43 +984,7 @@ export default function DatabaseWorkspace({
                 Changes require Save. Connect uses the current settings.
                 Disconnect to change connection settings.
               </p>
-              <div className="connection-actions">
-                <button
-                  className="secondary-button danger-outline"
-                  disabled={!!session || busy}
-                  onClick={() =>
-                    void task(async () => {
-                      if (
-                        await confirmAction(
-                          `Delete “${current.name}” and its saved queries?`,
-                        )
-                      ) {
-                        set((previous) => ({
-                          ...previous,
-                          connections: previous.connections.filter(
-                            (item) => item.id !== current.id,
-                          ),
-                          queries: previous.queries.filter(
-                            (item) => item.connectionId !== current.id,
-                          ),
-                        }));
-                        select("");
-                      }
-                    })
-                  }
-                >
-                  <Trash2 size={17} />
-                  Delete connection
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={!!session || busy}
-                  onClick={duplicateConnection}
-                >
-                  <Copy size={17} />
-                  Duplicate connection
-                </button>
-              </div>
+
             </div>
           )}
           {screen === "workspace" && tab === "tables" && !tableInfo && (
@@ -1132,6 +1129,7 @@ export default function DatabaseWorkspace({
                   onChange={(event) => editQuery({ sql: event.target.value })}
                 />
               )}
+              {queryError && <div className="sql-inline-error" role="alert"><strong>Query failed</strong><p>{queryError}</p></div>}
               <p className="service-hint">
                 Cmd/Ctrl+Enter runs the selected SQL, or the full query when
                 nothing is selected.
@@ -1196,6 +1194,25 @@ export default function DatabaseWorkspace({
                   <strong>
                     {result.rows.length} rows · {result.rowsAffected} affected
                   </strong>
+                {tab === "tables" && metadata && (
+                  <div className="database-table-edit-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={busy || !metadata.editable}
+                      onClick={() => setRowEditor(true)}
+                    >
+                      Edit rows…
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={busy || !metadata.editable}
+                      onClick={() => setCsvImport(true)}
+                    >
+                      Import CSV…
+                    </button>
+
+                  </div>
+                )}
                   <span>
                     <button
                       disabled={busy}
@@ -1214,29 +1231,6 @@ export default function DatabaseWorkspace({
                       : ""}
                   </span>
                 </div>
-                {tab === "tables" && metadata && (
-                  <div className="service-subheading">
-                    <button
-                      className="secondary-button"
-                      disabled={busy || !metadata.editable}
-                      onClick={() => setRowEditor(true)}
-                    >
-                      Edit rows / insert / delete…
-                    </button>
-                    <button
-                      className="secondary-button"
-                      disabled={busy || !metadata.editable}
-                      onClick={() => setCsvImport(true)}
-                    >
-                      Import CSV…
-                    </button>
-                    <span className="service-hint">
-                      {metadata.editable
-                        ? "Double-click a cell to edit. Review and Apply confirms each update."
-                        : metadata.reason}
-                    </span>
-                  </div>
-                )}
                 <DatabaseDataGrid
                   key={`${session}:${tab}:${table?.schema}:${table?.name}`}
                   session={session}
@@ -1271,6 +1265,11 @@ export default function DatabaseWorkspace({
                   onEditing={setCellEditing}
                   onDirty={rowDirtyChange}
                 />
+                {tab === "tables" && metadata && <div className="database-grid-footer">                    <span className="service-hint">
+                      {metadata.editable
+                        ? "Double-click a cell to edit. Review and Apply confirms each update."
+                        : metadata.reason}
+                    </span><span><i className="database-null">NULL</i> SQL NULL <span className="empty-string-key"/> empty string</span></div>}
               </div>
             )}
         </>

@@ -59,7 +59,7 @@ pub async fn save_tool_document(
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ApiDocument {
+pub(crate) struct ApiDocument {
     #[allow(dead_code)]
     requests: Vec<http_client::ApiRequest>,
     #[allow(dead_code)]
@@ -69,6 +69,9 @@ struct ApiDocument {
 struct ApiEnvironment {
     #[allow(dead_code)]
     variables: Vec<http_client::ValueRow>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    headers: Vec<http_client::ValueRow>,
 }
 #[tauri::command]
 pub async fn api_send(

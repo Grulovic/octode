@@ -1,17 +1,13 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import {
-  Copy,
-  ClipboardPaste,
-  Scissors,
-  Link,
-  Pencil,
-  Files,
-  FolderOpen,
-} from "lucide-react";
+import { Files } from "lucide-react";
+import { Copy, ClipboardPaste, Scissors, Link, Pencil, FolderOpen, FilePlus, FolderPlus, Trash2 } from "./DesignIcons";
 import type { FileEntry } from "../types";
 import { desktop } from "../lib/bridge";
 export type FileMenuAction =
+  | "create-file"
+  | "create-folder"
+  | "delete"
   | "copy"
   | "paste"
   | "cut"
@@ -85,11 +81,14 @@ export default function FileContextMenu({
     };
   }, [onClose]);
   const actions = [
+    { id: "create-file", label: "New File", Icon: FilePlus, disabled: false },
+    { id: "create-folder", label: "New Folder", Icon: FolderPlus, disabled: false },
     { id: "copy", label: "Copy", Icon: Copy, disabled: entry.directory },
     { id: "paste", label: "Paste", Icon: ClipboardPaste, disabled: !canPaste },
     { id: "cut", label: "Cut", Icon: Scissors, disabled: entry.directory },
     { id: "copy-path", label: "Copy Path", Icon: Link, disabled: false },
     { id: "rename", label: "Rename", Icon: Pencil, disabled: isRoot },
+    { id: "delete", label: entry.directory ? "Delete Folder" : "Delete File", Icon: Trash2, disabled: isRoot },
     {
       id: "duplicate",
       label: "Duplicate",

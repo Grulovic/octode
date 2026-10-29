@@ -16,6 +16,7 @@ import type { Project, Tool } from "../types";
 const TerminalPanel = lazy(() => import("./TerminalPanel"));
 export const WorkspaceTerminalContext = createContext({
   visible: false,
+  hasOutput: false,
   active: "code" as Tool,
   toggle: () => {},
   show: () => {},
@@ -29,6 +30,7 @@ export function useProjectTerminal(
   workspaceActive = true,
 ) {
   const [visible, setVisible] = useState(false);
+  const [hasOutput, setHasOutput] = useState(false);
   const [visited, visit] = useState(false);
   const [error, setError] = useState("");
   const [launches, setLaunches] = useState<TerminalLaunch[]>([]);
@@ -40,6 +42,7 @@ export function useProjectTerminal(
   }, [project?.id]);
   useEffect(() => {
     setVisible(false);
+    setHasOutput(false);
     visit(false);
     setError("");
     setLaunches([]);
@@ -70,7 +73,7 @@ export function useProjectTerminal(
     [],
   );
   return {
-    value: { visible, active, toggle, show, launch, host },
+    value: { visible, hasOutput, active, toggle, show, launch, host },
     portal:
       project && visited
         ? createPortal(
@@ -93,6 +96,7 @@ export function useProjectTerminal(
                 launchRequest={launches[0]}
                 onLaunchHandled={launchHandled}
                 visible={visible && workspaceActive}
+                onActivityChange={setHasOutput}
                 onError={setError}
                 onHide={() => setVisible(false)}
               />
@@ -102,17 +106,17 @@ export function useProjectTerminal(
         : null,
   };
 }
-export function TerminalDock({ tool }: { tool: Tool }) {
-  const { host, active, visible } = useContext(WorkspaceTerminalContext);
+export function TerminalDock() {
+  const { host, visible } = useContext(WorkspaceTerminalContext);
   const dock = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (active === tool && host && dock.current) dock.current.append(host);
-  }, [active, tool, host]);
+    if (host && dock.current) dock.current.append(host);
+  }, [host]);
   return (
     <div
       ref={dock}
       className="workspace-terminal-dock"
-      style={{ display: visible && active === tool ? "flex" : "none" }}
+      style={{ display: visible ? "flex" : "none" }}
     />
   );
 }

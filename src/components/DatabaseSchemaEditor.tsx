@@ -1,7 +1,7 @@
 import CustomSelect from "./CustomSelect";
 import "./code-tools.css";
 import { useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X } from "./DesignIcons";
 import {
   createTableSql,
   addColumnSql,

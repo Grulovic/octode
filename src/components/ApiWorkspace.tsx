@@ -1,3 +1,5 @@
+import { inheritHeaders } from "../lib/apiHeaders";
+import { resolvedPublicUrl } from "../lib/resolvedPublicUrl";
 import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
 import PanelResize, { usePanelSize } from "./PanelResize";
@@ -5,20 +7,8 @@ import type { SearchEntry } from "../lib/searchEverywhere";
 import { useToolView } from "../hooks/useToolView";
 import JsonResponse from "./JsonResponse";
 import VariableInput from "./VariableInput";
-import { useEffect, useRef, useState } from "react";
-import {
-  Copy,
-  Search,
-  X,
-  ChevronDown,
-  ChevronRight,
-  FolderPlus,
-  Plus,
-  Send,
-  Trash2,
-  Pencil,
-  ArrowLeft,
-} from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Copy, Search, X, ChevronDown, ChevronRight, FolderPlus, Plus, Send, Trash2, Pencil, ArrowLeft, Lock } from "./DesignIcons";
 import { useToolDocument } from "../hooks/useToolDocument";
 import { apiDocument, apiRequest, id } from "../lib/toolDefaults";
 import { nativeTool } from "../lib/toolsBridge";
@@ -30,7 +20,7 @@ import {
   duplicateRequest,
 } from "../lib/apiCollections";
 import { exportText } from "../lib/export";
-import { invoke } from "../lib/bridge";
+import { desktop, invoke } from "../lib/bridge";
 import type { ApiRequest, ApiResponse } from "../toolTypes";
 import {
   ToolLayout,
@@ -41,6 +31,7 @@ import {
   confirmAction,
   type ToolProps,
 } from "./ToolLayout";
+const RequestBodyEditor = lazy(() => import("./EditorPane"));
 export default function ApiWorkspace({
   project,
   onError,
@@ -308,7 +299,9 @@ export default function ApiWorkspace({
     }));
     select(request.id);
   };
+  const [requestError, setRequestError] = useState("");
   const send = async () => {
+    setRequestError("");
     if (!current || running) return;
     const operationId = id();
     operation.current = operationId;
@@ -317,7 +310,7 @@ export default function ApiWorkspace({
       const value = await nativeTool<ApiResponse>("api_send", {
         projectId: project.id,
         operationId,
-        request: current,
+        request: { ...current, headers: inheritHeaders(doc.environments.find((item) => item.id === env)?.headers ?? [], current.headers) },
         environment:
           doc.environments.find((item) => item.id === env)?.variables ?? [],
       });
@@ -346,7 +339,7 @@ export default function ApiWorkspace({
         );
       }
     } catch (error) {
-      if (alive.current) onError(String(error));
+      if (alive.current) setRequestError(String(error));
     } finally {
       operation.current = null;
       if (alive.current) setRunning(false);
@@ -409,7 +402,7 @@ export default function ApiWorkspace({
             className={sidebarTab === value ? "active" : ""}
             onClick={() => setSidebarTab(value)}
           >
-            {value === "requests" ? "Requests" : "History"}
+            {value === "requests" ? `Requests ${doc.requests.length}` : "History"}
           </button>
         ))}
       </div>
@@ -420,7 +413,7 @@ export default function ApiWorkspace({
         aria-labelledby="api-requests-tab"
         hidden={sidebarTab !== "requests"}
       >
-        <div className="api-request-search">
+        <div className="api-sidebar-tools"><div className="api-request-search">
           <Search size={14} aria-hidden="true" />
           <input
             ref={requestSearchInput}
@@ -429,6 +422,7 @@ export default function ApiWorkspace({
             value={requestSearch}
             onChange={(event) => setRequestSearch(event.target.value)}
           />
+          <span className="search-count">{visibleRequests.length}</span>
           {requestSearch && (
             <button
               type="button"
@@ -481,6 +475,7 @@ export default function ApiWorkspace({
           <button title="New request" onClick={add}>
             <Plus size={15} />
           </button>
+        </div>
         </div>
         {[{ id: "", name: "Unfiled" }, ...doc.folders]
           .filter(
@@ -576,6 +571,7 @@ export default function ApiWorkspace({
                       />
                     )}
                   </button>
+                  <span className="folder-count">{doc.requests.filter((request) => request.folderId === folder.id && visibleRequestIds.has(request.id)).length}</span>
                   {editingFolder === folder.id && (
                     <input
                       aria-label="Folder name"
@@ -797,7 +793,7 @@ export default function ApiWorkspace({
             </div>
           ))}
         {requestQuery && !visibleRequests.length && (
-          <p className="api-request-search-empty">No matching requests.</p>
+          <div className="api-request-search-empty">No matching requests.<button className="search-empty-clear" onClick={() => setRequestSearch("")}>Clear search</button></div>
         )}
       </div>
       <div
@@ -851,8 +847,10 @@ export default function ApiWorkspace({
     </>
   );
   const environment = doc.environments.find((item) => item.id === env);
+  const inheritedHeaders = inheritHeaders(environment?.headers ?? [], current?.headers ?? [])
+    .filter((header) => header.enabled && header.name.trim() && !current?.headers.includes(header));
   const createEnvironment = () => {
-    const environment = { id: id(), name: "New environment", variables: [] };
+    const environment = { id: id(), name: "New environment", variables: [], headers: [] };
     set((previous) => ({
       ...previous,
       environments: [...previous.environments, environment],
@@ -965,23 +963,9 @@ export default function ApiWorkspace({
         changes,
       }}
     >
-      <div
-        className="service-tabs api-request-tabs"
-        hidden={tab === "environment"}
-      >
-        {["params", "headers", "body", "auth"].map((value) => (
-          <button
-            key={value}
-            className={tab === value ? "active" : ""}
-            onClick={() => setTab(value)}
-          >
-            {value[0].toUpperCase() + value.slice(1)}
-          </button>
-        ))}
-      </div>
-      <div className="service-content api-request-content">
+      <>
         {current && tab !== "environment" && (
-          <>
+          <div className="api-request-header">
             <div className="request-name-row">
               <Field label="Request name">
                 <input
@@ -1000,7 +984,7 @@ export default function ApiWorkspace({
                 <Trash2 size={15} />
               </button>
             </div>
-            <div className="request-bar">
+            <div className={`request-bar ${requestError ? "invalid" : ""}`}>
               <CustomSelect
                 aria-label="HTTP method"
                 data-method={current.method}
@@ -1025,7 +1009,9 @@ export default function ApiWorkspace({
                 aria-label="Request URL"
                 placeholder="https://api.example.com/users"
                 value={current.url}
-                onChange={(e) => patch({ url: e.target.value })}
+                aria-invalid={!!requestError}
+                aria-describedby={requestError ? "request-url-error" : undefined}
+                onChange={(e) => { setRequestError(""); patch({ url: e.target.value }); }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void send();
                 }}
@@ -1050,8 +1036,25 @@ export default function ApiWorkspace({
                 </button>
               )}
             </div>
-          </>
+            {requestError && <p className="url-error" id="request-url-error" role="alert">{requestError}</p>}
+            {environment && <p className="resolved-url">Resolved URL · {resolvedPublicUrl(current.url, environment.variables, current.params) ?? "Contains hidden or unresolved variables"}</p>}
+          </div>
         )}
+      <div
+        className="service-tabs api-request-tabs"
+        hidden={tab === "environment"}
+      >
+        {["params", "headers", "body", "auth"].map((value) => (
+          <button
+            key={value}
+            className={tab === value ? "active" : ""}
+            onClick={() => setTab(value)}
+          >
+            {value[0].toUpperCase() + value.slice(1)}{current && <span className="tab-count">{value === "params" ? current.params.length : value === "headers" ? current.headers.length + inheritedHeaders.length : value === "body" ? current.bodyMode : current.auth === "none" ? "" : current.auth}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="api-request-body">
         {tab === "environment" && (
           <button className="secondary-button" onClick={() => setTab("params")}>
             <ArrowLeft size={16} />
@@ -1078,6 +1081,7 @@ export default function ApiWorkspace({
                   />
                 </Field>
               </div>
+              <h3 className="api-value-section-title">Variables</h3>
               <ValueRows
                 label="Variables"
                 values={environment.variables}
@@ -1089,6 +1093,16 @@ export default function ApiWorkspace({
                     ),
                   }))
                 }
+              />
+              <h3 className="api-value-section-title">Headers</h3>
+              <p className="service-hint">Inherited by every request. Request headers override matching names.</p>
+              <ValueRows
+                label="Headers"
+                values={environment.headers ?? []}
+                onChange={(headers) => set((previous) => ({
+                  ...previous,
+                  environments: previous.environments.map((item) => item.id === env ? { ...item, headers } : item),
+                }))}
               />
             </>
           ) : (
@@ -1111,11 +1125,29 @@ export default function ApiWorkspace({
               />
             )}{" "}
             {tab === "headers" && (
-              <ValueRows
-                label="Headers"
-                values={current.headers}
-                onChange={(headers) => patch({ headers })}
-              />
+              <>
+                {inheritedHeaders.length > 0 && (
+                  <section className="api-inherited-headers" aria-label="Inherited headers">
+                    <h3 className="api-value-section-title"><Lock size={13} />Inherited from {environment?.name}</h3>
+                    <p className="service-hint">Edit these headers in the environment. Add a request header with the same name to override it.</p>
+                    <div className="value-row-labels" aria-hidden="true"><span /><span>Key</span><span>Value</span></div>
+                    {inheritedHeaders.map((header, index) => (
+                      <div className="value-row inherited-header-row" key={header.id}>
+                        <input type="checkbox" checked={header.enabled} disabled aria-label={`Inherited headers ${index + 1} enabled`} />
+                        <input readOnly value={header.name} aria-label={`Inherited headers ${index + 1} name`} />
+                        <input readOnly type={header.secret || header.hasSecret ? "password" : "text"} value={header.value} placeholder={header.hasSecret ? "Stored secret" : "Value or {{variable}}"} aria-label={`Inherited headers ${index + 1} value`} />
+                        <span className="inherited-header-lock" role="img" aria-label="Locked inherited header" title="Inherited from the environment · read only"><Lock size={13} /></span>
+                      </div>
+                    ))}
+                  </section>
+                )}
+                <h3 className="api-value-section-title">Request headers</h3>
+                <ValueRows
+                  label="Headers"
+                  values={current.headers}
+                  onChange={(headers) => patch({ headers })}
+                />
+              </>
             )}{" "}
             {tab === "body" && (
               <>
@@ -1136,6 +1168,7 @@ export default function ApiWorkspace({
                   </CustomSelect>
                 </Field>
                 {["json", "text"].includes(current.bodyMode) && (
+                  current.bodyMode === "json" && desktop ? <div className="api-body-editor"><Suspense fallback={<div className="loading">Loading JSON editor…</div>}><RequestBodyEditor document={{path: `request-${current.id}.json`, name: "Body.json", text: current.body, saved: current.body}} modelPath={`octode-request:${project.id}:${current.id}.json`} onChange={(body) => patch({body})}/></Suspense></div> : (
                   <textarea
                     className="service-code-input"
                     aria-label="Request body"
@@ -1143,6 +1176,7 @@ export default function ApiWorkspace({
                     value={current.body}
                     onChange={(e) => patch({ body: e.target.value })}
                   />
+                  )
                 )}{" "}
                 {["form", "multipart"].includes(current.bodyMode) && (
                   <ValueRows
@@ -1199,6 +1233,7 @@ export default function ApiWorkspace({
           </>
         )}
       </div>
+      </>
       {current && tab !== "environment" && (
         <div
           ref={responsePanel}

@@ -13,7 +13,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "./DesignIcons";
 import "./custom-select.css";
 interface Option {
   value: string;

@@ -1,14 +1,8 @@
 import { terminalPathsType } from "../lib/terminalDrop";
 import { rootForPath, filename } from "../lib/workspace";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  FileCode2,
-  FileText,
-  Folder,
-  FolderOpen,
-} from "lucide-react";
+import FileIcon from "./FileIcon";
+import { ChevronDown, ChevronRight, Folder, FolderOpen } from "./DesignIcons";
 import { listDirectory } from "../lib/bridge";
 import type { FileEntry, Project } from "../types";
 
@@ -202,13 +196,7 @@ function TreeNode({
       document.removeEventListener("visibilitychange", focus);
     };
   }, [refreshVersion, expanded, visible, project, entry.path, onError]);
-  const Icon = entry.directory
-    ? expanded
-      ? FolderOpen
-      : Folder
-    : /\.(php|tsx?|jsx?|rs)$/.test(entry.name)
-      ? FileCode2
-      : FileText;
+  const Icon = expanded ? FolderOpen : Folder;
   return (
     <div
       className={contentsOnly ? "tree-root tree-contents" : undefined}
@@ -274,7 +262,7 @@ function TreeNode({
           ) : (
             <span className="tree-indent" />
           )}
-          <Icon size={15} />
+          {entry.directory ? <Icon size={15} /> : <FileIcon path={entry.path} size={15} />}
           <span>{entry.name}</span>
           {loading && <span className="muted">…</span>}
         </button>

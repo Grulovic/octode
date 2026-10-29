@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { CaseSensitive, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CaseSensitive } from "lucide-react";
+import { Search, X } from "./DesignIcons";
 import {
   cancelSearch,
   searchWorkspace,
@@ -12,6 +13,21 @@ import "./search.css";
 import ReadOnlyDiff from "./ReadOnlyDiff";
 import { confirmAction } from "./ToolLayout";
 
+function highlightPreview(preview: string, query: string, matchCase: boolean, regex: boolean) {
+  if (!query) return preview;
+  try {
+    const pattern = new RegExp(regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), matchCase ? "g" : "gi");
+    const pieces: import("react").ReactNode[] = [];
+    let last = 0;
+    for (const match of preview.matchAll(pattern)) {
+      if (!match[0].length) continue;
+      pieces.push(preview.slice(last, match.index), <mark key={match.index}>{match[0]}</mark>);
+      last = match.index + match[0].length;
+    }
+    pieces.push(preview.slice(last));
+    return pieces;
+  } catch { return preview; }
+}
 export default function ProjectSearch({
   project,
   onOpen,
@@ -159,6 +175,15 @@ export default function ProjectSearch({
       setReplacing(false);
     }
   };
+  const fileGroups = useMemo(() => {
+    const groups = new Map<string, { relative: string; matches: NonNullable<SearchResults>["matches"] }>();
+    for (const match of result?.matches ?? []) {
+      let group = groups.get(match.path);
+      if (!group) { group = {relative: match.relative, matches: []}; groups.set(match.path, group); }
+      group.matches.push(match);
+    }
+    return Array.from(groups);
+  }, [result]);
   return (
     <section className="project-search">
       <div className="project-search-input">
@@ -175,10 +200,20 @@ export default function ProjectSearch({
         <button
           className={matchCase ? "active" : ""}
           aria-label="Match case"
+          title="Match case"
           aria-pressed={matchCase}
           onClick={() => setMatchCase((value) => !value)}
         >
           <CaseSensitive size={17} />
+        </button>
+        <button
+          aria-label="Use regular expression"
+          title="Use regular expression"
+          aria-pressed={regex}
+          className={regex ? "active" : ""}
+          onClick={() => setRegex((value) => !value)}
+        >
+          .*
         </button>
         {query && (
           <button
@@ -191,21 +226,13 @@ export default function ProjectSearch({
       </div>
       <div className="search-options">
         <button
-          aria-label="Use regular expression"
-          aria-pressed={regex}
-          className={regex ? "active" : ""}
-          onClick={() => setRegex((value) => !value)}
-        >
-          .* Regex
-        </button>
-        <button
           aria-label="Toggle project replace"
+          aria-expanded={showReplace}
           onClick={() => setShowReplace((value) => !value)}
         >
-          Replace…
+          Replace & options
         </button>
-        <details>
-          <summary>Search options</summary>
+        <div className="search-path-options" hidden={!showReplace}>
           <label>
             Exclude patterns
             <input
@@ -223,7 +250,7 @@ export default function ProjectSearch({
             />
             Respect .gitignore
           </label>
-        </details>
+        </div>
       </div>
       {showReplace && (
         <div className="replace-controls">
@@ -254,18 +281,10 @@ export default function ProjectSearch({
         )}
       </div>
       <div className="search-results">
-        {result?.matches.map((match, index) => (
-          <button
-            key={`${match.path}:${match.line}:${index}`}
-            onClick={() => onOpen(match.path, match.line)}
-            title={match.path}
-          >
-            <strong>{match.relative}</strong>
-            <span>
-              <code>{match.line}</code>
-              {match.preview}
-            </span>
-          </button>
+        {fileGroups.map(([path, group]) => (
+          <section className="search-file-group" key={path}><h3>{group.relative}<span>{group.matches.length}</span></h3>
+          {group.matches.map((match, index) => <button key={`${match.line}:${index}`} title={path} onClick={() => onOpen(path, match.line)}><code>{match.line}</code><span>{highlightPreview(match.preview, query, matchCase, regex)}</span></button>)}
+          </section>
         ))}
       </div>
       {result?.truncated && (

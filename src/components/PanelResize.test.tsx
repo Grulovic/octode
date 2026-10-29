@@ -9,7 +9,8 @@ function Layout({ axis = "x" }: { axis?: "x" | "y" }) {
   const panel = useRef<HTMLDivElement>(null);
   const [size, setSize] = usePanelSize("test-panel", 240);
   return (
-    <div className="parent">
+    <div className="parent main-workspace">
+      <div className="workspace-terminal-host">
       <div
         ref={panel}
         className="panel"
@@ -22,11 +23,12 @@ function Layout({ axis = "x" }: { axis?: "x" | "y" }) {
         onResize={setSize}
         label="Resize test"
       />
+      </div>
     </div>
   );
 }
 function mockLayout(axis: "x" | "y") {
-  const parent = document.querySelector(".parent")!;
+  const parent = document.querySelector(axis === "y" ? ".parent" : ".workspace-terminal-host")!;
   Object.defineProperty(parent, "clientWidth", { value: 1000 });
   Object.defineProperty(parent, "clientHeight", { value: 800 });
   const panel = document.querySelector<HTMLElement>(".panel")!;

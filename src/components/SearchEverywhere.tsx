@@ -1,18 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  FileCode2,
-  Braces,
-  FunctionSquare,
-  Search,
-  X,
-  Server,
-  Database,
-  Folder,
-  Globe,
-  Table2,
-  FileJson,
-  TerminalSquare,
-} from "lucide-react";
+import { FileCode2, Braces, FunctionSquare, Globe, FileJson } from "lucide-react";
+import { Table2 } from "./DesignIcons";
+import { Search, X, Server, Database, Folder, TerminalSquare } from "./DesignIcons";
 import {
   cachedSearchIndex,
   loadSearchIndex,

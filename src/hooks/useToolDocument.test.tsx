@@ -110,3 +110,24 @@ it("never writes on a typing pause, blur, leaving, or unmount and refuses to ove
   await act(async () => expect(await hook.save()).toBe(false));
   expect(writer).not.toHaveBeenCalled();
 });
+
+it("acknowledges a sealed password even when another field changes during Save", async () => {
+  let release: (value: any) => void = () => {};
+  vi.spyOn(bridge, "saveTool").mockImplementation(async () => new Promise((resolve) => { release = resolve; }));
+  await act(async () => root.render(<Harness />));
+  const request = apiRequest();
+  request.credential.value = "test-only-password";
+  await act(async () => hook.setDocument((previous) => ({ ...previous, requests: [request] })));
+  const snapshot = structuredClone(hook.document);
+  let pending: Promise<boolean>;
+  await act(async () => { pending = hook.save(); });
+  await act(async () => hook.setDocument((previous) => ({
+    ...previous, requests: previous.requests.map((item) => ({...item, name: "New name while saving"})),
+  })));
+  const saved = structuredClone(snapshot);
+  saved.requests[0].credential = { id:"saved-reference", value:"", secret:true, hasSecret:true };
+  await act(async () => { release(saved); expect(await pending!).toBe(true); });
+  expect(hook.document.requests[0].credential).toEqual(saved.requests[0].credential);
+  expect(hook.document.requests[0].name).toBe("New name while saving");
+  expect(hook.dirty).toBe(true);
+});

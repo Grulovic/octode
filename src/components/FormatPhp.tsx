@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X } from "./DesignIcons";
 import { desktop, invoke } from "../lib/bridge";
 import type { Project } from "../types";
 export interface FormatOptions {

@@ -4,8 +4,8 @@
 }
 .quick-open {
   width: min(640px, 94vw);
-  background: #0e1d24;
-  border: 1px solid #324753;
+  background: var(--oc-panel);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 30px 100px #0009;
@@ -16,8 +16,8 @@
   align-items: center;
   gap: 12px;
   padding: 0 19px;
-  border-bottom: 1px solid #1a2d34;
-  color: #a9b7c6;
+  border-bottom: 1px solid var(--oc-border);
+  color: var(--oc-muted);
 }
 .quick-open-input input {
   flex: 1;
@@ -29,7 +29,7 @@
 }
 .quick-open-input button {
   display: flex;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .quick-open-results {
   max-height: 350px;
@@ -37,7 +37,7 @@
   padding: 7px;
 }
 .quick-open-results > p {
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 12px;
   padding: 25px 15px;
 }
@@ -49,10 +49,10 @@
   width: 100%;
   padding: 12px;
   border-radius: 6px;
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .quick-open-results > button.selected {
-  background: #1a2d34;
+  background: var(--oc-border);
 }
 .quick-open-results > button > span {
   flex: 1;
@@ -64,7 +64,7 @@
 }
 .quick-open-results small {
   display: block;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 10px;
   margin-top: 5px;
 }
@@ -79,8 +79,8 @@
   justify-content: space-between;
   gap: 15px;
   font-size: 9px;
-  color: #7e8e96;
-  border-top: 1px solid #1a2d34;
+  color: var(--oc-muted);
+  border-top: 1px solid var(--oc-border);
   padding: 12px 17px;
 }
 .quick-open footer span {
@@ -103,11 +103,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #324753;
+  border: 1px solid var(--oc-border-strong);
   border-radius: 5px;
-  background: #091014;
+  background: var(--oc-bg);
   padding: 0 8px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .project-search-input input {
   padding: 0;
@@ -123,16 +123,16 @@
   display: flex;
   padding: 2px;
   border-radius: 3px;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .project-search-input button.active {
-  background: #324753;
-  color: #80cbc4;
+  background: var(--oc-border-strong);
+  color: var(--oc-accent);
 }
 .search-summary {
   font-size: 10px;
   line-height: 1.7;
-  color: #7e8e96;
+  color: var(--oc-muted);
   padding: 12px 3px;
   overflow-wrap: anywhere;
 }
@@ -148,13 +148,13 @@
   border-radius: 5px;
 }
 .search-results button:hover {
-  background: #14242b;
+  background: var(--oc-surface);
 }
 .search-results strong {
   display: block;
   font-size: 10px;
   font-weight: 500;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -164,17 +164,17 @@
   gap: 9px;
   font-family: monospace;
   font-size: 10px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   margin-top: 7px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
 .search-results code {
   font-size: 9px;
-  color: #51646e;
+  color: var(--oc-faint);
 }
 .search-footnote {
-  color: #51646e;
+  color: var(--oc-faint);
   font-size: 9px;
   line-height: 1.7;
   margin: 12px 3px 0;
@@ -186,20 +186,20 @@
 }
 .search-everywhere-summary {
   padding: 10px 19px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 11px;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
 }
 .search-everywhere-summary [role="alert"] {
   display: block;
-  color: #e4a79c;
+  color: var(--oc-error-text);
   padding-top: 6px;
 }
 .quick-open-results > button > .search-result-kind {
   flex: 0 0 auto;
   font-size: 10px;
-  color: #a9b7c6;
-  border: 1px solid #324753;
+  color: var(--oc-muted);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 4px;
   padding: 3px 6px;
 }
@@ -208,7 +208,7 @@
   display: flex;
   align-items: stretch;
   overflow-x: auto;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
   min-height: 40px;
 }
 .search-scope-tabs button {
@@ -217,19 +217,19 @@
   max-width: 220px;
   padding: 11px 16px;
   border-bottom: 1px solid transparent;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .search-scope-tabs button[aria-selected="true"] {
-  color: #80cbc4;
-  border-bottom-color: #a9b7c6;
-  background: #14242b;
+  color: var(--oc-accent);
+  border-bottom-color: var(--oc-muted);
+  background: var(--oc-surface);
 }
 .search-scope-tabs button:hover {
-  color: #c6ccd3;
+  color: var(--oc-text);
 }
 
 .search-everywhere {

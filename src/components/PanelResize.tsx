@@ -55,7 +55,7 @@ export default function PanelResize({
     const parent =
       axis === "y"
         ? ((target.current?.closest(
-            ".service-right, .editor-section",
+            ".main-workspace, .service-right, .editor-section",
           ) as HTMLElement | null) ?? target.current?.parentElement)
         : target.current?.parentElement;
     const available = axis === "x" ? parent?.clientWidth : parent?.clientHeight;

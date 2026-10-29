@@ -1,6 +1,6 @@
 import CustomSelect from "./CustomSelect";
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X } from "./DesignIcons";
 import { parseCsv, csvInserts } from "../lib/csv";
 import { invoke } from "../lib/bridge";
 import { nativeTool } from "../lib/toolsBridge";

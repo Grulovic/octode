@@ -33,6 +33,7 @@ export interface ApiEnvironment {
   id: string;
   name: string;
   variables: ValueRow[];
+  headers?: ValueRow[];
 }
 export interface ApiDocument {
   version: 1;

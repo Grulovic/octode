@@ -1,3 +1,5 @@
+import { useTerminalActivity } from "../hooks/useTerminalActivity";
+import { monoFont } from "../theme/palette";
 import {
   installTerminalFileDrop,
   quoteTerminalPaths,
@@ -12,6 +14,7 @@ import { desktop } from "../lib/bridge";
 import type { Project, TerminalEvent } from "../types";
 import { createTerminalInputQueue } from "../lib/terminal";
 import "@xterm/xterm/css/xterm.css";
+import { Search, ChevronDown } from "./DesignIcons";
 
 export default function LocalTerminal({
   project,
@@ -19,13 +22,18 @@ export default function LocalTerminal({
   startupCommand,
   visible,
   onError,
+  onStatusChange,
+  onActivityChange,
 }: {
   project: Project;
   root: string;
   startupCommand?: string;
   visible: boolean;
   onError: (error: string) => void;
+  onStatusChange?: (status: string) => void;
+  onActivityChange?: (active: boolean) => void;
 }) {
+  const activity = useTerminalActivity(visible, onActivityChange);
   const container = useRef<HTMLDivElement>(null);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
@@ -43,6 +51,9 @@ export default function LocalTerminal({
   const [status, setStatus] = useState(
     desktop ? "Starting shell…" : "Desktop app required",
   );
+  const statusCallback = useRef(onStatusChange);
+  statusCallback.current = onStatusChange;
+  useEffect(() => { statusCallback.current?.(status); }, [status]);
   const errorRef = useRef(onError);
   errorRef.current = onError;
   useEffect(() => {
@@ -54,9 +65,9 @@ export default function LocalTerminal({
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 12,
-      fontFamily: '"SFMono-Regular", Consolas, monospace',
+      fontFamily: monoFont,
       scrollback: 3000,
-      theme: terminalTheme,
+      theme: { ...terminalTheme, background: "#050b0e", foreground: "#d4dae0" },
     });
     termRef.current = term;
     const fit = new FitAddon();
@@ -117,7 +128,8 @@ export default function LocalTerminal({
       const output = new Channel<TerminalEvent>();
       output.onmessage = (message) => {
         if (disposed) return;
-        if (message.event === "data")
+        if (message.event === "data") {
+          if (message.data.length) activity.output();
           term.write(new Uint8Array(message.data), () => {
             if (disposed) return;
             if (session) {
@@ -129,7 +141,7 @@ export default function LocalTerminal({
               pendingAck += message.data.length;
             }
           });
-        else {
+        } else {
           exited = true;
           setStatus("Shell exited");
           term.writeln(`\r\n[${message.data}]`);
@@ -241,21 +253,25 @@ export default function LocalTerminal({
   return (
     <div className="terminal-content">
       <div className="terminal-search">
-        <input
-          aria-label="Find in terminal"
-          placeholder="Find in output…"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            lastMatch.current = null;
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") find(event.shiftKey);
-          }}
-        />
-        <button onClick={() => find(true)}>Previous</button>
-        <button onClick={() => find()}>Next</button>
-        <span role="status">{searchStatus}</span>
+        <label className="terminal-search-field">
+          <Search size={13} />
+          <input
+            aria-label="Find in terminal"
+            placeholder="Find in output…"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              lastMatch.current = null;
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") find(event.shiftKey);
+            }}
+          />
+        </label>
+        <button aria-label="Previous match" title="Previous match (Shift+Enter)" onClick={() => find(true)}><ChevronDown className="terminal-previous-icon" size={13} /></button>
+        <button aria-label="Next match" title="Next match (Enter)" onClick={() => find()}><ChevronDown size={13} /></button>
+        <span className="terminal-search-result" role="status">{searchStatus}</span>
+        <span className="terminal-status" data-connected={status === "Connected"} role="status"><span className={`terminal-state-dot ${activity.active ? "terminal-output-dot" : ""}`} title={activity.active ? "New terminal output" : undefined} />{status}</span>
         <button
           onClick={() => {
             termRef.current?.clear();
@@ -266,7 +282,6 @@ export default function LocalTerminal({
           Clear output
         </button>
       </div>
-      <span className="terminal-status">{status}</span>
       <div
         className={`terminal-mount ${dragging ? "terminal-drop-target" : ""}`}
         ref={container}

@@ -1,0 +1,93 @@
+/* Octode · Deep Ocean — runtime design tokens. */
+:root {
+  /* surfaces */
+  --oc-bg: #091014;
+  --oc-panel: #0e1d24;
+  --oc-surface: #14242b;
+  --oc-raised: #182b33;
+  --oc-selection: #173138;
+  --oc-border: #1a2d34;
+  --oc-border-subtle: #16282f;
+  --oc-border-strong: #26414b;
+
+  /* text */
+  --oc-text: #c6ccd3;
+  --oc-text-strong: #e3e7ea;
+  --oc-muted: #8d9aa3;
+  --oc-faint: #7d8c96;
+  --oc-disabled: #5c6b74;
+
+  /* accent & states */
+  --oc-accent: #80cbc4;
+  --oc-accent-ink: #06201d;
+  --oc-accent-tint: rgba(128, 203, 196, 0.12);
+  --oc-focus-ring: 0 0 0 3px rgba(128, 203, 196, 0.25);
+  --oc-unsaved: #ff9e60;                 /* unsaved changes only */
+  --oc-unsaved-tint: rgba(255, 158, 96, 0.12);
+  --oc-error: #f07178;                   /* errors + destructive only */
+  --oc-error-text: #f5a3a8;
+  --oc-error-tint: rgba(240, 113, 120, 0.08);
+  --oc-error-border: rgba(240, 113, 120, 0.45);
+  --oc-warning: #ffcb6b;
+  --oc-diff-add: rgba(195, 232, 141, 0.10);
+  --oc-diff-del: rgba(240, 113, 120, 0.13);
+  --oc-scrim: rgba(4, 8, 10, 0.62);
+
+  /* syntax */
+  --oc-syn-keyword: #c792ea;
+  --oc-syn-type: #ffcb6b;
+  --oc-syn-function: #82aaff;
+  --oc-syn-string: #c3e88d;
+  --oc-syn-number: #f78c6c;
+  --oc-syn-operator: #89ddff;
+  --oc-syn-comment: #74909c;
+
+  /* http methods */
+  --oc-get: #c3e88d;
+  --oc-post: #ffcb6b;
+  --oc-put: #82aaff;
+  --oc-patch: #c792ea;
+  --oc-delete: #f07178;
+
+  /* type */
+  --oc-font-ui: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --oc-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --oc-text-title: 600 20px/28px var(--oc-font-ui);
+  --oc-text-dialog-title: 600 14px/20px var(--oc-font-ui);
+  --oc-text-section: 600 13px/18px var(--oc-font-ui);
+  --oc-text-body: 400 13px/18px var(--oc-font-ui);
+  --oc-text-control: 500 12px/16px var(--oc-font-ui);
+  --oc-text-label: 500 11px/14px var(--oc-font-ui);
+  --oc-text-code: 400 13px/21px var(--oc-font-mono);
+  --oc-text-data: 400 12px/16px var(--oc-font-mono);
+  --oc-text-meta: 400 10.5px/14px var(--oc-font-mono);
+
+  /* spacing */
+  --oc-space-1: 2px; --oc-space-2: 4px; --oc-space-3: 6px; --oc-space-4: 8px;
+  --oc-space-5: 12px; --oc-space-6: 16px; --oc-space-7: 20px; --oc-space-8: 24px; --oc-space-9: 32px;
+
+  /* radius */
+  --oc-radius-tag: 4px;
+  --oc-radius-control: 6px;
+  --oc-radius-menu: 8px;
+  --oc-radius-dialog: 10px;
+
+  /* layout & density */
+  --oc-titlebar-h: 40px;
+  --oc-rail-w: 52px;
+  --oc-rail-item: 36px;
+  --oc-sidebar-w: 268px;
+  --oc-statusbar-h: 24px;
+  --oc-section-toolbar-h: 44px;
+  --oc-tabstrip-h: 32px;
+  --oc-control-dense: 24px;
+  --oc-control: 28px;
+  --oc-control-dialog: 32px;
+  --oc-row-tree: 26px;
+  --oc-row-list: 30px;
+  --oc-row-table: 28px;
+
+  /* elevation */
+  --oc-shadow-menu: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --oc-shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.55);
+}

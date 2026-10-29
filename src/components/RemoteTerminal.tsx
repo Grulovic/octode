@@ -1,3 +1,5 @@
+import { useTerminalActivity } from "../hooks/useTerminalActivity";
+import { monoFont } from "../theme/palette";
 import { terminalTheme } from "../editor/deepOcean";
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
@@ -13,6 +15,7 @@ import {
 } from "../lib/terminalHighlight";
 import type { TerminalEvent } from "../types";
 import "@xterm/xterm/css/xterm.css";
+import "./terminal.css";
 export default function RemoteTerminal({
   session,
   visible,
@@ -22,6 +25,7 @@ export default function RemoteTerminal({
   visible: boolean;
   onError: (error: string) => void;
 }) {
+  const activity = useTerminalActivity(visible);
   const host = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const errorRef = useRef(onError);
@@ -47,6 +51,7 @@ export default function RemoteTerminal({
       allowProposedApi: true,
       cursorBlink: true,
       fontSize: 12,
+      fontFamily: monoFont,
       scrollback: 3000,
       theme: terminalTheme,
     });
@@ -70,6 +75,7 @@ export default function RemoteTerminal({
           }).catch(() => {});
           return;
         }
+        if (message.data.length) activity.output();
         terminal.write(
           new Uint8Array(message.data),
           () =>
@@ -149,7 +155,7 @@ export default function RemoteTerminal({
   return (
     <div className="remote-terminal">
       <div className="remote-terminal-toolbar">
-        <span>{status}</span>
+        <span className="remote-terminal-status">{activity.active && <span className="terminal-output-dot" role="img" aria-label="New terminal output" />}{status}</span>
         <button
           type="button"
           aria-pressed={highlighting}

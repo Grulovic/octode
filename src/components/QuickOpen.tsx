@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { FileCode2, Search, X } from "lucide-react";
+import FileIcon from "./FileIcon";
+import { Search, X } from "./DesignIcons";
 import { cancelSearch, searchWorkspace } from "../lib/bridge";
 import type { FileMatch, Project } from "../types";
 import "./search.css";
@@ -121,7 +122,7 @@ export default function QuickOpen({
                 onMouseEnter={() => setSelected(index)}
                 onClick={() => choose(file.path)}
               >
-                <FileCode2 size={16} />
+                <FileIcon path={file.path} size={16} />
                 <span>
                   {file.relative}
                   <small>{file.root}</small>

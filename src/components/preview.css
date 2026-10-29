@@ -7,9 +7,9 @@
 .preview-notice {
   padding: 8px 22px;
   font-size: 10px;
-  color: #7e8e96;
-  background: #0e1d24;
-  border-bottom: 1px solid #1a2d34;
+  color: var(--oc-muted);
+  background: var(--oc-panel);
+  border-bottom: 1px solid var(--oc-border);
 }
 .preview-editor textarea {
   resize: none;
@@ -18,8 +18,8 @@
   border: 0;
   outline: 0;
   padding: 22px;
-  color: #c6ccd3;
-  background: #091014;
+  color: var(--oc-text);
+  background: var(--oc-bg);
   font:
     13px/24px "SFMono-Regular",
     Consolas,
@@ -33,24 +33,24 @@
     12px/22px "SFMono-Regular",
     Consolas,
     monospace;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .preview-terminal p:first-child {
   margin-bottom: 12px;
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 
 .preview-find {
   display: flex;
   gap: 8px;
   padding: 8px 16px;
-  background: #14242b;
+  background: var(--oc-surface);
 }
 .preview-find input {
   flex: 1;
   min-width: 0;
   padding: 6px 8px;
-  border: 1px solid #324753;
+  border: 1px solid var(--oc-border-strong);
   border-radius: 4px;
-  background: #091014;
+  background: var(--oc-bg);
 }

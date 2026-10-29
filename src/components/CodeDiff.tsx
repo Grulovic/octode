@@ -1,3 +1,4 @@
+import { monoFont } from "../theme/palette";
 import { deepOcean } from "../editor/deepOcean";
 import { useEffect, useRef } from "react";
 import { monaco } from "../editor/runtime";
@@ -36,7 +37,9 @@ export default function CodeDiff({
       automaticLayout: false,
       renderSideBySide: true,
       minimap: { enabled: false },
-      fontSize: 12,
+      fontSize: 13,
+      fontFamily: monoFont,
+      lineHeight: 21,
       scrollBeyondLastLine: false,
       theme: "octode",
     });

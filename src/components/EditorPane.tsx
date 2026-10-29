@@ -1,3 +1,4 @@
+import { monoFont } from "../theme/palette";
 import { nextTextCase, registerCaseEditor } from "../lib/textCase";
 import { deepOcean } from "../editor/deepOcean";
 import { useEffect, useRef } from "react";
@@ -68,9 +69,9 @@ export default function EditorPane({
       model,
       theme: "octode",
       readOnly: latest.current.readOnly,
-      fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+      fontFamily: monoFont,
       fontSize: loadSettings().fontSize,
-      lineHeight: 23,
+      lineHeight: 21,
       minimap: { enabled: false },
       padding: { top: 22 },
       scrollBeyondLastLine: false,
@@ -84,7 +85,7 @@ export default function EditorPane({
         horizontalScrollbarSize: 4,
         useShadows: false,
       },
-      bracketPairColorization: { enabled: true },
+      bracketPairColorization: { enabled: false },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
       wordBasedSuggestions: "off",

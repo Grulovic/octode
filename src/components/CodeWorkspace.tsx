@@ -1,3 +1,4 @@
+import FileIcon from "./FileIcon";
 import { useRootBranches } from "../hooks/useRootBranches";
 import CustomSelect from "./CustomSelect";
 import FileContextMenu, {
@@ -14,27 +15,9 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Check,
-  FoldVertical,
-  LocateFixed,
-  WandSparkles,
-  Code2,
-  FileCode2,
-  Files,
-  GitBranch,
-  ArrowLeft,
-  ArrowRight,
-  FilePlus,
-  FolderPlus,
-  Pencil,
-  Trash2,
-  Sparkle,
-  Search,
-  RefreshCw,
-  TerminalSquare,
-  X,
-} from "lucide-react";
+import { Files } from "lucide-react";
+import { FoldVertical, LocateFixed, WandSparkles, Sparkle } from "./DesignIcons";
+import { Check, Code2, GitBranch, ArrowLeft, ArrowRight, FilePlus, FolderPlus, Pencil, Trash2, Search, RefreshCw, TerminalSquare, X } from "./DesignIcons";
 import {
   invoke,
   desktop,
@@ -86,7 +69,7 @@ const EditorPane = lazy(() =>
   desktop ? import("./EditorPane") : import("./PreviewEditor"),
 );
 const FormatPhp = lazy(() => import("./FormatPhp"));
-import { TerminalDock, WorkspaceTerminalContext } from "./WorkspaceTerminal";
+import { WorkspaceTerminalContext } from "./WorkspaceTerminal";
 
 export default function CodeWorkspace({
   project,
@@ -113,9 +96,10 @@ export default function CodeWorkspace({
 }) {
   const initial = useRef(initialSession).current;
   const sidebarRef = useRef<HTMLElement>(null);
+  const [gitCount, setGitCount] = useState(0);
   const [sidebarWidth, setSidebarWidth] = usePanelSize(
     "octode-layout:sidebar:Code",
-    238,
+    268,
   );
   const [collapseVersion, setCollapseVersion] = useState(0);
   const [revealTarget, setRevealTarget] = useState<{
@@ -160,6 +144,7 @@ export default function CodeWorkspace({
   externalRef.current = external;
   const [targets, setTargets] = useState<NavigationTargets | null>(null);
   const [navigationBusy, setNavigationBusy] = useState(false);
+  const [navigationNotice, setNavigationNotice] = useState("");
   const history = useRef<{ path: string; line: number }[]>([]);
   const historyIndex = useRef(-1);
   const [historyPosition, setHistoryPosition] = useState({
@@ -683,13 +668,16 @@ export default function CodeWorkspace({
   const navigateTo = async (query: string, line = 1) => {
     if (!document || navigationBusy) return;
     recordHistory(document.path, line);
+    setNavigationNotice("");
+    setTargets(null);
     setNavigationBusy(true);
     try {
       const result = await navigationTargets(project, document.path, query);
       if (!mounted.current) return;
       if (result.targets.length === 1)
         await open(result.targets[0].path, result.targets[0].line);
-      else setTargets(result);
+      else if (result.targets.length > 1) setTargets(result);
+      else setNavigationNotice(`No declaration found for ${query}${result.truncated ? " (search limit reached)" : ""}.`);
     } catch (reason) {
       onError(String(reason));
     } finally {
@@ -911,8 +899,8 @@ export default function CodeWorkspace({
       setFileClipboard({ entry, projectId: project.id, cut: action === "cut" });
       return;
     }
-    if (action === "rename") {
-      requestFileAction("rename", entry);
+    if (action === "rename" || action === "create-file" || action === "create-folder" || action === "delete") {
+      requestFileAction(action, entry);
       return;
     }
     setFileBusy(true);
@@ -981,40 +969,12 @@ export default function CodeWorkspace({
     }
   };
   return (
-    <div className="code-workspace">
+    <div className="code-workspace" style={{ "--diff-left": `${sidebarWidth}px` } as React.CSSProperties}>
       <aside
         className="explorer"
         ref={sidebarRef}
         style={{ width: sidebarWidth }}
       >
-        <div className="explorer-tabs">
-          <button
-            className={tab === "files" ? "active" : ""}
-            disabled={gitBusy || fileBusy}
-            onClick={() => setTab("files")}
-          >
-            <Files size={14} /> Files
-          </button>
-          <button
-            className={tab === "search" ? "active" : ""}
-            disabled={gitBusy || fileBusy}
-            onClick={() => {
-              setTab("search");
-              setSearchFocus((value) => value + 1);
-            }}
-            title="Search project (Cmd/Ctrl+Shift+F)"
-          >
-            <Search size={14} /> Search
-          </button>
-          <button
-            className={tab === "git" ? "active" : ""}
-            onClick={() => {
-              setTab("git");
-            }}
-          >
-            <GitBranch size={14} /> Git
-          </button>
-        </div>
         <label className="root-select">
           <CustomSelect
             aria-label="Active project folder"
@@ -1053,6 +1013,34 @@ export default function CodeWorkspace({
             ))}
           </CustomSelect>
         </label>
+        <div className="explorer-tabs">
+          <button
+            className={tab === "files" ? "active" : ""}
+            disabled={gitBusy || fileBusy}
+            onClick={() => setTab("files")}
+          >
+            <Files size={14} /> Files
+          </button>
+          <button
+            className={tab === "search" ? "active" : ""}
+            disabled={gitBusy || fileBusy}
+            onClick={() => {
+              setTab("search");
+              setSearchFocus((value) => value + 1);
+            }}
+            title="Search project (Cmd/Ctrl+Shift+F)"
+          >
+            <Search size={14} /> Search
+          </button>
+          <button
+            className={tab === "git" ? "active" : ""}
+            onClick={() => {
+              setTab("git");
+            }}
+          >
+            <GitBranch size={14} /> Git {gitCount > 0 && <span className="tab-count">{gitCount}</span>}
+          </button>
+        </div>
         {tab === "files" && (
           <div className="file-actions">
             <button
@@ -1161,10 +1149,12 @@ export default function CodeWorkspace({
               key={root}
               project={project}
               root={root}
+              overlayHost={sidebarRef.current?.parentElement ?? undefined}
               visible={visible && tab === "git"}
               revision={treeVersion}
               onError={onError}
               onBusy={setGitBusy}
+              onCount={setGitCount}
               beforeAction={async () =>
                 (await autosave.current?.flush()) ?? true
               }
@@ -1265,7 +1255,7 @@ export default function CodeWorkspace({
                   }}
                   title={item.path}
                 >
-                  <FileCode2 size={14} />
+                  <FileIcon path={item.path} size={14} />
                   {item.name}
                   {item.text !== item.saved && <span className="dirty-dot" />}
                 </button>
@@ -1320,12 +1310,7 @@ export default function CodeWorkspace({
           <div className="editor-main">
             {document ? (
               <>
-                <div className="editor-breadcrumb">
-                  {filename(root)} <span>/</span>{" "}
-                  {document.path.startsWith(root + "/")
-                    ? document.path.slice(root.length + 1)
-                    : document.path}
-                </div>
+
                 {(external[active] || saveStates[active] === "error") && (
                   <div className="disk-change-banner">
                     <span>
@@ -1410,9 +1395,11 @@ export default function CodeWorkspace({
             )}
           </div>
         </div>
-        <TerminalDock tool="code" />
         <div className="editor-status">
-          <span>
+          <span className="editor-status-path" title={document?.path}>
+            {document && `${filename(root)} / ${document.path.startsWith(root + "/") ? document.path.slice(root.length + 1) : document.path}`}
+          </span>
+          <span className="editor-status-save">
             {document ? (
               saveStates[active] === "error" ? (
                 "Autosave failed — edits kept"
@@ -1429,7 +1416,7 @@ export default function CodeWorkspace({
               "Ready"
             )}
           </span>
-          <span>
+          <span className="editor-status-file">
             {document ? language(document.path).toUpperCase() : "UTF-8"}{" "}
             <span className="muted">·</span>{" "}
             {desktop ? "Local files" : "Preview sandbox"}
@@ -1578,7 +1565,7 @@ export default function CodeWorkspace({
             aria-label="File operation"
           >
             <header>
-              <strong>{filePrompt.action.replaceAll("-", " ")}</strong>
+              <strong>{filePrompt.action === "create-file" ? "New File" : filePrompt.action === "create-folder" ? "New Folder" : `${filePrompt.action === "rename" ? "Rename" : "Delete"} ${filePrompt.directory ? "Folder" : "File"}`}</strong>
               <button
                 type="button"
                 aria-label="Cancel file operation"
@@ -1727,6 +1714,14 @@ export default function CodeWorkspace({
       {navigationBusy && (
         <span className="navigation-status" role="status">
           Finding declaration…
+        </span>
+      )}
+      {navigationNotice && !navigationBusy && (
+        <span className="navigation-status" role="status">
+          {navigationNotice}
+          <button aria-label="Dismiss navigation message" onClick={() => setNavigationNotice("")}>
+            <X size={14} />
+          </button>
         </span>
       )}
     </div>

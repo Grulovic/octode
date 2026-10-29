@@ -8,6 +8,7 @@ import {
 } from "react";
 import { registerSearchDocument } from "../lib/searchDocuments";
 import { loadTool, saveTool } from "../lib/toolsBridge";
+import { acknowledgeToolSave } from "../lib/acknowledgeToolSave";
 import { toolChanges } from "../lib/toolChanges";
 import { dirtyDraft } from "../lib/toolDefaults";
 import { registerPendingToolSave } from "../lib/toolSaves";
@@ -51,10 +52,8 @@ export function useToolDocument<T extends ToolDocument>(
           const result = await saveTool(project, tool, snapshot);
           baseline.current = result;
           if (alive.current) setSaved(result);
-          if (current.current === snapshot) {
-            current.current = result;
-            if (alive.current) render(result);
-          }
+          current.current = acknowledgeToolSave(current.current, snapshot, result);
+          if (alive.current) render(current.current);
         }
         if (alive.current) setSaveError("");
         if (alive.current)

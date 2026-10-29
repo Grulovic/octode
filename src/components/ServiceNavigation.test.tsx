@@ -312,13 +312,13 @@ it("separates connection selection, tables, and saved queries under the connecte
   );
   expect(document.querySelector('[title="New query"]')).not.toBeNull();
   const tables = [...document.querySelectorAll<HTMLButtonElement>("button")]
-    .filter((button) => button.textContent === "Tables")
+    .filter((button) => button.textContent?.startsWith("Tables"))
     .at(-1)!;
   await act(async () => tables.click());
   expect(document.querySelector(".database-results")?.textContent).toContain(
     "Room one",
   );
-  await click("Fixture");
+  await act(async () => document.querySelector<HTMLButtonElement>(".database-connection-back")!.click());
   expect(connectionList.hidden).toBe(false);
   expect(document.querySelector(".database-results")).toBeNull();
 });

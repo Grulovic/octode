@@ -1,11 +1,11 @@
-import { useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import PanelResize, { usePanelSize } from "./PanelResize";
-import { Save, Plus, Trash2, X } from "lucide-react";
-import { TerminalDock } from "./WorkspaceTerminal";
+import { Save, Plus, Trash2, X, Lock, Check, Database, Server, ArrowDownUp } from "./DesignIcons";
 import type { SecretValue, ValueRow } from "../toolTypes";
 import { row } from "../lib/toolDefaults";
 import { desktop } from "../lib/bridge";
 import "./tools.css";
+const ChangedFields = createContext<string[]>([]);
 export interface ToolProps {
   project: import("../types").Project;
   visible: boolean;
@@ -43,10 +43,10 @@ export function ToolLayout({
   const sidebarRef = useRef<HTMLElement>(null);
   const [sidebarWidth, setSidebarWidth] = usePanelSize(
     `octode-layout:sidebar:${title}`,
-    232,
+    268,
   );
   return (
-    <section className="service-tool" aria-label={`${title} workspace`}>
+    <ChangedFields.Provider value={changes}><section className={`service-tool service-${title.toLowerCase()}`} aria-label={`${title} workspace`}>
       {showToolbar && (
         <header
           className={`service-toolbar ${toolbarActions ? "service-toolbar-with-actions" : ""}`}
@@ -81,18 +81,9 @@ export function ToolLayout({
               children
             )}
           </div>
-          <TerminalDock
-            tool={
-              title === "Servers"
-                ? "servers"
-                : title === "Database"
-                  ? "database"
-                  : "api"
-            }
-          />
         </div>
       </div>
-    </section>
+    </section></ChangedFields.Provider>
   );
 }
 function ToolSaveControls({
@@ -119,10 +110,11 @@ function ToolSaveControls({
           title="Review unsaved changes"
           onClick={() => setReview(true)}
         >
-          {saveError ? "Not saved" : "Unsaved changes"}
+          <span className="tool-unsaved-dot" aria-hidden="true" />{saveError ? "Not saved" : `${changes.length || 1} unsaved change${changes.length === 1 ? "" : "s"}`}
         </button>
       ) : (
         <span className="service-state">
+          {!dirty && !saving && !loading && !saveError && <Check size={13} />}
           {saveError
             ? "Not saved"
             : loading
@@ -187,7 +179,7 @@ function ToolSaveControls({
         </div>
       )}
       <button
-        className="secondary-button"
+        className={dirty ? "primary-button" : "secondary-button"}
         aria-label="Save changes"
         disabled={!dirty || saving || loading}
         onClick={() => void save()}
@@ -205,9 +197,12 @@ export function Field({
   label: string;
   children: ReactNode;
 }) {
+  const changes = useContext(ChangedFields);
+  const field = label.replace(/^(Connection|Request|Environment) /, "").toLowerCase();
+  const changed = changes.some((change) => change.split(" › ").at(-1)?.toLowerCase().replace(/ changed.*$/, "") === field);
   return (
     <label className="service-field">
-      <span>{label}</span>
+      <span>{label}{changed && <span className="tool-unsaved-dot" aria-label="Changed field"/>}</span>
       {children}
     </label>
   );
@@ -286,6 +281,7 @@ export function ValueRows({
       {values.length === 0 && (
         <p className="service-hint">No {label.toLowerCase()} yet.</p>
       )}
+      {values.length > 0 && <div className="value-row-labels" aria-hidden="true"><span/><span>Key</span><span>Value</span></div>}
       {values.map((item, index) => (
         <div className="value-row" key={item.id}>
           <input
@@ -311,19 +307,7 @@ export function ValueRows({
               update(item.id, { value: e.target.value, hasSecret: false })
             }
           />
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={!!item.secret}
-              onChange={(e) =>
-                update(item.id, {
-                  secret: e.target.checked,
-                  ...(!e.target.checked ? { hasSecret: false } : {}),
-                })
-              }
-            />
-            Secret
-          </label>
+          <button type="button" className="secret-toggle" aria-label={`${label} ${index + 1} secret`} title={item.secret ? "Secret value (hidden)" : "Store as secret"} aria-pressed={!!item.secret} onClick={() => update(item.id, { secret: !item.secret, ...(!item.secret ? {} : {hasSecret: false}) })}><Lock size={13}/></button>
           {files && (
             <label className="inline-check">
               <input
@@ -348,11 +332,12 @@ export function ValueRows({
     </div>
   );
 }
-export async function confirmAction(message: string) {
+export async function confirmAction(message: string, okLabel?: string) {
   return desktop
     ? (await import("@tauri-apps/plugin-dialog")).confirm(message, {
         title: "Octode",
         kind: "warning",
+        ...(okLabel ? { okLabel } : {}),
       })
     : window.confirm(message);
 }
@@ -372,6 +357,7 @@ export function EmptyTool({
 }) {
   return (
     <div className="service-empty">
+      <span className="empty-state-icon" aria-hidden="true">{title.toLowerCase().includes("server") ? <Server size={24}/> : title.toLowerCase().includes("data") ? <Database size={24}/> : <ArrowDownUp size={24}/>}</span>
       <h2>{title}</h2>
       <p>{children}</p>
     </div>

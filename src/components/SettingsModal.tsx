@@ -1,14 +1,18 @@
+import { exportAppData, importAppData } from "../lib/appData";
 import CustomSelect from "./CustomSelect";
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useRef, useState } from "react";
+import { X } from "./DesignIcons";
 import { defaultSettings, loadSettings, saveSettings } from "../lib/settings";
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [value, setValue] = useState(loadSettings);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
   return (
     <div className="modal-backdrop">
       <form
-        className="modal"
+        className="modal settings-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
@@ -28,8 +32,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             <X size={17} />
           </button>
         </div>
+        <div className="settings-body"><h3 className="settings-section">Editor</h3>
         <label>
-          Editor font size
+          Font size
           <input
             aria-label="Editor font size"
             type="number"
@@ -76,8 +81,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           />
           Wrap long lines
         </label>
+        <h3 className="settings-section">Terminal</h3>
         <label>
-          Terminal launch command (Cmd/Ctrl+2 twice)
+          <span className="settings-command-label">Launch command<small>Runs when you press {navigator.platform.toLowerCase().includes("mac") ? "⌘2" : "Ctrl+2"} twice</small></span>
           <input
             aria-label="Terminal launch command"
             type="text"
@@ -89,12 +95,36 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             }
           />
         </label>
-        <p>
+        <h3 className="settings-section">App data</h3>
+        <p className="settings-note">Back up all projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Exports include credentials; keep the file private. Source files and running sessions are not included. Save tool changes before exporting.</p>
+        <div className="settings-data-actions">
+          <button type="button" disabled={busy} onClick={async () => {
+            setBusy(true); setError(""); setMessage("");
+            try { await exportAppData(); } catch (reason) { setError(String(reason)); }
+            finally { setBusy(false); }
+          }}>Export app data</button>
+          <button type="button" disabled={busy} onClick={() => importInput.current?.click()}>Import app data</button>
+        </div>
+        <p className="settings-note">Import adds projects as new copies and restores preferences. Existing projects are kept. Project folders must be available at their saved paths or relinked through Edit project.</p>
+        <input ref={importInput} type="file" accept=".json,application/json" aria-label="App data file" hidden onChange={async (event) => {
+          const file = event.target.files?.[0]; event.target.value = "";
+          if (!file) return;
+          setBusy(true); setError(""); setMessage("");
+          try {
+            if (file.size > 20 * 1024 * 1024) throw new Error("App data exceeds 20 MB.");
+            const count = await importAppData(await file.text());
+            setValue(loadSettings()); setMessage(`Imported ${count} project${count === 1 ? "" : "s"}.`);
+          } catch (reason) { setError(String(reason)); }
+          finally { setBusy(false); }
+        }} />
+        {message && <p role="status">{message}</p>}
+        <p className="settings-note">
           Code autosaves. Server, Database, and API settings require Save.
           Requests, SQL, and database Apply stay explicit. Autocomplete is
           disabled throughout.
         </p>
         {error && <p role="alert">{error}</p>}
+        </div>
         <div className="modal-footer">
           <button
             type="button"

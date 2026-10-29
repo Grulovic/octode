@@ -1,3 +1,5 @@
+mod app_data;
+use app_data::{export_app_data, import_app_data};
 mod exports;
 mod formatting;
 mod restart_state;
@@ -505,6 +507,8 @@ pub fn run() {
             format_php_file,
             update_project,
             remove_project,
+            export_app_data,
+            import_app_data,
             read_import_file,
             save_export_file,
             preview_replacements,

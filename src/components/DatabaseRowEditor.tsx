@@ -1,6 +1,7 @@
+import SyntaxCode from "./SyntaxCode";
 import "./code-tools.css";
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X } from "./DesignIcons";
 import { nativeTool } from "../lib/toolsBridge";
 import { confirmAction } from "./ToolLayout";
 import type { DbResult } from "../toolTypes";
@@ -298,7 +299,7 @@ export default function DatabaseRowEditor({
                           setPlan(null);
                         }}
                       />
-                      {column.name}
+                      {column.name}{included.includes(column.name) && (selected < 0 || form[column.name] !== original(selected)[column.name]) && <span className="tool-unsaved-dot" aria-label="Changed field"/>}
                       <small>
                         {column.dataType}
                         {column.primaryKey ? " · Primary key" : ""}
@@ -352,10 +353,7 @@ export default function DatabaseRowEditor({
                 <div className="row-plan">
                   <h3>SQL review</h3>
                   {plan.statements.map((statement, index) => (
-                    <pre key={index}>
-                      {statement.sql}
-                      {"\n"}Parameters: {JSON.stringify(statement.parameters)}
-                    </pre>
+                    <div key={index}><SyntaxCode text={statement.sql}/><pre>Parameters: {JSON.stringify(statement.parameters)}</pre></div>
                   ))}
                 </div>
               )}

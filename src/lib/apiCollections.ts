@@ -114,6 +114,7 @@ export function importCollection(raw: string): ApiDocument {
         id: id(),
         name: string(item.name, "Imported environment"),
         variables: rows(item.variables),
+        headers: rows(item.headers),
       });
     }
     return out;

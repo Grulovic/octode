@@ -4,7 +4,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #091014;
+  background: var(--oc-bg);
 }
 .service-toolbar {
   height: 51px;
@@ -12,7 +12,7 @@
   align-items: center;
   gap: 14px;
   padding: 0 22px;
-  border-bottom: 1px solid var(--border, #1a2d34);
+  border-bottom: 1px solid var(--border, var(--oc-border));
   flex-shrink: 0;
 }
 .service-toolbar strong {
@@ -20,7 +20,7 @@
 }
 .service-state {
   font-size: 11px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   margin-left: auto;
 }
 .service-body {
@@ -33,10 +33,10 @@
   min-width: 160px;
   max-width: calc(100% - 320px);
   flex-shrink: 0;
-  border-right: 1px solid #14242b;
+  border-right: 1px solid var(--oc-surface);
   padding: 12px 10px;
   overflow: auto;
-  background: #091014;
+  background: var(--oc-bg);
 }
 .service-main {
   display: flex;
@@ -74,12 +74,12 @@
   justify-content: center;
   gap: 5px;
   padding: 5px 6px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   border-radius: 5px;
 }
 .service-subheading button:hover,
 .value-row > button:hover {
-  background: #14242b;
+  background: var(--oc-surface);
 }
 .service-list-item {
   display: flex;
@@ -90,7 +90,7 @@
   padding: 10px 9px;
   border-radius: 6px;
   font-size: 12px;
-  color: #c6ccd3;
+  color: var(--oc-text);
   min-width: 0;
 }
 .service-list-item > span:last-child {
@@ -100,15 +100,15 @@
 .service-list-item small {
   display: block;
   margin-top: 4px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 10px;
 }
 .service-list-item:hover {
-  background: #14242b;
+  background: var(--oc-surface);
 }
 .service-list-item.selected {
-  background: #1a2d34;
-  color: #80cbc4;
+  background: var(--oc-border);
+  color: var(--oc-accent);
 }
 .service-list-item:disabled {
   opacity: 0.45;
@@ -118,7 +118,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 12px;
   padding: 13px 9px;
   margin-bottom: 20px;
@@ -141,16 +141,16 @@ fieldset.service-form-grid {
   flex-direction: column;
   gap: 8px;
   font-size: 11px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   min-width: 0;
 }
 .service-tool input:not([type="checkbox"]),
 .service-tool :is(select, .custom-select),
 .service-tool textarea {
-  border: 1px solid #1a2d34;
+  border: 1px solid var(--oc-border);
   border-radius: 6px;
-  background: #091014;
-  color: #c6ccd3;
+  background: var(--oc-bg);
+  color: var(--oc-text);
   padding: 9px 10px;
   min-width: 0;
   outline: none;
@@ -160,10 +160,10 @@ fieldset.service-form-grid {
 .service-tool input:focus,
 .service-tool :is(select, .custom-select):focus,
 .service-tool textarea:focus {
-  border-color: #7e8e96;
+  border-color: var(--oc-muted);
 }
 .service-tool input[type="checkbox"] {
-  accent-color: var(--mint, #80cbc4);
+  accent-color: var(--mint, var(--oc-accent));
 }
 .service-tool input:disabled,
 .service-tool :is(select, .custom-select):disabled {
@@ -180,18 +180,18 @@ fieldset.service-form-grid {
   flex: 1;
 }
 .secret-input input:placeholder-shown[title]::placeholder {
-  color: #c6ccd3;
+  color: var(--oc-text);
   opacity: 1;
 }
 .secret-saved {
   align-self: center;
-  color: #80cbc4;
+  color: var(--oc-accent);
   font-size: 11px;
 }
 .input-with-button button,
 .secret-input button {
   padding: 6px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 11px;
 }
 .inline-check {
@@ -200,17 +200,17 @@ fieldset.service-form-grid {
   gap: 6px;
   font-size: 11px;
   white-space: nowrap;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .service-hint {
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 11px;
   line-height: 1.7;
 }
 .service-tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
   padding: 0 20px;
   flex-shrink: 0;
 }
@@ -218,12 +218,12 @@ fieldset.service-form-grid {
   font-size: 12px;
   text-transform: capitalize;
   padding: 12px 13px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   border-bottom: 2px solid transparent;
 }
 .service-tabs button.active {
-  color: #80cbc4;
-  border-color: #a9b7c6;
+  color: var(--oc-accent);
+  border-color: var(--oc-muted);
 }
 .service-tabs button:disabled {
   opacity: 0.4;
@@ -238,12 +238,12 @@ fieldset.service-form-grid {
 .service-empty h2 {
   font-size: 24px;
   font-weight: 500;
-  color: #c6ccd3;
+  color: var(--oc-text);
 }
 .service-empty p {
   font-size: 13px;
   line-height: 1.8;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .request-folder {
   margin-bottom: 14px;
@@ -260,12 +260,12 @@ fieldset.service-form-grid {
   width: 100%;
   height: 28px;
   padding: 3px 4px !important;
-  color: #a9b7c6 !important;
+  color: var(--oc-muted) !important;
 }
 .http-method {
   font-size: 9px;
   font-weight: 700;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   width: 43px;
   flex-shrink: 0;
 }
@@ -314,7 +314,7 @@ fieldset.service-form-grid {
   flex-direction: column;
   flex-shrink: 0;
   min-height: 0;
-  border-top: 1px solid #1a2d34;
+  border-top: 1px solid var(--oc-border);
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -345,17 +345,17 @@ fieldset.service-form-grid {
   max-height: none;
   margin: 0;
   border: 0;
-  border-top: 1px solid #14242b;
+  border-top: 1px solid var(--oc-surface);
   border-radius: 0;
   padding: 14px 24px;
 }
 .response-summary {
   font-size: 11px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .response-body {
-  background: #091014;
-  border: 1px solid #14242b;
+  background: var(--oc-bg);
+  border: 1px solid var(--oc-surface);
   border-radius: 6px;
   padding: 14px;
   font-size: 12px;
@@ -371,7 +371,7 @@ fieldset.service-form-grid {
   align-items: center;
   gap: 7px;
   margin-top: 26px;
-  color: #c7988b;
+  color: var(--oc-error-text);
   font-size: 11px;
 }
 .connection-header {
@@ -390,11 +390,11 @@ fieldset.service-form-grid {
   height: 7px;
   width: 7px;
   border-radius: 50%;
-  background: #51646e;
+  background: var(--oc-faint);
   flex-shrink: 0;
 }
 .connection-dot.connected {
-  background: #a9b7c6;
+  background: var(--oc-muted);
 }
 .host-fingerprint {
   display: flex;
@@ -405,7 +405,7 @@ fieldset.service-form-grid {
   font-size: 12px;
 }
 .host-fingerprint code {
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 11px;
   word-break: break-all;
   user-select: text;
@@ -422,7 +422,7 @@ fieldset.service-form-grid {
   min-width: 0;
   min-height: 0;
   position: relative;
-  background: #0e1d24;
+  background: var(--oc-panel);
   padding: 9px;
   border-radius: 6px;
 }
@@ -436,16 +436,16 @@ fieldset.service-form-grid {
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 7px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 10px;
 }
 .remote-terminal-toolbar button {
   padding: 2px 5px;
   font-size: 10px;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .remote-terminal-toolbar button[aria-pressed="true"] {
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .sftp-toolbar {
   display: flex;
@@ -464,8 +464,8 @@ fieldset.service-form-grid {
   align-items: center;
   padding: 7px 8px;
   border-radius: 5px;
-  color: #a9b7c6;
-  background: #14242b;
+  color: var(--oc-muted);
+  background: var(--oc-surface);
 }
 .sftp-toolbar button:disabled {
   opacity: 0.4;
@@ -473,7 +473,7 @@ fieldset.service-form-grid {
 }
 .data-grid {
   overflow: auto;
-  border: 1px solid #1a2d34;
+  border: 1px solid var(--oc-border);
   border-radius: 6px;
   max-height: 450px;
 }
@@ -485,8 +485,8 @@ fieldset.service-form-grid {
   white-space: nowrap;
 }
 .data-grid th {
-  background: #14242b;
-  color: #a9b7c6;
+  background: var(--oc-surface);
+  color: var(--oc-muted);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -495,8 +495,8 @@ fieldset.service-form-grid {
 .data-grid td,
 .data-grid th {
   padding: 9px 12px;
-  border-bottom: 1px solid #14242b;
-  border-right: 1px solid #14242b;
+  border-bottom: 1px solid var(--oc-surface);
+  border-right: 1px solid var(--oc-surface);
   max-width: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -511,15 +511,15 @@ fieldset.service-form-grid {
 .data-grid th button small {
   display: block;
   font-size: 9px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   margin-top: 4px;
 }
 .data-grid tr.selected {
-  background: #1a2d34;
+  background: var(--oc-border);
 }
 .data-grid td.null-cell {
   font-style: italic;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .database-results {
   padding: 4px 24px 24px;
@@ -556,7 +556,7 @@ fieldset.service-form-grid {
   }
 }
 .transfer-queue {
-  border: 1px solid #324753;
+  border: 1px solid var(--oc-border-strong);
   padding: 10px 14px;
   border-radius: 6px;
   margin-bottom: 16px;
@@ -570,7 +570,7 @@ fieldset.service-form-grid {
   flex-wrap: wrap;
   font-size: 11px;
   padding: 8px 0;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
 }
 .transfer-job > span {
   flex: 1;
@@ -581,18 +581,18 @@ fieldset.service-form-grid {
 }
 .transfer-job progress {
   width: 120px;
-  accent-color: #a9b7c6;
+  accent-color: var(--oc-muted);
 }
 .transfer-job small {
   font-size: 10px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .transfer-job button {
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .transfer-job p {
   width: 100%;
-  color: #c99e8e;
+  color: var(--oc-error-text);
   margin: 0;
   font-size: 10px;
 }
@@ -600,14 +600,14 @@ fieldset.service-form-grid {
   height: 240px;
   min-height: 160px;
   position: relative;
-  border: 1px solid #324753;
+  border: 1px solid var(--oc-border-strong);
   border-radius: 6px;
   margin: 12px 0;
   overflow: hidden;
 }
 .query-history {
   font-size: 11px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   padding: 10px 0;
 }
 .query-history button {
@@ -616,16 +616,16 @@ fieldset.service-form-grid {
   gap: 5px;
   width: 100%;
   text-align: left;
-  border-top: 1px solid #1a2d34;
+  border-top: 1px solid var(--oc-border);
   padding: 8px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .query-history code {
   font-size: 10px;
 }
 .database-metadata {
   font-size: 11px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .database-metadata summary {
   cursor: pointer;
@@ -642,13 +642,13 @@ fieldset.service-form-grid {
 .row-editor-body aside {
   width: 230px;
   overflow: auto;
-  border-right: 1px solid #324753;
+  border-right: 1px solid var(--oc-border-strong);
   padding: 14px;
   font-size: 11px;
 }
 .row-editor-body aside > button {
   display: block;
-  color: #80cbc4;
+  color: var(--oc-accent);
   padding: 8px;
 }
 .row-editor-body aside > div {
@@ -656,12 +656,12 @@ fieldset.service-form-grid {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid #324753;
+  border-bottom: 1px solid var(--oc-border-strong);
 }
 .row-editor-body aside > strong {
   display: block;
   margin-top: 15px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .row-editor-body main {
   flex: 1;
@@ -689,7 +689,7 @@ fieldset.service-form-grid {
 .row-field small {
   display: block;
   width: 100%;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 9px;
   padding-left: 18px;
 }
@@ -697,10 +697,10 @@ fieldset.service-form-grid {
   flex: 1;
   min-width: 80px;
   padding: 8px;
-  background: #091014;
-  border: 1px solid #324753;
+  background: var(--oc-bg);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 4px;
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .row-field > label:last-child {
   white-space: nowrap;
@@ -710,12 +710,12 @@ fieldset.service-form-grid {
   overflow-wrap: anywhere;
   user-select: text;
   font-size: 11px;
-  background: #0e1d24;
+  background: var(--oc-panel);
   padding: 12px;
 }
 .row-error {
   font-size: 11px;
-  color: #d6aa96;
+  color: var(--oc-warning);
   flex: 1;
   max-height: 100px;
   overflow: auto;
@@ -730,9 +730,9 @@ fieldset.service-form-grid {
 }
 .schema-designer input:not([type="checkbox"]),
 .schema-designer :is(select, .custom-select) {
-  background: #091014;
-  color: #c6ccd3;
-  border: 1px solid #324753;
+  background: var(--oc-bg);
+  color: var(--oc-text);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 4px;
   padding: 8px;
   font-size: 11px;
@@ -755,8 +755,8 @@ fieldset.service-form-grid {
 .schema-sql {
   padding: 16px;
   white-space: pre-wrap;
-  background: #091014;
-  border: 1px solid #324753;
+  background: var(--oc-bg);
+  border: 1px solid var(--oc-border-strong);
   font-size: 12px;
   user-select: text;
   line-height: 1.7;
@@ -780,10 +780,10 @@ fieldset.service-form-grid {
   margin-bottom: 3px;
 }
 .api-request-row.selected {
-  background: #1a2d34;
+  background: var(--oc-border);
 }
 .api-request-row:hover {
-  background: #14242b;
+  background: var(--oc-surface);
 }
 .api-request-row > .service-list-item {
   flex: 1;
@@ -796,13 +796,13 @@ fieldset.service-form-grid {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   border-radius: 4px;
 }
 .api-request-action:hover,
 .api-request-action:focus-visible {
-  background: #324753;
-  color: #80cbc4;
+  background: var(--oc-border-strong);
+  color: var(--oc-accent);
 }
 .api-request-action:disabled {
   opacity: 0.4;
@@ -816,7 +816,7 @@ fieldset.service-form-grid {
   border-radius: 6px;
 }
 .request-folder.request-folder-drop {
-  border-color: #a9b7c6;
+  border-color: var(--oc-muted);
   border-style: dashed;
   background: #a9b7c612;
 }
@@ -836,8 +836,8 @@ fieldset.service-form-grid {
 .variable-input {
   position: relative;
   min-width: 0;
-  background: #091014;
-  border: 1px solid #1a2d34;
+  background: var(--oc-bg);
+  border: 1px solid var(--oc-border);
   border-radius: 5px;
 }
 .variable-input > input,
@@ -854,10 +854,10 @@ fieldset.service-form-grid {
   background: transparent;
   border: 0;
   color: transparent;
-  caret-color: #c6ccd3;
+  caret-color: var(--oc-text);
 }
 .variable-input > input::placeholder {
-  color: #51646e;
+  color: var(--oc-faint);
 }
 .variable-input-mirror {
   position: absolute;
@@ -865,10 +865,10 @@ fieldset.service-form-grid {
   overflow: hidden;
   white-space: pre;
   pointer-events: none;
-  color: #c6ccd3;
+  color: var(--oc-text);
 }
 .request-variable {
-  color: #e68680;
+  color: var(--oc-error);
 }
 .request-name-row {
   display: flex;
@@ -883,11 +883,11 @@ fieldset.service-form-grid {
   margin-bottom: 6px;
 }
 .request-variable {
-  color: #ff787d;
+  color: var(--oc-error);
 }
 .variable-input > input {
   color: transparent;
-  caret-color: #00b6c4;
+  caret-color: var(--oc-accent);
 }
 
 .api-request-row[draggable="false"] {
@@ -900,10 +900,10 @@ fieldset.service-form-grid {
   color: transparent;
   background: transparent;
   border: 0;
-  caret-color: #00b6c4;
+  caret-color: var(--oc-accent);
 }
 .variable-input:focus-within {
-  border-color: #80cbc4;
+  border-color: var(--oc-accent);
 }
 
 .api-request-row .service-list-item > span:last-child {
@@ -943,25 +943,25 @@ fieldset.service-form-grid {
 
 /* Familiar HTTP method colors, against the Deep Ocean surfaces. */
 .service-tool [data-method="GET"] {
-  color: #98d792;
+  color: var(--oc-syn-string);
 }
 .service-tool [data-method="POST"] {
-  color: #e7d175;
+  color: var(--oc-syn-type);
 }
 .service-tool [data-method="PUT"] {
-  color: #68caff;
+  color: var(--oc-syn-function);
 }
 .service-tool [data-method="PATCH"] {
-  color: #dca9dc;
+  color: var(--oc-syn-keyword);
 }
 .service-tool [data-method="DELETE"] {
-  color: #ff787d;
+  color: var(--oc-error);
 }
 .service-tool [data-method="HEAD"] {
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .service-tool [data-method="OPTIONS"] {
-  color: #fb9551;
+  color: var(--oc-syn-number);
 }
 .json-response {
   font-family: "SFMono-Regular", Consolas, monospace;
@@ -969,25 +969,25 @@ fieldset.service-form-grid {
   overflow-wrap: normal;
 }
 .json-response .json-key {
-  color: #68caff;
+  color: var(--oc-syn-function);
 }
 .json-response .json-string {
-  color: #98d792;
+  color: var(--oc-syn-string);
 }
 .json-response .json-number {
-  color: #ff9e60;
+  color: var(--oc-unsaved);
 }
 .json-response .json-boolean,
 .json-response .json-null {
-  color: #dca9dc;
+  color: var(--oc-syn-keyword);
 }
 .json-response .json-summary {
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .json-children {
   display: block;
   padding-left: 22px;
-  border-left: 1px solid #1a2d34;
+  border-left: 1px solid var(--oc-border);
   margin-left: 5px;
 }
 .json-line {
@@ -1002,10 +1002,10 @@ fieldset.service-form-grid {
 }
 .json-response .json-toggle:hover,
 .json-response .json-more:hover {
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .json-response .json-more {
-  color: #80cbc4;
+  color: var(--oc-accent);
   display: block;
   padding: 3px 0;
 }
@@ -1021,31 +1021,31 @@ fieldset.service-form-grid {
 }
 .database-sidebar-section > summary::before {
   content: "▸";
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .database-sidebar-section[open] > summary::before {
   content: "▾";
 }
 .database-notice {
   margin: 12px 24px;
-  color: #ff9e60;
+  color: var(--oc-unsaved);
   font-size: 12px;
 }
 .database-error {
-  color: #ff787d;
+  color: var(--oc-error);
 }
 .git-branch-switch {
   min-width: 0;
   flex: 1;
-  background: #0e1d24;
-  border: 1px solid #1a2d34;
+  background: var(--oc-panel);
+  border: 1px solid var(--oc-border);
   border-radius: 4px;
-  color: #80cbc4;
+  color: var(--oc-accent);
   padding: 5px;
   font-size: 12px;
 }
 .git-action-error {
-  color: #ff787d;
+  color: var(--oc-error);
 }
 .service-field :is(select, .custom-select),
 .service-field input:not([type="checkbox"]) {
@@ -1077,12 +1077,12 @@ fieldset.service-form-grid {
   align-items: center;
 }
 .connection-title button {
-  color: #7e8e96;
+  color: var(--oc-muted);
   padding: 7px;
 }
 .connection-title button:hover {
-  color: #80cbc4;
-  background: #14242b;
+  color: var(--oc-accent);
+  background: var(--oc-surface);
   border-radius: 5px;
 }
 .service-tabs[hidden],
@@ -1097,7 +1097,7 @@ fieldset.service-form-grid {
 }
 .database-connection-nav strong {
   padding: 0 8px;
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .database-connection-nav .service-tabs {
   width: 100%;
@@ -1119,17 +1119,17 @@ fieldset.service-form-grid {
   align-items: center;
   justify-content: space-between;
   padding: 12px 24px;
-  border-bottom: 1px solid #1a2d34;
-  color: #80cbc4;
+  border-bottom: 1px solid var(--oc-border);
+  color: var(--oc-accent);
 }
 .secondary-button.danger-outline {
-  color: #ff787d;
-  border-color: #a74450;
+  color: var(--oc-error);
+  border-color: var(--oc-error-border);
   background: transparent;
 }
 .secondary-button.danger-outline:hover:not(:disabled) {
-  border-color: #ff787d;
-  background: #351c26;
+  border-color: var(--oc-error);
+  background: var(--oc-error-tint);
 }
 .connection-actions {
   margin-top: 26px;
@@ -1148,17 +1148,17 @@ fieldset.service-form-grid {
   height: 43px;
   padding: 0 14px;
   border: 0;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
   border-radius: 0;
   background: transparent;
-  color: #80cbc4;
+  color: var(--oc-accent);
   font-size: 11px;
 }
 .database-connection-back:hover:not(:disabled) {
-  background: #14242b;
+  background: var(--oc-surface);
 }
 .database-connection-back:focus-visible {
-  outline: 1px solid #80cbc4;
+  outline: 1px solid var(--oc-accent);
   outline-offset: -2px;
 }
 .database-connection-back svg {
@@ -1175,11 +1175,11 @@ fieldset.service-form-grid {
   flex-wrap: wrap;
   gap: 9px;
   min-width: 0;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 12px;
 }
 .database-breadcrumb strong {
-  color: #80cbc4;
+  color: var(--oc-accent);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -1190,8 +1190,8 @@ fieldset.service-form-grid {
   flex-shrink: 0;
 }
 .database-header-buttons .active {
-  color: #80cbc4;
-  border-color: #80cbc4;
+  color: var(--oc-accent);
+  border-color: var(--oc-accent);
 }
 .database-table-info {
   display: flex;
@@ -1199,7 +1199,7 @@ fieldset.service-form-grid {
   gap: 24px;
 }
 .database-table-info h3 {
-  color: #c6ccd3;
+  color: var(--oc-text);
   font-size: 13px;
   font-weight: 600;
   margin: 0 0 12px;
@@ -1209,7 +1209,7 @@ fieldset.service-form-grid {
   min-height: 36px;
   margin: 0 -10px 4px;
   padding: 0 10px;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
 }
 .request-folder.root-requests {
   min-height: 6px;
@@ -1224,7 +1224,7 @@ fieldset.service-form-grid {
   flex-shrink: 0;
 }
 .api-request-heading.request-folder-drop {
-  outline: 1px dashed #80cbc4;
+  outline: 1px dashed var(--oc-accent);
   border-radius: 4px;
   background: #80cbc412;
 }
@@ -1272,7 +1272,7 @@ fieldset.service-form-grid {
 }
 .api-header-environment {
   font-size: 11px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .api-header-environment :is(select, .custom-select) {
   height: 36px;
@@ -1304,7 +1304,7 @@ fieldset.service-form-grid {
   min-height: 47px;
   padding: 0;
   gap: 0;
-  border-bottom: 1px solid #14242b;
+  border-bottom: 1px solid var(--oc-surface);
 }
 .api-sidebar-tabs button,
 .api-request-tabs button,
@@ -1345,7 +1345,7 @@ fieldset.service-form-grid {
   min-height: var(--code-tabs-height);
   padding: 0;
   gap: 0;
-  border-bottom: 1px solid #14242b;
+  border-bottom: 1px solid var(--oc-surface);
 }
 .server-tabs button {
   height: 100%;
@@ -1402,7 +1402,7 @@ fieldset.service-form-grid {
   cursor: text;
 }
 .data-grid td.editable-cell:focus {
-  outline: 1px solid #80cbc4;
+  outline: 1px solid var(--oc-accent);
   outline-offset: -1px;
 }
 .database-inline-edit {
@@ -1410,7 +1410,7 @@ fieldset.service-form-grid {
   align-items: center;
   gap: 6px;
   min-width: 240px;
-  color: #c6ccd3;
+  color: var(--oc-text);
   font-style: normal;
 }
 .database-inline-edit > textarea {
@@ -1425,15 +1425,15 @@ fieldset.service-form-grid {
   padding: 4px;
 }
 .database-inline-edit [role="alert"] {
-  color: #ff787d;
+  color: var(--oc-error);
   white-space: normal;
 }
 .database-json-drawer {
   width: min(760px, 85vw);
   height: 100%;
   margin-left: auto;
-  background: #091014;
-  border-left: 1px solid #324753;
+  background: var(--oc-bg);
+  border-left: 1px solid var(--oc-border-strong);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1447,7 +1447,7 @@ fieldset.service-form-grid {
   align-items: center;
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid #1a2d34;
+  border-bottom: 1px solid var(--oc-border);
 }
 .database-json-drawer > header {
   justify-content: space-between;
@@ -1455,12 +1455,12 @@ fieldset.service-form-grid {
 .database-json-drawer small {
   display: block;
   margin-top: 6px;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .database-json-drawer > footer {
   flex-wrap: wrap;
   border-bottom: 0;
-  border-top: 1px solid #1a2d34;
+  border-top: 1px solid var(--oc-border);
 }
 .database-json-drawer > footer [role="alert"] {
   width: 100%;
@@ -1475,14 +1475,14 @@ fieldset.service-form-grid {
   width: min(760px, 90vw);
   max-height: 85vh;
   overflow: auto;
-  background: #0e1d24;
-  border: 1px solid #324753;
+  background: var(--oc-panel);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 8px;
   padding: 20px;
 }
 .database-cell-review > p {
   margin: 12px 0;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .database-cell-values {
   display: grid;
@@ -1495,13 +1495,13 @@ fieldset.service-form-grid {
 }
 .database-cell-values dt {
   font-size: 11px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   margin-bottom: 6px;
 }
 .database-cell-values dd {
   margin: 0;
-  background: #091014;
-  border: 1px solid #1a2d34;
+  background: var(--oc-bg);
+  border: 1px solid var(--oc-border);
   padding: 12px;
   max-height: 40vh;
   overflow: auto;
@@ -1513,10 +1513,10 @@ fieldset.service-form-grid {
   user-select: text;
 }
 .database-cell-values > div:first-child dd {
-  border-left: 2px solid #ff787d;
+  border-left: 2px solid var(--oc-error);
 }
 .database-cell-values > div:last-child dd {
-  border-left: 2px solid #97d790;
+  border-left: 2px solid var(--oc-syn-string);
 }
 .database-cell-review > footer {
   display: flex;
@@ -1532,9 +1532,9 @@ fieldset.service-form-grid {
   max-height: calc(100vh - 16px);
   overflow: auto;
   padding: 12px;
-  color: #c6ccd3;
-  background: #0e1d24;
-  border: 1px solid #324753;
+  color: var(--oc-text);
+  background: var(--oc-panel);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 7px;
   box-shadow: 0 12px 35px #0008;
   font-size: 12px;
@@ -1560,7 +1560,7 @@ fieldset.service-form-grid {
   text-align: center;
 }
 .database-calendar-week {
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 10px;
   margin-bottom: 5px;
 }
@@ -1571,15 +1571,15 @@ fieldset.service-form-grid {
 }
 .database-calendar-grid button:hover,
 .database-calendar-grid button:focus-visible {
-  background: #253a42;
-  outline: 1px solid #80cbc4;
+  background: var(--oc-surface);
+  outline: 1px solid var(--oc-accent);
 }
 .database-calendar-grid button.other-month {
-  color: #51646e;
+  color: var(--oc-faint);
 }
 .database-calendar-grid button[aria-pressed="true"] {
-  background: #80cbc4;
-  color: #091014;
+  background: var(--oc-accent);
+  color: var(--oc-bg);
 }
 .database-calendar-time {
   display: flex;
@@ -1593,18 +1593,18 @@ fieldset.service-form-grid {
 }
 .database-date-popup > p {
   margin: 10px 0;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 11px;
 }
 .database-date-popup > p[role="alert"] {
-  color: #ff787d;
+  color: var(--oc-error);
 }
 .database-date-popup > footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 8px;
-  border-top: 1px solid #1a2d34;
+  border-top: 1px solid var(--oc-border);
 }
 
 .database-row-selection {
@@ -1613,7 +1613,7 @@ fieldset.service-form-grid {
   flex-wrap: wrap;
   gap: 12px;
   padding: 8px 0;
-  color: #80cbc4;
+  color: var(--oc-accent);
   font-size: 11px;
 }
 .database-row-selection button {
@@ -1621,13 +1621,13 @@ fieldset.service-form-grid {
   align-items: center;
   gap: 5px;
   padding: 3px 5px;
-  color: #a9b7c6;
+  color: var(--oc-muted);
 }
 .database-row-selection [role="status"] {
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .database-row-selection [role="alert"] {
-  color: #ff787d;
+  color: var(--oc-error);
 }
 .data-grid th.database-row-selector {
   position: sticky;
@@ -1643,7 +1643,7 @@ fieldset.service-form-grid {
 }
 .data-grid tbody .database-row-selector {
   top: auto;
-  background: #0e1d24;
+  background: var(--oc-panel);
   z-index: 1;
 }
 .data-grid .database-row-selector button {
@@ -1651,20 +1651,20 @@ fieldset.service-form-grid {
   padding: 9px 8px;
   text-align: center;
   font-size: 10px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   user-select: none;
 }
 .data-grid tr.selected > td {
-  background: #193139;
+  background: var(--oc-selection);
 }
 .data-grid tr.selected > .database-row-selector {
-  background: #24424a;
+  background: var(--oc-selection);
 }
 .data-grid .database-row-selector button[aria-pressed="true"] {
-  color: #b4eee8;
+  color: var(--oc-accent);
 }
 .data-grid .database-row-selector button:focus-visible {
-  outline: 1px solid #80cbc4;
+  outline: 1px solid var(--oc-accent);
   outline-offset: -2px;
 }
 
@@ -1715,7 +1715,7 @@ fieldset.service-form-grid {
 }
 .database-filter-field > span {
   flex-shrink: 0;
-  color: #a9b7c6;
+  color: var(--oc-muted);
   font-size: 11px;
 }
 .database-filter-field > input {
@@ -1735,18 +1735,18 @@ fieldset.service-form-grid {
   min-width: 6px;
   flex: 0 0 6px;
   border-radius: 50%;
-  background: #ff9e60;
+  background: var(--oc-unsaved);
   margin-left: 5px;
 }
 .tool-changes-review {
   width: min(680px, 90vw);
   max-height: 80vh;
   overflow: auto;
-  background: #0e1d24;
-  border: 1px solid #324753;
+  background: var(--oc-panel);
+  border: 1px solid var(--oc-border-strong);
   border-radius: 8px;
   padding: 20px;
-  color: #c6ccd3;
+  color: var(--oc-text);
 }
 .tool-changes-review > header {
   display: flex;
@@ -1776,8 +1776,8 @@ fieldset.service-form-grid {
   margin: -8px -10px 5px;
   padding: 0 13px;
   height: 36px;
-  border-bottom: 1px solid #1a2d34;
-  color: #7e8e96;
+  border-bottom: 1px solid var(--oc-border);
+  color: var(--oc-muted);
 }
 .service-tool .database-table-search > input {
   flex: 1;
@@ -1790,14 +1790,14 @@ fieldset.service-form-grid {
   font-size: 11px;
 }
 .database-table-search:focus-within {
-  border-bottom-color: #80cbc4;
+  border-bottom-color: var(--oc-accent);
 }
 .database-table-search > svg {
   flex-shrink: 0;
 }
 .database-table-search-empty {
   padding: 10px 4px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 11px;
 }
 .data-grid th.database-data-column {
@@ -1818,7 +1818,7 @@ fieldset.service-form-grid {
 .database-column-resize:focus-visible {
   background: #80cbc440;
   outline: none;
-  border-right: 1px solid #80cbc4;
+  border-right: 1px solid var(--oc-accent);
 }
 .data-grid table.database-sized-columns {
   table-layout: fixed;
@@ -1840,10 +1840,10 @@ fieldset.service-form-grid {
   width: 22px;
   height: 24px;
   padding: 0;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .database-table-search > .database-search-clear:hover {
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 
 .api-request-search {
@@ -1853,8 +1853,8 @@ fieldset.service-form-grid {
   height: 36px;
   margin: 0 -10px;
   padding: 0 13px;
-  border-bottom: 1px solid #1a2d34;
-  color: #7e8e96;
+  border-bottom: 1px solid var(--oc-border);
+  color: var(--oc-muted);
 }
 .service-tool .api-request-search > input {
   flex: 1;
@@ -1870,7 +1870,7 @@ fieldset.service-form-grid {
   flex-shrink: 0;
 }
 .api-request-search:focus-within {
-  border-bottom-color: #80cbc4;
+  border-bottom-color: var(--oc-accent);
 }
 .api-request-search > button {
   display: flex;
@@ -1880,13 +1880,13 @@ fieldset.service-form-grid {
   width: 22px;
   height: 24px;
   padding: 0;
-  color: #7e8e96;
+  color: var(--oc-muted);
 }
 .api-request-search > button:hover {
-  color: #80cbc4;
+  color: var(--oc-accent);
 }
 .api-request-search-empty {
   padding: 10px 4px;
-  color: #7e8e96;
+  color: var(--oc-muted);
   font-size: 11px;
 }

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
-import { X, Check, Copy } from "lucide-react";
+import { X, Check, Copy } from "./DesignIcons";
 import DatabaseDatePicker from "./DatabaseDatePicker";
 import { cellDateKind, type CellDateKind } from "../lib/databaseDate";
 import { resultCsv } from "../lib/export";
@@ -218,6 +218,11 @@ export default function DatabaseDataGrid({
       } catch {
         /* Invalid existing JSON stays editable. */
       }
+    }
+    if (!json && writable) {
+      const widths = columnWidths ?? measuredWidths();
+      if (widths.length === result.columns.length && widths[column] < 360)
+        resizeColumn(column, 360, widths);
     }
     setText(initial);
     setNull(cell.kind === "null");
@@ -650,11 +655,13 @@ export default function DatabaseDataGrid({
                             {error && <span role="alert">{error}</span>}
                           </div>
                         ) : cell.kind === "null" ? (
-                          "NULL"
+                          <span className="database-null">NULL</span>
                         ) : cell.kind === "binary" ? (
                           `base64: ${cell.value}`
                         ) : (
-                          cell.value
+                          <span className={`database-value ${cellDateKind(result.columns[column].dataType, cell.value) ? "database-date-value" : /^(bigint|int|integer|smallint|tinyint|numeric|decimal|real|float|double|bool)/i.test(result.columns[column].dataType) ? "database-number-value" : "database-text-value"} ${/^\s*[\[{]/.test(cell.value) && cell.value.length < 4096 && cellJson(cell.value, result.columns[column].dataType) ? "database-json-value" : ""}`}>
+                            {/^\s*[\[{]/.test(cell.value) && cell.value.length < 4096 && cellJson(cell.value, result.columns[column].dataType) && <span className="database-json-tag" aria-hidden="true"/>}{cell.value}
+                          </span>
                         )}
                       </td>
                     );

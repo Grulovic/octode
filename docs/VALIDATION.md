@@ -837,3 +837,17 @@ Added a flush search row below Requests/History tabs and above the folder/reques
 
 All 199 frontend tests pass, including name/method/URL/folder searches, results in collapsed folders, no-match handling, clear/focus behavior, restoration of collapsed state and no implicit save. Production build and bundle results recorded below.
 Production TypeScript/Vite build and normal/Check macOS app bundles pass.
+
+
+### October 29 Deep Ocean redesign
+
+204 frontend tests across 38 files pass, including safe resolved URL previews, project/cache/save workflows, row editing and selection, and editor-scoped Git diff regression coverage. TypeScript/Vite production build passes. Native visual checks used isolated fictional fixtures and a local SQLite database; the Run SQL prompt action was checked and cancelled. Normal and Check macOS bundles rebuilt. See [redesign notes](REDESIGN.md) for capture coverage and retained visual differences.
+
+
+### Password saving and follow-up UI fixes
+
+Save now adopts sealed credential references even when another field is edited during the request, while retaining later password replacements and unsaved settings edits. Credential sealing reads back newly written values before returning success, and verifies existing saved references before resaving. Keychain failures retain the draft and report actionable errors without secret contents. Regression tests cover failed/mismatched readback, missing references, concurrent edits, replacement/clear/reorder cases, and the hook integration.
+
+Inline database edits expand narrow columns to 360px and remove the cell clipping constraint while editing. Composite API/table searches focus their outer controls; API folder actions use larger icons and occupy space only while hovered/focused. API URL input has square corners at the method junction. Database settings use equal columns. Cmd/Ctrl+2 is enabled with dialogs open, with the terminal dock above overlays across tools.
+
+209 frontend tests and 78 native tests pass (one opt-in native Keychain test is ignored in the ordinary suite). Production build passes. The command-line Keychain probe cannot obtain macOS authorization in this environment; it is not evidence of missing user credentials. Earlier native QA could save/read a dummy reference in the desktop app, but a full final-build Keychain restart round trip has not been verified. No user credential values were logged or changed.
