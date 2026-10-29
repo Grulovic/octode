@@ -12,7 +12,10 @@
     "test": "vitest run",
     "test:search-core": "node scripts/test-native-core.mjs search_core",
     "test:native-core": "node scripts/test-native-core.mjs",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "buildDev": "node scripts/build-desktop.mjs dev",
+    "buildProd": "node scripts/build-desktop.mjs prod",
+    "buildPord": "npm run buildProd"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

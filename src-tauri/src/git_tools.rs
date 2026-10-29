@@ -491,6 +491,8 @@ pub struct Action {
     pub expected_staged: String,
     #[serde(default)]
     pub reviewed_diff: Option<String>,
+    #[serde(default)]
+    pub paths: Vec<String>,
 }
 fn branch_name(root: &Path, value: &str) -> Result<(), String> {
     if value.starts_with('-') || value.is_empty() {
@@ -512,6 +514,76 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
         }
     }
     let result = match request.action.as_str() {
+        "stage-many" | "unstage-many" => {
+            if before.staged_revision != request.expected_staged {
+                return Err("The index changed. Refresh Git before selecting files again.".into());
+            }
+            if request.paths.is_empty() {
+                return Err("Choose files to stage or unstage".into());
+            }
+            let staging = request.action == "stage-many";
+            let entries: HashMap<_, _> = before
+                .entries
+                .iter()
+                .map(|entry| (entry.path.as_str(), entry))
+                .collect();
+            let mut paths = std::collections::BTreeSet::new();
+            for path in &request.paths {
+                path_argument(path)?;
+                if path.contains('\0') {
+                    return Err("Invalid file path".into());
+                }
+                let entry = entries
+                    .get(path.as_str())
+                    .ok_or("A selected file is no longer changed. Refresh Git and retry.")?;
+                if entry.conflict {
+                    return Err("Resolve and validate conflicts before staging files".into());
+                }
+                if (staging && entry.worktree == " " && entry.index != "?")
+                    || (!staging && (entry.index == " " || entry.index == "?"))
+                {
+                    return Err("The selected files changed. Refresh Git and retry.".into());
+                }
+                paths.insert(path.as_str());
+                if let Some(original) = entry
+                    .original_path
+                    .as_deref()
+                    .filter(|_| !staging || entry.worktree == "R")
+                {
+                    path_argument(original)?;
+                    paths.insert(original);
+                }
+            }
+            let input = paths
+                .iter()
+                .flat_map(|path| path.bytes().chain(std::iter::once(0)))
+                .collect();
+            let args = if staging {
+                vec!["add", "--pathspec-from-file=-", "--pathspec-file-nul"]
+            } else if before.head.is_empty() {
+                vec![
+                    "rm",
+                    "--cached",
+                    "--pathspec-from-file=-",
+                    "--pathspec-file-nul",
+                ]
+            } else {
+                vec![
+                    "restore",
+                    "--staged",
+                    "--pathspec-from-file=-",
+                    "--pathspec-file-nul",
+                ]
+            };
+            let result = output_input(root, &args, Some(input))?;
+            if !result.ok {
+                return Err(String::from_utf8_lossy(&result.stderr)
+                    .chars()
+                    .take(2000)
+                    .collect());
+            }
+            result.stdout
+        }
         "rollback" => {
             if before.staged_revision != request.expected_staged {
                 return Err("The index changed. Review the file before rolling it back.".into());
@@ -775,9 +847,82 @@ mod tests {
                 remote: String::new(),
                 expected_head: before.head,
                 expected_staged: before.staged_revision,
+                paths: Vec::new(),
                 reviewed_diff: None,
             },
         )
+    }
+    #[test]
+    fn batches_literal_paths_and_unstages_without_changing_worktree() {
+        let repo = Repo::new();
+        let names = [
+            "first.php",
+            "second file.php",
+            ":(glob)*.php",
+            "line\nbreak.php",
+        ];
+        let batch = |kind: &str, names: &[&str]| {
+            let before = snapshot(&repo.0).unwrap();
+            let request = serde_json::from_value(serde_json::json!({
+                "action": kind, "paths": names,
+                "expectedHead": before.head, "expectedStaged": before.staged_revision,
+            }))
+            .unwrap();
+            action(&repo.0, request)
+        };
+        for name in names {
+            std::fs::write(repo.0.join(name), "original\n").unwrap();
+        }
+        // Validate the entire batch before touching the index.
+        assert!(batch("stage-many", &[names[0], "../outside"]).is_err());
+        assert!(snapshot(&repo.0).unwrap().staged_revision.is_empty());
+        batch("stage-many", &names).unwrap();
+        assert!(snapshot(&repo.0)
+            .unwrap()
+            .entries
+            .iter()
+            .all(|entry| entry.index == "A"));
+        // Unstage also works before the repository has its first commit.
+        batch("unstage-many", &names).unwrap();
+        assert!(snapshot(&repo.0).unwrap().staged_revision.is_empty());
+        batch("stage-many", &names).unwrap();
+        act(&repo.0, "commit", "", "initial").unwrap();
+        std::fs::remove_file(repo.0.join(names[0])).unwrap();
+        std::fs::write(repo.0.join(names[1]), "edited\n").unwrap();
+        batch("stage-many", &names[..2]).unwrap();
+        batch("unstage-many", &names[..2]).unwrap();
+        assert!(!repo.0.join(names[0]).exists());
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join(names[1])).unwrap(),
+            "edited\n"
+        );
+        assert!(snapshot(&repo.0).unwrap().staged_revision.is_empty());
+    }
+    #[test]
+    fn batch_unstage_includes_rename_source_and_rejects_stale_index() {
+        let repo = Repo::new();
+        std::fs::write(repo.0.join("old"), "original\n").unwrap();
+        act(&repo.0, "stage", "old", "").unwrap();
+        act(&repo.0, "commit", "", "initial").unwrap();
+        run(&repo.0, &["mv", "old", "renamed"]).unwrap();
+        let before = snapshot(&repo.0).unwrap();
+        let request = || {
+            serde_json::from_value(serde_json::json!({
+                "action": "unstage-many", "paths": ["renamed"],
+                "expectedHead": before.head, "expectedStaged": before.staged_revision,
+            }))
+            .unwrap()
+        };
+        std::fs::write(repo.0.join("other"), "other\n").unwrap();
+        act(&repo.0, "stage", "other", "").unwrap();
+        assert!(action(&repo.0, request())
+            .unwrap_err()
+            .contains("index changed"));
+        act(&repo.0, "unstage", "other", "").unwrap();
+        action(&repo.0, request()).unwrap();
+        assert!(snapshot(&repo.0).unwrap().staged_revision.is_empty());
+        assert!(repo.0.join("renamed").exists());
+        assert!(!repo.0.join("old").exists());
     }
     #[test]
     fn reads_branch_names_without_a_worktree_status_scan() {
@@ -857,6 +1002,7 @@ mod tests {
             remote: String::new(),
             expected_head: before.head.clone(),
             expected_staged: before.staged_revision.clone(),
+            paths: Vec::new(),
             reviewed_diff: Some(patch),
         };
         std::fs::write(&file, "new work\n").unwrap();
@@ -942,7 +1088,8 @@ mod tests {
                 remote: String::new(),
                 expected_head: String::new(),
                 expected_staged: String::new(),
-                reviewed_diff: Some(reviewed)
+                paths: Vec::new(),
+                reviewed_diff: Some(reviewed),
             }
         )
         .is_err());
@@ -959,7 +1106,8 @@ mod tests {
                 remote: String::new(),
                 expected_head: before.head,
                 expected_staged: before.staged_revision,
-                reviewed_diff: None
+                paths: Vec::new(),
+                reviewed_diff: None,
             }
         )
         .is_err());
@@ -993,6 +1141,7 @@ mod tests {
                     remote: "origin".into(),
                     expected_head: before.head,
                     expected_staged: before.staged_revision,
+                    paths: Vec::new(),
                     reviewed_diff: None,
                 },
             )

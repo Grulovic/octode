@@ -304,8 +304,8 @@ it("keeps Commit local and disables Commit and Push when no remote is configured
 });
 
 it.each([
-  ["Select all", "stage", " ", "M"],
-  ["Deselect all", "unstage", "M", " "],
+  ["Select all", "stage-many", " ", "M"],
+  ["Deselect all", "unstage-many", "M", " "],
 ])(
   "%s applies to every file in its group, excluding conflicts",
   async (label, action, index, worktree) => {
@@ -317,11 +317,10 @@ it.each([
     const originalInvoke = harness.invoke.getMockImplementation()!;
     harness.invoke.mockImplementation(async (command, args) => {
       if (command !== "git_action") return originalInvoke(command, args);
-      const entry = harness.entries.find(
-        (entry) => entry.path === args.request.path,
-      )!;
-      entry.index = action === "stage" ? "M" : " ";
-      entry.worktree = action === "stage" ? " " : "M";
+      for (const entry of harness.entries.filter((entry) => args.request.paths.includes(entry.path))) {
+        entry.index = action === "stage-many" ? "M" : " ";
+        entry.worktree = action === "stage-many" ? " " : "M";
+      }
       return "Done";
     });
     await act(async () => root.render(<GitPanel {...props} />));
@@ -333,10 +332,8 @@ it.each([
     const requests = harness.invoke.mock.calls.filter(
       ([command]) => command === "git_action",
     );
-    expect(requests.map(([, args]) => args.request.path)).toEqual([
-      "first.php",
-      "second.php",
-    ]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0][1].request.paths).toEqual(["first.php", "second.php"]);
     for (const [, args] of requests) {
       expect(args).toMatchObject({
         projectId: "p",

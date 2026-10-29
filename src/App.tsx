@@ -844,12 +844,6 @@ function WorkspaceApp({
                         project={project}
                         filesRequest={codeFilesRequest}
                         searchTarget={searchTarget}
-                        onSearch={() => {
-                          window.dispatchEvent(
-                            new Event("octode-dismiss-popovers"),
-                          );
-                          setEverywhere(true);
-                        }}
                         initialSession={session}
                         onSessionChange={updateSession}
                         onDirtyChange={onDirtyChange}

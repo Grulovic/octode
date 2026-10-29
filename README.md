@@ -56,11 +56,23 @@ A temporary **Restart** button at the bottom left relaunches the current app/pro
 
 Only Code files autosave. API requests/environments/folders, Server profiles, and Database connection/query settings require **Save**. Editing, changing tools, losing focus, or leaving/closing never saves these settings automatically. Switching to Projects parks the live workspace without discarding drafts or closing terminals/connections. Quitting or restarting checks unsaved work across all parked projects and waits for any Save already in progress. Native saves are read back to verify persistence, and SQLite uses full synchronous writes. A failed Save preserves edits for retry. HTTP requests, SSH connections, SQL queries, transfers, database Apply, and schema execution remain explicit actions.
 
-The built development app is at `src-tauri/target/debug/bundle/macos/Octode.app`. Open it directly to run without a development server. Rebuild it with:
+Build a standalone macOS app (no development server required):
 
 ```sh
-npm run tauri -- build --debug --bundles app --no-sign --ci
+npm run buildDev   # Faster debug app for the edit → build → Restart workflow
+npm run buildProd  # Optimized release app
 ```
+
+The commands select a supported installed nvm Node version if your shell is using an older Node, include Cargo on PATH, check TypeScript, build the frontend, and bundle the native app. They stop on the first error. `buildPord` is also accepted as an alias for `buildProd`.
+
+- Development app: `src-tauri/target/debug/bundle/macos/Octode.app`
+- Release app: `src-tauri/target/release/bundle/macos/Octode.app`
+
+Open the app from the matching path once. After changing source, rerun the same command, wait for **Built**, and click **Restart** at the bottom left of that app. A copy in `/Applications` will not update when you rebuild the repository bundle. Restart ends running shells and connections after the existing save checks.
+
+To rebuild the existing **Octode Check** profile instead, use `npm run buildDev -- --check` (or `buildProd -- --check`). This creates `Octode Check.app` in the same bundle directory and keeps its separate profile. Add `--offline` to use already cached Rust crates; the first build needs network access if dependencies are missing. Builds use the checked-in Cargo lockfile without upgrading dependencies.
+
+These are local unsigned builds; signing and notarization for distribution require a separate release setup. For live frontend refresh during development, use `npm run desktop` with a supported Node selected (for example `nvm use 20.20.2`). `npm run build` remains the frontend-only build.
 
 Browser-only layout preview:
 

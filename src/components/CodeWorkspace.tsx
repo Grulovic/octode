@@ -16,7 +16,7 @@ import {
   useState,
 } from "react";
 import { Files } from "lucide-react";
-import { FoldVertical, LocateFixed, WandSparkles, Sparkle } from "./DesignIcons";
+import { FoldVertical, LocateFixed, WandSparkles } from "./DesignIcons";
 import { Check, Code2, GitBranch, ArrowLeft, ArrowRight, FilePlus, FolderPlus, Pencil, Trash2, Search, RefreshCw, TerminalSquare, X } from "./DesignIcons";
 import {
   invoke,
@@ -80,12 +80,10 @@ export default function CodeWorkspace({
   onDirtyChange,
   onAutosaveReady,
   searchTarget,
-  onSearch,
   filesRequest = 0,
 }: {
   project: Project;
   searchTarget?: SearchEntry;
-  onSearch: () => void;
   filesRequest?: number;
   visible: boolean;
   onError: (error: string) => void;
@@ -1269,14 +1267,6 @@ export default function CodeWorkspace({
               </div>
             ))}
           </div>
-          <button
-            className="icon-button"
-            aria-label="Search everywhere"
-            title="Search all sections (Shift twice)"
-            onClick={() => onSearch()}
-          >
-            <Sparkle size={17} />
-          </button>
           <button
             className="icon-button"
             title="Find in file (Cmd/Ctrl+F)"

@@ -221,21 +221,16 @@ export default function GitPanel({
       if (!state || !entries.length) return;
       if (!(await beforeAction()))
         throw new Error("Save or resolve Code conflicts before changing Git.");
-      // Git shares one index lock: apply these changes sequentially.
-      for (const entry of entries) {
-        await invoke<string>("git_action", {
-          projectId: project.id,
-          root,
-          request: {
-            action: staged ? "unstage" : "stage",
-            path: entry.path,
-            value: "",
-            remote,
-            expectedHead: state.head,
-            expectedStaged: state.stagedRevision,
-          },
-        });
-      }
+      await invoke<string>("git_action", {
+        projectId: project.id,
+        root,
+        request: {
+          action: staged ? "unstage-many" : "stage-many",
+          paths: entries.map((entry) => entry.path),
+          expectedHead: state.head,
+          expectedStaged: state.stagedRevision,
+        },
+      });
       setView(null);
       setMessage(
         staged ? "All staged files deselected" : "All unstaged files selected",
