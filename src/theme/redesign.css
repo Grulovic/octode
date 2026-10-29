@@ -500,3 +500,6 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .git-push-modal > footer button { height: 32px; min-height: 32px; padding: 0 14px; border-radius: 6px; font: 500 12.5px/18px var(--oc-font-ui); }
 .app-shell .git-push-modal > footer .secondary-button { border: 1px solid var(--oc-border-strong); background: var(--oc-surface); color: var(--oc-text); }
 .app-shell .git-push-modal > footer .primary-button { border: 1px solid var(--oc-accent); background: var(--oc-accent); color: var(--oc-accent-ink); font-weight: 600; }
+
+/* The global search field is part of the dialog header, without an inset focus ring. */
+.app-shell .search-everywhere .quick-open-input > input:is(:focus, :focus-visible) { outline: none; box-shadow: none; }
