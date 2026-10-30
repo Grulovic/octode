@@ -36,3 +36,29 @@
 .notes-select { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px; text-align: left; color: inherit; }
 .notes-delete { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; margin-right: 6px; border-radius: 4px; color: var(--oc-muted); }
 .notes-delete:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-error); }
+.notes-markdown { flex: 1; min-height: 0; overflow: auto; padding: 24px 32px; color: var(--oc-text); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.notes-markdown > :first-child { margin-top: 0; }
+.notes-markdown :is(h1,h2,h3,h4,h5,h6) { margin: 1.3em 0 .55em; color: var(--oc-text-strong); line-height: 1.3; font-weight: 600; }
+.notes-markdown h1 { font-size: 28px; }
+.notes-markdown h2 { font-size: 23px; }
+.notes-markdown h3 { font-size: 19px; }
+.notes-markdown :is(h1,h2) { padding-bottom: .3em; border-bottom: 1px solid var(--oc-border); }
+.notes-markdown :is(p,ul,ol,blockquote,pre) { margin: 0 0 1em; }
+.notes-markdown :is(ul,ol) { padding-left: 26px; list-style-position: outside; }
+.notes-markdown ul { list-style-type: disc; }
+.notes-markdown ol { list-style-type: decimal; }
+.notes-markdown li { margin: .2em 0; }
+.notes-markdown li > p { margin: .35em 0; }
+.notes-markdown li > input { margin-right: 8px; }
+.notes-markdown a { color: var(--oc-accent); text-decoration: underline; }
+.notes-markdown blockquote { padding: 4px 16px; border-left: 3px solid var(--oc-accent); color: var(--oc-muted); }
+.notes-markdown blockquote > :last-child { margin-bottom: 0; }
+.notes-markdown code { padding: 2px 5px; border-radius: 3px; background: var(--oc-surface); font-family: var(--oc-font-mono); font-size: .9em; }
+.notes-markdown pre { padding: 14px 16px; border: 1px solid var(--oc-border); border-radius: 6px; background: var(--oc-panel); overflow: auto; }
+.notes-markdown pre code { padding: 0; background: transparent; white-space: pre; }
+.notes-markdown hr { margin: 24px 0; border: 0; border-top: 1px solid var(--oc-border); }
+.notes-markdown img { max-width: 100%; height: auto; }
+.notes-markdown-table { overflow-x: auto; margin-bottom: 1em; }
+.notes-markdown table { border-collapse: collapse; width: auto; }
+.notes-markdown :is(th,td) { padding: 7px 12px; border: 1px solid var(--oc-border); }
+.notes-markdown th { background: var(--oc-panel); font-weight: 600; }

@@ -151,3 +151,24 @@ it("deletes persisted notes only after confirmation and retains notes on failure
     expect(storage.delete).not.toHaveBeenCalled(); expect(model.dirty).toBe(false);
   } finally { confirm.mockRestore(); await act(async () => root.unmount()); host.remove(); }
 });
+it("toggles Markdown preview beside wrap without changing or saving the draft", async () => {
+  storage.load.mockResolvedValue([]); storage.save.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
+    await act(async () => model.create());
+    await act(async () => model.update({ title: "Scratch", text: "# Preview\n\n**Hello**" }));
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Markdown preview"]')!;
+    expect(toggle.previousElementSibling?.getAttribute("aria-label")).toBe("Word wrap");
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector("article h1")?.textContent).toBe("Preview");
+    expect(host.querySelector("article strong")?.textContent).toBe("Hello");
+    await act(async () => toggle.click());
+    expect(host.querySelector("article")).toBeNull();
+    expect(model.note?.text).toBe("# Preview\n\n**Hello**"); expect(model.dirty).toBe(true);
+    expect(storage.save).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); }
+});

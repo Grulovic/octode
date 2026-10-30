@@ -9,6 +9,7 @@ import { exportText } from "../lib/export";
 import { pickNoteFiles, readNotePaths, readNoteFiles } from "../lib/noteFiles";
 import { installFilePathDrop } from "../lib/terminalDrop";
 import { confirmAction } from "./ToolLayout";
+import MarkdownPreview from "./MarkdownPreview";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import "./notes.css";
 const EditorPane = lazy(() => desktop ? import("./EditorPane") : import("./PreviewEditor"));
@@ -26,6 +27,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
   const [revision, reload] = useState(0);
   const [visible, setVisible] = useState(false);
   const [wrap, setWrap] = useState(false);
+  const [markdown, setMarkdown] = useState(false);
   const setNotes = (items: Note[]) => { current.current = items; render(items); };
   const dirty = () => current.current.some((note) => !same(note, saved.current.get(note.id)));
   useEffect(() => runtime.register("global-notes", { saveCode: async () => true, flushLayout: async () => {}, hasUnsavedSettings: dirty }), [runtime]);
@@ -80,7 +82,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
     return job;
   };
   const note = notes.find((item) => item.id === active);
-  return { notes, note, active, setActive, loading, error, saving, deleting, save, remove, create, addCopies, update, dirty: dirty(), isDirty: (item: Note) => !same(item, saved.current.get(item.id)), retry: () => reload((value) => value + 1), visible, setVisible, wrap, setWrap };
+  return { notes, note, active, setActive, loading, error, saving, deleting, save, remove, create, addCopies, update, dirty: dirty(), isDirty: (item: Note) => !same(item, saved.current.get(item.id)), retry: () => reload((value) => value + 1), visible, setVisible, wrap, setWrap, markdown, setMarkdown };
 }
 const NotesContext = createContext<ReturnType<typeof useNotesModel> | null>(null);
 export function NotesProvider({ runtime, children }: { runtime: WorkspaceRuntime; children: ReactNode }) {
@@ -181,14 +183,15 @@ export default function NotesWorkspace() {
       <div className="notes-toolbar" role="toolbar" aria-label="Note tools">
         <span>{note ? noteLanguage(note.title) === "plaintext" ? "Plain text" : noteLanguage(note.title).toUpperCase() : "Notes"}</span>
         <div className="notes-toolbar-actions">
-          <button aria-label="Find in note" title="Find in note" disabled={!note || model.loading} onClick={() => setFindToken((value) => value + 1)}><Search size={15} /></button>
-          <button aria-label="Word wrap" title="Word wrap" aria-pressed={model.wrap} disabled={!note || model.loading} onClick={() => model.setWrap((value) => !value)}><WrapText size={16} /></button>
+          <button aria-label="Find in note" title="Find in note" disabled={!note || model.loading || model.markdown} onClick={() => setFindToken((value) => value + 1)}><Search size={15} /></button>
+          <button aria-label="Word wrap" title="Word wrap" aria-pressed={model.wrap} disabled={!note || model.loading || model.markdown} onClick={() => model.setWrap((value) => !value)}><WrapText size={16} /></button>
+          <button aria-label="Markdown preview" title="Toggle Markdown preview" aria-pressed={model.markdown} disabled={!note || model.loading} onClick={() => model.setMarkdown((value) => !value)}>MD</button>
         </div>
       </div>
       {importError && <div className="error-banner" role="alert">{importError}</div>}
       {exportError && <div className="error-banner" role="alert">{exportError}</div>}
       {model.error && <div className="error-banner" role="alert">{model.error}{!model.notes.length && <button onClick={model.retry}>Retry</button>}</div>}
-      {model.loading ? <div className="loading">Loading notes…</div> : note ? <div className="notes-editor"><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} languageId={noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} onChange={(text) => model.update({ text })} />}</Suspense></div> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={model.create}><Plus size={14} />New note</button></div>}
+      {model.loading ? <div className="loading">Loading notes…</div> : note && model.markdown ? <MarkdownPreview text={note.text} /> : note ? <div className="notes-editor"><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} languageId={noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} onChange={(text) => model.update({ text })} />}</Suspense></div> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={model.create}><Plus size={14} />New note</button></div>}
       {note && <footer>{note.text.split("\n").length} lines · {note.text.length} characters<span>{noteLanguage(note.title) === "plaintext" ? "Plain text" : noteLanguage(note.title).toUpperCase()} · {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}S to save</span></footer>}
     </div>
   </section>;
