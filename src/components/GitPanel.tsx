@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { filename, folderBranchLabel } from "../lib/workspace";
 import CustomSelect from "./CustomSelect";
 import GitDiffHunk from "./GitDiffHunk";
+import { parseCommitDiff, type CommitDiffFile } from "../lib/gitDiff";
 import {
   type ReactNode,
   useCallback,
@@ -63,6 +64,7 @@ export default function GitPanel({
     staged: boolean;
     hunks?: { header: string; hunks: string[]; supported: boolean };
     historical?: boolean;
+    commitDiff?: { header: string; files: CommitDiffFile[] };
   } | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [chosenHunks, setChosenHunks] = useState<number[]>([]);
@@ -355,7 +357,7 @@ export default function GitPanel({
         root,
         hash,
       });
-      setView({ path: hash, text, staged: false, historical: true });
+      setView({ path: hash, text, staged: false, historical: true, commitDiff: parseCommitDiff(text) });
     });
   const conflict = (entry: GitEntry) =>
     task(async () => {
@@ -410,6 +412,11 @@ export default function GitPanel({
         >
           <RefreshCw size={13} />
         </button>
+        {state && <p className="git-help git-repository-summary">
+          {state.merging
+            ? "Merge in progress. Resolve conflicts, review staged files, then commit."
+            : `${state.head.slice(0, 8) || "No commits yet"} · ${state.entries.length} changed files`}
+        </p>}
       </div>
       {error && <p className="git-help">{error}</p>}
       {busy && (
@@ -429,11 +436,7 @@ export default function GitPanel({
       )}
       {state && (
         <>
-          <p className="git-help">
-            {state.merging
-              ? "Merge in progress. Resolve conflicts, review staged files, then commit."
-              : `${state.head.slice(0, 8) || "No commits yet"} · ${state.entries.length} changed files`}
-          </p>
+
           {state.merging && (
             <button
               className="secondary-button git-wide"
@@ -672,6 +675,7 @@ export default function GitPanel({
               Git credentials and SSH agent.
             </p>
           </details>
+          <div className="git-group">
           <button
             className="git-wide git-history-toggle"
             aria-expanded={activeHistory}
@@ -680,6 +684,7 @@ export default function GitPanel({
             {activeHistory ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             Recent commits ({state.history.length})
           </button>
+          </div>
           {activeHistory &&
             state.history.map((item) => (
               <button
@@ -785,7 +790,24 @@ export default function GitPanel({
                 <X size={17} />
               </button>
             </header>
-            {view.hunks?.hunks.length ? (
+            {view.historical && view.commitDiff?.files.length ? (
+              <div className="git-hunk-review">
+                <details className="git-patch-details">
+                  <summary>Commit details</summary>
+                  <pre className="git-patch-header">{view.commitDiff.header}</pre>
+                </details>
+                {view.commitDiff.files.map((file, fileIndex) => <section className="git-commit-file" key={fileIndex}>
+                  <h3>{file.path}</h3>
+                  {file.hunks.length ? <>
+                    <details className="git-patch-details"><summary>File details</summary><pre className="git-patch-header">{file.header}</pre></details>
+                    {file.hunks.map((hunk, index) => <section className="git-hunk" key={index}>
+                      <label><span>Change {index + 1}</span><code className="git-hunk-range">{hunk.split("\n")[0]}</code></label>
+                      <GitDiffHunk source={hunk} path={file.path} />
+                    </section>)}
+                  </> : <pre className="git-raw-patch">{file.header}</pre>}
+                </section>)}
+              </div>
+            ) : view.hunks?.hunks.length ? (
               <div className="git-hunk-review">
                 <details className="git-patch-details">
                   <summary>Patch details</summary>

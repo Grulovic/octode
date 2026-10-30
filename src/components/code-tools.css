@@ -45,10 +45,13 @@
   font-size: 11px;
 }
 .git-heading {
-  display: flex;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  column-gap: 7px;
+  row-gap: 6px;
   align-items: center;
 }
+.git-repository-summary { grid-column: 2; margin: 0; }
 .git-heading strong {
   flex: 1;
   overflow: hidden;
@@ -961,3 +964,4 @@
   white-space: pre-wrap;
   color: var(--oc-text);
 }
+.git-commit-file > h3 { margin: 18px 0 10px; color: var(--oc-text-strong); font: 500 12px/1.6 var(--oc-font-mono); overflow-wrap: anywhere; }

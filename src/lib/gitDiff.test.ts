@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { parseHunk, changedRanges } from "./gitDiff";
+import { parseHunk, changedRanges, parseCommitDiff } from "./gitDiff";
 it("aligns replacements, additions and context with original file line numbers", () => {
   const hunk = parseHunk(
     "@@ -10,3 +10,4 @@ example\n keep\n-old\n+new\n+extra\n end\n",
@@ -47,4 +47,26 @@ it("finds changed character ranges without splitting emoji", () => {
   expect(before.slice(start, oldEnd)).toBe("😀");
   expect(after.slice(start, newEnd)).toBe("😃");
   expect(changedRanges("same", "same")).toEqual([4, 4, 4]);
+});
+
+it("splits commit patches by file and hunk while retaining metadata, binary changes and renames", () => {
+  const source = 'commit abc\nAuthor: Test\n\ndiff --git a/one.ts b/one.ts\n--- a/one.ts\n+++ b/one.ts\n@@ -1 +1 @@\n-old\n+new\n@@ -9 +9 @@\n-before\n+after\ndiff --git a/gone.sql b/gone.sql\ndeleted file mode 100644\n--- a/gone.sql\n+++ /dev/null\n@@ -1 +0,0 @@\n-delete me\ndiff --git a/image.png b/image.png\nBinary files a/image.png and b/image.png differ\ndiff --git a/old.txt b/new name.txt\nsimilarity index 100%\nrename from old.txt\nrename to new name.txt\n';
+  const result = parseCommitDiff(source);
+  expect(result.header).toContain("Author: Test");
+  expect(result.files.map((file) => file.path)).toEqual(["one.ts", "gone.sql", "image.png", "new name.txt"]);
+  expect(result.files[0].hunks).toHaveLength(2);
+  expect(parseHunk(result.files[0].hunks[0])?.after).toEqual(["new"]);
+  expect(parseHunk(result.files[0].hunks[1])?.before).toEqual(["before"]);
+  expect(parseHunk(result.files[1].hunks[0])?.before).toEqual(["delete me"]);
+  expect(result.files[2].header).toContain("Binary files");
+  expect(result.files[3].hunks).toEqual([]);
+  expect(parseCommitDiff("commit empty").files).toEqual([]);
+});
+it("decodes quoted Git paths and leaves combined merge patches available as raw details", () => {
+  const quoted = parseCommitDiff('diff --git "a/caf\\303\\251.sql" "b/caf\\303\\251.sql"\n--- "a/caf\\303\\251.sql"\n+++ "b/caf\\303\\251.sql"\n@@ -1 +1 @@\n-a\n+b\n');
+  expect(quoted.files[0].path).toBe("café.sql");
+  expect(parseHunk(quoted.files[0].hunks[0])?.after).toEqual(["b"]);
+  const merge = parseCommitDiff("commit merge\ndiff --cc foo.ts\n@@@ -1,1 -1,1 +1,1 @@@\n++merged\n");
+  expect(merge.files[0].hunks).toEqual([]);
+  expect(merge.files[0].header).toContain("++merged");
 });

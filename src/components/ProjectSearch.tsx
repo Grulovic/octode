@@ -269,17 +269,15 @@ export default function ProjectSearch({
           <span>Regex replacements support $1 capture groups.</span>
         </div>
       )}
-      <div className="search-summary">
+      {(loading || error || result) && <div className="search-summary">
         {loading ? (
           "Searching…"
         ) : error ? (
           <span role="alert">{error}</span>
         ) : result ? (
           `${result.matches.length}${result.truncated ? "+" : ""} matching lines`
-        ) : (
-          "Find text across your project folders."
-        )}
-      </div>
+        ) : null}
+      </div>}
       <div className="search-results">
         {fileGroups.map(([path, group]) => (
           <section className="search-file-group" key={path}><h3>{group.relative}<span>{group.matches.length}</span></h3>
@@ -302,10 +300,6 @@ export default function ProjectSearch({
           {warning}
         </p>
       ))}
-      <p className="search-footnote">
-        Search uses saved files. Generated folders are excluded. In Git
-        projects, ignored untracked files are excluded when enabled.
-      </p>
       {preview && (
         <div className="code-modal-backdrop">
           <section

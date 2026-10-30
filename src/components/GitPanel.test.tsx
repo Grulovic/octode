@@ -363,3 +363,22 @@ it("opens a diff in the editor host while keeping staging controls available", a
   await act(async () => editorHost.querySelector<HTMLButtonElement>('[aria-label="Close Git diff"]')!.click());
   expect(editorHost.querySelector('[aria-label="Git diff"]')).toBeNull();
 });
+
+it("renders recent commits as read-only per-file before/after comparisons", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return { ...await original(command, args), history: [{ hash: "a".repeat(40), subject: "Example commit", author: "Test", date: "2026-10-30" }] };
+    if (command === "git_show_commit") return "commit example\n\ndiff --git a/example.ts b/example.ts\n--- a/example.ts\n+++ b/example.ts\n@@ -1 +1 @@\n-oldValue\n+newValue\ndiff --git a/picture.png b/picture.png\nBinary files a/picture.png and b/picture.png differ\n";
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  await act(async () => document.querySelector<HTMLButtonElement>(".git-history-toggle")!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>(".git-history")!.click());
+  const dialog = document.querySelector('[aria-label="Git diff"]')!;
+  expect(dialog.querySelector('[aria-label="Code changes before and after"]')).not.toBeNull();
+  expect(dialog.textContent).toContain("example.ts");
+  expect(dialog.textContent).toContain("oldValue"); expect(dialog.textContent).toContain("newValue");
+  expect(dialog.textContent).toContain("Binary files");
+  expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
+  expect(dialog.textContent).not.toContain("Stage selected hunks");
+});

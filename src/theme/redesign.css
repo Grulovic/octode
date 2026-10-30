@@ -197,12 +197,15 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .git-tools { padding: var(--oc-space-5); font-size: 12px; }
 .app-shell .git-group { margin: var(--oc-space-5) 0; padding-top: var(--oc-space-4); }
 .app-shell .git-group-heading { min-height: var(--oc-row-tree); }
-.app-shell .git-group-heading > button:first-child { color: var(--oc-text); font: var(--oc-text-control); display: flex; align-items: center; gap: var(--oc-space-3); padding: 0; }
+.app-shell .git-group-heading > button:first-child,
+.app-shell .git-options > summary,
+.app-shell .git-history-toggle { color: var(--oc-text); font: var(--oc-text-control); display: flex; align-items: center; gap: var(--oc-space-3); padding: 0; min-height: var(--oc-row-tree); margin: 0; }
 .app-shell .git-change { min-height: var(--oc-row-tree); }
 .app-shell .git-change > button:first-child { padding: var(--oc-space-2) 0; }
 .app-shell .git-control { gap: var(--oc-space-3); }
 .app-shell .git-commit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--oc-space-3); }
-.app-shell .git-options { border-top: 1px solid var(--oc-border); padding-top: var(--oc-space-5); }
+.app-shell .git-options { border-top: 1px solid var(--oc-surface); margin: var(--oc-space-5) 0; padding-top: var(--oc-space-4); }
+.app-shell .git-options[open] > summary { margin-bottom: var(--oc-space-4); }
 .app-shell .project-search { padding: var(--oc-space-5); }
 .app-shell .project-search-input { min-height: var(--oc-control); height: var(--oc-control); border-radius: var(--oc-radius-control); background: var(--oc-bg); }
 .app-shell .project-search-input input { min-height: 0; border: 0; background: transparent; }

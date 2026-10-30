@@ -3,11 +3,12 @@ import "./code-tools.css";
 import "./terminal.css";
 import { registerTabCloser } from "../lib/closeTab";
 import { lazy, Suspense, useState, useRef, useEffect } from "react";
-import { Plus, RotateCcw, X, TerminalSquare, Folder, ChevronDown } from "./DesignIcons";
+import { Plus, RotateCcw, X, TerminalSquare, Folder, ChevronDown, Sparkle } from "./DesignIcons";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import { middleClose } from "../lib/middleClose";
 import { desktop } from "../lib/bridge";
 import { filename } from "../lib/workspace";
+import { loadSettings } from "../lib/settings";
 import { confirmAction } from "./ToolLayout";
 import type { Project } from "../types";
 const LocalTerminal = lazy(() =>
@@ -47,6 +48,7 @@ export default function TerminalPanel({
   >(() => [{ id: crypto.randomUUID(), root: initialRoot, generation: 0 }]);
   const [active, setActive] = useState<string>(() => tabs[0].id);
   const [newRoot, setNewRoot] = useState(initialRoot);
+  useEffect(() => setNewRoot(initialRoot), [initialRoot]);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [activity, setActivity] = useState<Record<string, boolean>>({});
   const hasOutput = tabs.some((tab) => activity[tab.id]);
@@ -92,27 +94,30 @@ export default function TerminalPanel({
       panelRef.current?.focus({ preventScroll: true });
   }, [visible, tabs.length]);
   const handledLaunch = useRef<number | null>(null);
-  useEffect(() => {
-    if (!launchRequest || handledLaunch.current === launchRequest.id) return;
-    handledLaunch.current = launchRequest.id;
+  const launchCommand = (root: string, command: string) => {
     if (tabs.length >= 6)
       onError(
         "All six terminal tabs are in use. Close a tab before launching the command.",
       );
-    else if (!project.roots.includes(launchRequest.root))
+    else if (!project.roots.includes(root))
       onError(
         "Choose an available project folder before launching the terminal command.",
       );
     else {
       const tab = {
         id: crypto.randomUUID(),
-        root: launchRequest.root,
+        root,
         generation: 0,
-        startupCommand: launchRequest.command,
+        startupCommand: command,
       };
       setTabs((previous) => [...previous, tab]);
       setActive(tab.id);
     }
+  };
+  useEffect(() => {
+    if (!launchRequest || handledLaunch.current === launchRequest.id) return;
+    handledLaunch.current = launchRequest.id;
+    launchCommand(launchRequest.root, launchRequest.command);
     onLaunchHandled?.(launchRequest.id);
   }, [launchRequest, onLaunchHandled, tabs.length, project, onError]);
   const close = async (id: string) => {
@@ -207,6 +212,15 @@ export default function TerminalPanel({
           onClick={add}
         >
           <Plus size={14} />
+        </button>
+        <button
+          className="terminal-add terminal-ai-launch"
+          aria-label="New AI terminal"
+          title="Run the terminal launch command in the selected folder"
+          disabled={tabs.length >= 6}
+          onClick={() => launchCommand(newRoot, loadSettings().terminalCommand)}
+        >
+          <Sparkle size={16} />
         </button>
         <div className="terminal-toolbar-actions">
           <button

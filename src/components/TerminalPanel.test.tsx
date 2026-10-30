@@ -317,3 +317,56 @@ it("Cmd+T creates the first session from an empty pane without needing an existi
     outside.remove();
   }
 });
+
+it("AI star launches the current configured command in the picker folder in a new tab", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const key = "octode-editor-settings", previous = localStorage.getItem(key);
+  try {
+    localStorage.setItem(key, JSON.stringify({ version: 1, terminalCommand: "codex --resume" }));
+    await act(async () => root.render(<TerminalPanel project={{ id: "ai", name: "AI", roots: ["/api", "/frontend"], updatedAt: 0 }} initialRoot="/api" visible onError={() => {}} onHide={() => {}} />));
+    const picker = host.querySelector<HTMLSelectElement>("select")!;
+    await act(async () => { picker.value = "/frontend"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+    const star = host.querySelector<HTMLButtonElement>('[aria-label="New AI terminal"]')!;
+    await act(async () => star.click());
+    const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
+    expect(tabs()).toHaveLength(2);
+    expect(tabs()[1].classList.contains("selected")).toBe(true);
+    expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
+    expect(host.textContent).toContain("codex --resume");
+    localStorage.setItem(key, JSON.stringify({ version: 1, terminalCommand: "claude" }));
+    await act(async () => star.click());
+    expect(tabs()).toHaveLength(3); expect(host.textContent).toContain("claude");
+    for (let count = 0; count < 3; count++) await act(async () => star.click());
+    expect(tabs()).toHaveLength(6); expect(star.disabled).toBe(true);
+    await act(async () => star.click()); expect(tabs()).toHaveLength(6);
+  } finally {
+    if (previous === null) localStorage.removeItem(key); else localStorage.setItem(key, previous);
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+it("syncs the new-terminal folder with sidebar changes without changing existing sessions", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const project = { id: "folders", name: "Folders", roots: ["/api", "/frontend"], updatedAt: 0 };
+  const render = (folder: string) => root.render(<TerminalPanel project={project} initialRoot={folder} visible onError={() => {}} onHide={() => {}} />);
+  try {
+    await act(async () => render("/api"));
+    const picker = host.querySelector<HTMLSelectElement>("select")!;
+    expect(picker.value).toBe("/api");
+    await act(async () => render("/frontend"));
+    expect(picker.value).toBe("/frontend");
+    const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
+    expect(tabs()).toHaveLength(1);
+    expect(tabs()[0].querySelector("button")?.title).toBe("/api");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="New terminal"]')!.click());
+    expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
+    await act(async () => { picker.value = "/api"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => render("/frontend"));
+    expect(picker.value).toBe("/api");
+    await act(async () => render("/api"));
+    await act(async () => render("/frontend"));
+    expect(picker.value).toBe("/frontend");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

@@ -97,3 +97,39 @@ export function changedRanges(
   if (low(after.charCodeAt(newEnd))) newEnd++;
   return [Math.max(0, start), oldEnd, newEnd];
 }
+
+export interface CommitDiffFile { path: string; header: string; hunks: string[] }
+export function parseCommitDiff(source: string): { header: string; files: CommitDiffFile[] } {
+  const lines = source.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  const files: CommitDiffFile[] = [];
+  const intro: string[] = [];
+  let file: CommitDiffFile | undefined;
+  const path = (value: string) => {
+    let decoded = value;
+    if (decoded.startsWith('"')) {
+      try {
+        decoded = JSON.parse(decoded.replace(/(?:\\[0-7]{3})+/g, (part) =>
+          new TextDecoder().decode(Uint8Array.from(part.match(/[0-7]{3}/g)!.map((octal) => parseInt(octal, 8))))));
+      } catch { decoded = decoded.slice(1, -1); }
+    }
+    return decoded.replace(/^[ab]\//, "");
+  };
+  for (const line of lines) {
+    if (/^diff --(?:git|cc|combined) /.test(line)) {
+      const names = line.replace(/^diff --(?:git|cc|combined) /, "");
+      const destination = names.match(/ ("b\/(?:[^"\\]|\\.)*")$/)?.[1] ?? names.match(/ b\/(.*)$/)?.[1] ?? names;
+      file = { path: path(destination), header: line + "\n", hunks: [] };
+      files.push(file);
+    } else if (!file) intro.push(line);
+    else if (/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/.test(line)) file.hunks.push(line + "\n");
+    else if (file.hunks.length) file.hunks[file.hunks.length - 1] += line + "\n";
+    else {
+      file.header += line + "\n";
+      if (line.startsWith("--- ") && line.slice(4) !== "/dev/null") file.path = path(line.slice(4));
+      if (line.startsWith("+++ ") && line.slice(4) !== "/dev/null") file.path = path(line.slice(4));
+      if (line.startsWith("rename to ")) file.path = path(line.slice(10));
+    }
+  }
+  return { header: intro.join("\n").trimEnd(), files };
+}
