@@ -160,10 +160,20 @@
   padding-top: 12px;
 }
 .git-options summary {
+  display: flex;
+  align-items: center;
+  gap: var(--oc-space-3);
+  list-style: none;
   cursor: pointer;
   color: var(--oc-muted);
   margin-bottom: 12px;
 }
+.git-options summary::-webkit-details-marker { display: none; }
+.git-options[open] > summary > svg { transform: rotate(90deg); }
+.git-group-heading > button > svg,
+.git-options summary > svg,
+.git-history-toggle > svg { flex-shrink: 0; color: var(--oc-muted); }
+.git-history-toggle { display: flex; align-items: center; justify-content: flex-start; gap: var(--oc-space-3); padding: 0; color: var(--oc-muted); }
 .git-options > button {
   margin: 8px 0;
   padding: 6px;

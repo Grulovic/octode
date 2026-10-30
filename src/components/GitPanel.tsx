@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { Minus } from "lucide-react";
-import { GitBranch, Plus, RefreshCw, X, RotateCcw, ArrowRight } from "./DesignIcons";
+import { GitBranch, Plus, RefreshCw, X, RotateCcw, ArrowRight, ChevronDown, ChevronRight } from "./DesignIcons";
 import { desktop, invoke } from "../lib/bridge";
 import { confirmAction } from "./ToolLayout";
 import type { GitEntry, GitSnapshot, GitConflict } from "../devTypes";
@@ -455,7 +455,7 @@ export default function GitPanel({
             return (
               <div className="git-group" key={group}>
                 <div className="git-group-heading">
-                  <button aria-expanded={!collapsed.includes(group)} onClick={() => setCollapsed((old) => old.includes(group) ? old.filter((name) => name !== group) : [...old, group])}><span aria-hidden="true">{collapsed.includes(group) ? "›" : "⌄"}</span>{group[0].toUpperCase() + group.slice(1)} <span>{entries.length}</span></button>
+                  <button aria-expanded={!collapsed.includes(group)} onClick={() => setCollapsed((old) => old.includes(group) ? old.filter((name) => name !== group) : [...old, group])}>{collapsed.includes(group) ? <ChevronRight size={16} /> : <ChevronDown size={16} />}{group[0].toUpperCase() + group.slice(1)} <span>{entries.length}</span></button>
                   {group !== "conflicts" && (
                     <button
                       disabled={busy || !entries.length}
@@ -593,7 +593,7 @@ export default function GitPanel({
             </button>
           </div>
           <details className="git-options">
-            <summary>Branches & remotes</summary>
+            <summary><ChevronRight size={16} />Branches & remotes</summary>
             <label className="git-control">
               Branch to merge
               <CustomSelect
@@ -673,9 +673,11 @@ export default function GitPanel({
             </p>
           </details>
           <button
-            className="git-wide"
+            className="git-wide git-history-toggle"
+            aria-expanded={activeHistory}
             onClick={() => setHistory((value) => !value)}
           >
+            {activeHistory ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             Recent commits ({state.history.length})
           </button>
           {activeHistory &&

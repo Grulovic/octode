@@ -473,7 +473,7 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .project-search-input { gap: var(--oc-space-2); padding: 0 var(--oc-space-3); }
 .app-shell .project-search-input > svg { flex-shrink: 0; }
 .app-shell .project-search-input > input { flex: 1 1 0; width: 0; min-width: 0; }
-.app-shell .project-search-input > input:focus-visible { outline: none; box-shadow: none; }
+.app-shell .project-search .project-search-input > input:is(:focus,:focus-visible) { outline: none; box-shadow: none; }
 .app-shell .project-search-input:focus-within { border-color: var(--oc-accent); background: var(--oc-panel); }
 .app-shell .project-search-input > button { flex: 0 0 22px; width: 22px; height: 22px; padding: 0; align-items: center; justify-content: center; white-space: nowrap; font: 500 12px/16px var(--oc-font-mono); }
 
