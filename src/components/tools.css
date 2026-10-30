@@ -146,7 +146,7 @@ fieldset.service-form-grid {
 }
 .service-tool input:not([type="checkbox"]),
 .service-tool :is(select, .custom-select),
-.service-tool textarea {
+.service-tool textarea:not(.inputarea) {
   border: 1px solid var(--oc-border);
   border-radius: 6px;
   background: var(--oc-bg);
@@ -159,7 +159,7 @@ fieldset.service-form-grid {
 }
 .service-tool input:focus,
 .service-tool :is(select, .custom-select):focus,
-.service-tool textarea:focus {
+.service-tool textarea:not(.inputarea):focus {
   border-color: var(--oc-muted);
 }
 .service-tool input[type="checkbox"] {

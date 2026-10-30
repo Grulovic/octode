@@ -1714,3 +1714,6 @@ input[type="checkbox"]:focus-visible {
 .settings-data-actions button { border: 1px solid var(--oc-border-strong); padding: 8px 12px; border-radius: var(--oc-radius-control); }
 
 .file-type-icon { display: inline-block; flex-shrink: 0; object-fit: contain; vertical-align: middle; }
+
+.main-workspace.terminal-home-open { overflow: hidden; }
+.terminal-home-open > .dashboard { flex: 1; min-height: 0; overflow: auto; }

@@ -1,4 +1,5 @@
 mod app_data;
+mod notes;
 use app_data::{export_app_data, import_app_data};
 mod exports;
 mod formatting;
@@ -28,6 +29,7 @@ mod projects;
 mod search_core;
 mod terminal;
 mod terminal_core;
+mod terminal_links;
 
 use projects::{Project, Store, WorkspaceSession};
 use serde::{Deserialize, Serialize};
@@ -109,7 +111,7 @@ async fn search_workspace(
     }
     let mode = match kind.as_str() {
         "files" => search_core::Mode::Files,
-        "text" => search_core::Mode::Text { match_case },
+        "text" | "deep" => search_core::Mode::Text { match_case },
         _ => return Err("Unknown search mode".into()),
     };
     let roots = store
@@ -322,21 +324,42 @@ async fn git_status(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TerminalStartRequest {
-    project_id: String,
+    project_id: Option<String>,
     root: String,
     rows: u16,
     cols: u16,
 }
 
 #[tauri::command]
+fn terminal_home(window: WebviewWindow, app: tauri::AppHandle) -> Result<String, String> {
+    if window.label() != "main" {
+        return Err("Use the main window".into());
+    }
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    let home = home.canonicalize().map_err(|error| error.to_string())?;
+    Ok(home.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 async fn terminal_create(
     window: WebviewWindow,
+    app: tauri::AppHandle,
     store: State<'_, Store>,
     terminals: State<'_, Arc<Terminals>>,
     request: TerminalStartRequest,
     output: Channel<Output>,
 ) -> Result<String, String> {
-    let root = project_path(&window, &store, &request.project_id, &request.root)?;
+    let root = if let Some(project_id) = &request.project_id {
+        project_path(&window, &store, project_id, &request.root)?
+    } else {
+        if window.label() != "main" {
+            return Err("Use the main window".into());
+        }
+        terminal::home_root(
+            &app.path().home_dir().map_err(|error| error.to_string())?,
+            &request.root,
+        )?
+    };
     let terminals = terminals.inner().clone();
     let owner = window.label().to_owned();
     tauri::async_runtime::spawn_blocking(move || {
@@ -465,6 +488,7 @@ pub fn run() {
                     .close_window(window.label());
                 let _ = window.state::<SearchJobs>().cancel(window.label(), "files");
                 let _ = window.state::<SearchJobs>().cancel(window.label(), "text");
+                let _ = window.state::<SearchJobs>().cancel(window.label(), "deep");
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -524,12 +548,17 @@ pub fn run() {
             load_workspace_state,
             save_workspace_state,
             list_projects,
+            notes::load_notes,
+            notes::save_note,
+            notes::delete_note,
             create_project,
             activate_project,
             list_directory,
             read_file,
             save_file,
             git_status,
+            terminal_links::open_terminal_url,
+            terminal_home,
             terminal_create,
             terminal_write,
             terminal_resize,

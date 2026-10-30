@@ -2388,3 +2388,51 @@ it("Cmd+2 opens the terminal even while a settings dialog is open", async () => 
   expect(document.querySelector<HTMLElement>(".workspace-terminal-dock")?.style.display).toBe("flex");
   expect(document.querySelector('[aria-label="Settings"][role="dialog"]')).not.toBeNull();
 });
+
+it("opens global notes with Cmd+6 from Projects and preserves saved notes and drafts across sections", async () => {
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "6", metaKey: true, bubbles: true, cancelable: true })));
+  await waitFor(() => document.querySelector('[aria-label="Global notes"]'));
+  const newNote = [...document.querySelectorAll<HTMLButtonElement>(".notes-sidebar button")].find((button) => button.textContent?.includes("New note"))!;
+  await act(async () => newNote.click());
+  await type('[aria-label="Note title"]', "Global scratch");
+  await type(".notes-editor textarea", "first line\nsecond line");
+  expect(localStorage.getItem("octode-global-notes")).toBeNull();
+  await click(".notes-main .primary-button");
+  expect(JSON.parse(localStorage.getItem("octode-global-notes")!)[0].text).toBe("first line\nsecond line");
+  await click('[aria-label="Workspace home"]');
+  await enterCode();
+  await click('[aria-label="Notes"]');
+  expect(document.querySelector<HTMLInputElement>('[aria-label="Note title"]')?.value).toBe("Global scratch");
+  await type(".notes-editor textarea", "unsaved draft");
+  await click('[aria-label="API"]');
+  await click('[aria-label="Notes"]');
+  expect(document.querySelector<HTMLTextAreaElement>(".notes-editor textarea")?.value).toBe("unsaved draft");
+  expect(JSON.parse(localStorage.getItem("octode-global-notes")!)[0].text).toBe("first line\nsecond line");
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true })));
+  expect(JSON.parse(localStorage.getItem("octode-global-notes")!)[0].text).toBe("unsaved draft");
+  const editorSettings = localStorage.getItem("octode-editor-settings");
+  await click('[aria-label="Word wrap"]');
+  expect(document.querySelector('[aria-label="Word wrap"]')?.getAttribute("aria-pressed")).toBe("true");
+  expect(document.querySelector<HTMLTextAreaElement>(".notes-editor textarea")?.style.whiteSpace).toBe("pre-wrap");
+  expect(localStorage.getItem("octode-editor-settings")).toBe(editorSettings);
+  await click('[aria-label="Find in note"]');
+  await waitFor(() => document.querySelector('.notes-editor [aria-label="Find in file"]'));
+});
+
+it("opens a home-folder terminal from global Notes without a project and keeps it when switching to Projects", async () => {
+  await click('[aria-label="Notes"]');
+  await waitFor(() => !document.querySelector<HTMLButtonElement>('[aria-label="Local terminal"]')?.disabled);
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", metaKey: true, bubbles: true, cancelable: true })));
+  await waitFor(() => document.querySelector(".preview-terminal"));
+  const session = document.querySelector(".local-terminal-session");
+  expect(document.querySelector('.local-terminal-tabs button[title="/home"]')).not.toBeNull();
+  expect(document.querySelector<HTMLElement>(".workspace-terminal-dock")?.style.display).toBe("flex");
+  await click('[aria-label="Workspace home"]');
+  expect(document.querySelector(".dashboard")).not.toBeNull();
+  expect(document.querySelector(".local-terminal-session")).toBe(session);
+  await click('[aria-label="Notes"]');
+  expect(document.querySelector(".local-terminal-session")).toBe(session);
+  await click('[aria-label="Hide terminal"]');
+  await click('[aria-label="Local terminal"]');
+  expect(document.querySelector(".local-terminal-session")).toBe(session);
+});

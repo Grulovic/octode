@@ -50,18 +50,18 @@ export function droppedPaths(data: DataTransfer, windows = false): string[] {
     .map((line) => {
       const url = new URL(line);
       if (url.protocol !== "file:")
-        throw new Error("Drop local files or folders into the terminal.");
+        throw new Error("Drop local files or folders.");
       const path = decodeURIComponent(url.pathname);
       if (windows)
         return url.hostname && url.hostname !== "localhost"
           ? `\\\\${url.hostname}${path.replaceAll("/", "\\")}`
           : path.replace(/^\/(?=[a-zA-Z]:)/, "").replaceAll("/", "\\");
       if (url.hostname && url.hostname !== "localhost")
-        throw new Error("Drop a local file path into the terminal.");
+        throw new Error("Drop a local file path.");
       return path;
     });
 }
-export function installTerminalFileDrop(
+export function installFilePathDrop(
   element: HTMLElement,
   options: {
     active: () => boolean;
@@ -69,6 +69,8 @@ export function installTerminalFileDrop(
     onHover: (hover: boolean) => void;
     onError: (error: string) => void;
     native: boolean;
+    capture?: boolean;
+    onFiles?: (files: File[]) => void;
     windows?: boolean;
   },
 ) {
@@ -99,15 +101,17 @@ export function installTerminalFileDrop(
     event.stopPropagation();
     options.onHover(false);
     try {
-      options.onPaths(droppedPaths(event.dataTransfer!, options.windows));
+      const paths = droppedPaths(event.dataTransfer!, options.windows);
+      if (paths.length || !options.onFiles) options.onPaths(paths);
+      else options.onFiles(Array.from(event.dataTransfer!.files));
     } catch (error) {
       options.onError(String(error));
     }
   };
-  element.addEventListener("dragover", over);
-  element.addEventListener("dragenter", over);
-  element.addEventListener("dragleave", leave);
-  element.addEventListener("drop", drop);
+  element.addEventListener("dragover", over, options.capture ?? false);
+  element.addEventListener("dragenter", over, options.capture ?? false);
+  element.addEventListener("dragleave", leave, options.capture ?? false);
+  element.addEventListener("drop", drop, options.capture ?? false);
   if (options.native)
     void import("@tauri-apps/api/webview")
       .then(async ({ getCurrentWebview }) => {
@@ -145,9 +149,12 @@ export function installTerminalFileDrop(
   return () => {
     disposed = true;
     unlisten?.();
-    element.removeEventListener("dragover", over);
-    element.removeEventListener("dragenter", over);
-    element.removeEventListener("dragleave", leave);
-    element.removeEventListener("drop", drop);
+    element.removeEventListener("dragover", over, options.capture ?? false);
+    element.removeEventListener("dragenter", over, options.capture ?? false);
+    element.removeEventListener("dragleave", leave, options.capture ?? false);
+    element.removeEventListener("drop", drop, options.capture ?? false);
   };
 }
+
+// Keep terminal callers compatible while sharing native drop routing with Notes.
+export const installTerminalFileDrop = installFilePathDrop;

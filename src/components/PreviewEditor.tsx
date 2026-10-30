@@ -10,6 +10,7 @@ export default function PreviewEditor({
   onFindHandled,
   onNavigate,
   readOnly = false,
+  wordWrap,
 }: {
   document: Document;
   onChange: (value: string) => void;
@@ -19,6 +20,8 @@ export default function PreviewEditor({
   onNavigate?: (query: string, line?: number) => void;
   readOnly?: boolean;
   modelPath?: string;
+  languageId?: string;
+  wordWrap?: "on" | "off";
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const findInput = useRef<HTMLInputElement>(null);
@@ -112,6 +115,8 @@ export default function PreviewEditor({
             value.slice(0, position).split("\n").length,
           );
         }}
+        wrap={wordWrap === "on" ? "soft" : wordWrap === "off" ? "off" : undefined}
+        style={wordWrap ? { whiteSpace: wordWrap === "on" ? "pre-wrap" : "pre" } : undefined}
         value={document.text}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {

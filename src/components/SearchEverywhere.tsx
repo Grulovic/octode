@@ -9,9 +9,11 @@ import {
   type SearchEntry,
 } from "../lib/searchEverywhere";
 import { loadSectionEntries } from "../lib/sectionSearch";
-import type { Project } from "../types";
+import { searchWorkspace, cancelSearch } from "../lib/bridge";
+import type { Project, SearchResults } from "../types";
 import { filename } from "../lib/workspace";
 import "./search.css";
+const DEEP_SEARCH = "deep-search";
 export default function SearchEverywhere({
   project,
   onOpen,
@@ -24,7 +26,11 @@ export default function SearchEverywhere({
   const [sections, setSections] = useState<SearchEntry[]>([]);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState("");
-  const scopes = ["", ...project.roots];
+  const scopes = ["", ...project.roots, DEEP_SEARCH];
+  const deep = scope === DEEP_SEARCH;
+  const [deepResults, setDeepResults] = useState<SearchResults | null>(null);
+  const [deepLoading, setDeepLoading] = useState(false);
+  const [deepError, setDeepError] = useState("");
   const rootsKey = JSON.stringify(project.roots);
   const tabs = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -34,7 +40,7 @@ export default function SearchEverywhere({
   const [index, setIndex] = useState(() => cachedSearchIndex(project));
   const [filesLoading, setLoading] = useState(true);
   const [sectionsLoading, setSectionsLoading] = useState(true);
-  const loading = filesLoading || sectionsLoading;
+  const loading = deep ? deepLoading : filesLoading || sectionsLoading;
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -73,15 +79,55 @@ export default function SearchEverywhere({
         previousFocus.current.focus();
     };
   }, [project]);
+  useEffect(() => {
+    if (!deep || !query.trim()) {
+      setDeepResults(null);
+      setDeepLoading(false);
+      setDeepError("");
+      return;
+    }
+    let disposed = false;
+    setDeepResults(null);
+    setDeepError("");
+    setDeepLoading(true);
+    const timer = setTimeout(() => {
+      void searchWorkspace(project, query, "deep")
+        .then((result) => {
+          if (!disposed) {
+            setDeepResults(result);
+            setDeepLoading(false);
+          }
+        })
+        .catch((reason) => {
+          if (!disposed) {
+            setDeepError(String(reason));
+            setDeepLoading(false);
+          }
+        });
+    }, 250);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      void cancelSearch("deep").catch(() => {});
+    };
+  }, [project, deep, query]);
   const matches = useMemo(
-    () =>
-      matchingEntries(
+    () => deep
+      ? (deepResults?.matches ?? []).slice(0, 100).map((match): SearchEntry => ({
+          ...match,
+          root: project.roots
+            .filter((root) => match.path.startsWith(root + "/"))
+            .sort((a, b) => b.length - a.length)[0] ?? "",
+          label: filename(match.path),
+          kind: "file",
+        }))
+      : matchingEntries(
         [...(index?.entries ?? []), ...sections].filter(
           (entry) => !scope || (!entry.target && entry.root === scope),
         ),
         query,
       ),
-    [index, sections, query, scope],
+    [index, sections, query, scope, deep, deepResults, project.roots],
   );
   useLayoutEffect(() => {
     const container = list.current;
@@ -221,10 +267,10 @@ export default function SearchEverywhere({
               role="tab"
               aria-selected={scope === root}
               tabIndex={scope === root ? 0 : -1}
-              title={root || "Search all folders and sections"}
+              title={root === DEEP_SEARCH ? "Search inside project files" : root || "Search all folders and sections"}
               onClick={() => changeScope(root)}
             >
-              {i === 0 ? "All" : filename(root)}
+              {root === DEEP_SEARCH ? "Deep search" : i === 0 ? "All" : filename(root)}
             </button>
           ))}
         </div>
@@ -234,7 +280,7 @@ export default function SearchEverywhere({
             ref={input}
             aria-label="Search all sections"
             placeholder={
-              scope ? `Search ${filename(scope)}…` : "Search all sections…"
+              deep ? "Search inside project files…" : scope ? `Search ${filename(scope)}…` : "Search all sections…"
             }
             value={query}
             maxLength={256}
@@ -259,12 +305,13 @@ export default function SearchEverywhere({
           </button>
         </div>
         <div className="search-everywhere-summary" role="status">
-          {loading
+          {deep ? (deepLoading ? "Searching file contents…" : "File contents · All project folders · Saved files") : loading
             ? "Looking through project files and declarations…"
             : scope
               ? `Files · Classes · Functions · ${filename(scope)}`
               : "Files · Classes · Functions · Servers · Database · API"}
-          {error && <span role="alert">{error}</span>}
+          {(deep ? deepError : error) && <span role="alert">{deep ? deepError : error}</span>}
+          {deep && deepResults?.warnings.map((warning) => <span key={warning}>{warning}</span>)}
         </div>
         <div
           ref={list}
@@ -277,6 +324,8 @@ export default function SearchEverywhere({
             <p>
               {loading
                 ? "Preparing search…"
+                : deep && !query.trim()
+                  ? "Type text to search inside project files."
                 : query
                   ? "No matching results."
                   : "No searchable project files."}
@@ -312,13 +361,14 @@ export default function SearchEverywhere({
                     {entry.label}
                     <small>
                       {entry.relative}
-                      {["class", "function"].includes(entry.kind)
+                      {(entry.preview !== undefined || ["class", "function"].includes(entry.kind))
                         ? `:${entry.line}`
                         : ""}{" "}
                       · {entry.root}
                     </small>
+                    {entry.preview !== undefined && <small className="search-content-preview">{entry.preview}</small>}
                   </span>
-                  <span className="search-result-kind">{entry.kind}</span>
+                  <span className="search-result-kind">{entry.preview !== undefined ? "text" : entry.kind}</span>
                   <kbd>↵</kbd>
                 </button>
               );
@@ -326,7 +376,7 @@ export default function SearchEverywhere({
           )}
         </div>
         <footer>
-          {index?.truncated
+          {deep ? (deepResults?.truncated || (deepResults?.matches.length ?? 0) > 100 ? "First 100 matches or search limit reached · narrow your search" : "Search saved file contents · dependencies and ignored files excluded") : index?.truncated
             ? "Search limited to part of this project · dependencies excluded"
             : matches.length === 100
               ? "First 100 matches · keep typing to narrow"

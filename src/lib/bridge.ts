@@ -103,7 +103,7 @@ export async function gitStatus(
 export async function searchWorkspace(
   project: Project,
   query: string,
-  kind: "files" | "text",
+  kind: "files" | "text" | "deep",
   matchCase = false,
   options: SearchOptions = {
     regex: false,
@@ -167,7 +167,7 @@ export async function searchWorkspace(
   }
   return result;
 }
-export async function cancelSearch(kind: "files" | "text"): Promise<void> {
+export async function cancelSearch(kind: "files" | "text" | "deep"): Promise<void> {
   if (desktop) await invoke("cancel_search", { kind });
 }
 export async function loadSession(project: Project): Promise<WorkspaceSession> {

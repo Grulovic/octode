@@ -9,7 +9,9 @@ export async function exportText(
   const path = await (
     await import("@tauri-apps/plugin-dialog")
   ).save({ title, defaultPath: filename });
-  if (path) await invoke("save_export_file", { path, content });
+  if (!path) return null;
+  await invoke("save_export_file", { path, content });
+  return path;
 }
 export function resultCsv(result: DbResult) {
   const quote = (value: string) =>

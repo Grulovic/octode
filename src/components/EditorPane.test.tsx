@@ -15,10 +15,13 @@ vi.mock("../editor/runtime", () => ({
       defineTheme: vi.fn(),
       MouseTargetType: { CONTENT_TEXT: 6 },
       getModel: (uri: any) => harness.models.get(uri.toString()),
-      createModel: (value: string, _language: string, uri: any) => {
+      setModelLanguage: (model: any, language: string) => { model.language = language; },
+      createModel: (value: string, language: string, uri: any) => {
         const model = {
           uri,
           value,
+          language,
+          getLanguageId() { return this.language; },
           getValue() {
             return this.value;
           },
@@ -211,6 +214,25 @@ describe("file-bound editor events", () => {
     expect(instance.decorations.set).toHaveBeenLastCalledWith([]);
     instance.mouseLeave();
     expect(instance.decorations.clear).toHaveBeenCalled();
+  });
+  it("changes note language in place without replacing the editor or losing text", async () => {
+    const change = vi.fn();
+    const render = (languageId: string) => root.render(<EditorPane
+      document={file("notes://scratch.txt", "select * from users;")}
+      modelPath="notes://scratch.txt" languageId={languageId} onChange={change}
+    />);
+    await act(async () => render("plaintext"));
+    const instance = harness.instances[0], model = instance.model;
+    await act(async () => render("php"));
+    expect(model.getLanguageId()).toBe("php");
+    await act(async () => render("sql"));
+    expect(model.getLanguageId()).toBe("sql");
+    await act(async () => render("plaintext"));
+    expect(model.getLanguageId()).toBe("plaintext");
+    expect(harness.instances).toHaveLength(1);
+    expect(instance.model).toBe(model);
+    expect(model.getValue()).toBe("select * from users;");
+    expect(change).not.toHaveBeenCalled();
   });
   it("keeps main and merge models separate and disposes the merge model on close", async () => {
     const change = vi.fn();

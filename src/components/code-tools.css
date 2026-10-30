@@ -132,7 +132,7 @@
   margin: 12px 0;
   color: var(--oc-muted);
 }
-.git-tools textarea,
+.git-tools textarea:not(.inputarea),
 .git-tools :is(select, .custom-select),
 .git-tools input {
   width: 100%;
@@ -144,7 +144,7 @@
   border-radius: 5px;
   font-size: 11px;
 }
-.git-tools textarea {
+.git-tools textarea:not(.inputarea) {
   resize: vertical;
   min-height: 65px;
 }

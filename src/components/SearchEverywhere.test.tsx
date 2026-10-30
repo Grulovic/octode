@@ -8,6 +8,13 @@ import type { SearchEntry } from "../lib/searchEverywhere";
 const fixture = vi.hoisted(() => ({
   entries: null as SearchEntry[] | null,
   sections: [] as SearchEntry[],
+  search: vi.fn(),
+  cancel: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../lib/bridge", async (original) => ({
+  ...(await original<typeof import("../lib/bridge")>()),
+  searchWorkspace: fixture.search,
+  cancelSearch: fixture.cancel,
 }));
 vi.mock("../lib/searchEverywhere", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/searchEverywhere")>()),
@@ -162,7 +169,7 @@ it("defaults to All, scopes before the result limit, preserves queries and suppo
       [...document.querySelectorAll('[role="tab"]')].map(
         (tab) => tab.textContent,
       ),
-    ).toEqual(["All", "project-a", "project-b"]);
+    ).toEqual(["All", "project-a", "project-b", "Deep search"]);
     await type("Room");
     expect(rows()).toHaveLength(100);
     expect(
@@ -187,6 +194,8 @@ it("defaults to All, scopes before the result limit, preserves queries and suppo
     );
     expect(active()).toBe("project-b");
     await key("ArrowRight");
+    expect(active()).toBe("Deep search");
+    await key("ArrowRight");
     expect(active()).toBe("All");
     await type("Special");
     expect(rows()).toHaveLength(1);
@@ -207,5 +216,47 @@ it("defaults to All, scopes before the result limit, preserves queries and suppo
     await act(async () => root.unmount());
     fixture.entries = null;
     fixture.sections = [];
+  }
+});
+
+it("only scans file contents in Deep search, ignores stale results, and opens the matching line", async () => {
+  fixture.search.mockReset();
+  fixture.cancel.mockClear();
+  let finishOld: (value: unknown) => void = () => {};
+  fixture.search.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
+  const result = {
+    files: [], matches: [{ path: "/welcome/routes/web.php", relative: "routes/web.php", line: 17, preview: "return secret_content;" }],
+    truncated: false, cancelled: false, skipped: 0, warnings: [],
+  };
+  fixture.search.mockResolvedValueOnce(result);
+  document.body.innerHTML = '<div id="test"></div>';
+  const root = createRoot(document.getElementById("test")!);
+  const open = vi.fn(), close = vi.fn();
+  const type = async (value: string) => act(async () => {
+    const input = document.querySelector<HTMLInputElement>(".quick-open-input input")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  try {
+    await act(async () => root.render(<SearchEverywhere project={previewProject} onOpen={open} onClose={close} />));
+    await type("first");
+    expect(fixture.search).not.toHaveBeenCalled();
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((tab) => tab.textContent === "Deep search")!.click());
+    expect(fixture.search).not.toHaveBeenCalled();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 280)); });
+    expect(fixture.search).toHaveBeenCalledWith(previewProject, "first", "deep");
+    await type("secret_content");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 280)); });
+    expect(fixture.cancel).toHaveBeenCalledWith("deep");
+    await act(async () => finishOld({ ...result, matches: [] }));
+    const row = document.querySelector<HTMLButtonElement>('[role="option"]')!;
+    expect(row.textContent).toContain("return secret_content;");
+    expect(row.textContent).toContain("routes/web.php:17");
+    await act(async () => row.click());
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ path: result.matches[0].path, line: 17 }));
+    expect(close).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    fixture.search.mockReset();
   }
 });

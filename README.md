@@ -10,6 +10,7 @@ Autocomplete is out of scope across the whole app: no suggestion popups, inline 
 
 Implemented source:
 
+- Global plain-text Notes (Cmd/Ctrl+6), available above Terminal and from Projects, with a note list, titles, line numbers, title-extension syntax highlighting, Open/file-drop imports as independent note copies, Find/Word Wrap toolbar, explicit Save/Cmd+S, Save as to external files, per-note drafts, SQLite persistence, and quit/restart unsaved-change checks. Notes are shared across projects.
 - React workspace shell, project cards, multi-folder project creation/editing/removal, and one native window for the whole app.
 - Newly opened projects start in Code; returning to a parked project restores its last section. Cmd/Ctrl+1 selects Code → Files, +2 toggles the shared local terminal, +3 selects Servers, +4 Database, +5 API, and +0 returns to Projects.
 - Shared custom dropdown menus use the same Deep Ocean surfaces as file context menus throughout Code, Git, terminals, Servers, Database, API, imports, and Settings. They support keyboard navigation/typeahead, checked selection, viewport-aware placement, and thin scrolling.
@@ -50,7 +51,7 @@ npm install
 npm run desktop
 ```
 
-Open **New project**, select one or more folders, and create the project. Its workspace opens in the same window. Use **Projects** next to the logo to return. Choose Code, expand a folder, and open a file. Code changes save automatically after a 600 ms typing pause, on focus loss/tool switching, and before closing a tab or leaving the project. The status bar shows pending, saving, saved, or failed states. Cmd/Ctrl+S remains an immediate-save shortcut; Code has no normal Save button. Use Cmd/Ctrl+2 or the terminal button to open the local terminal in the selected project root from any section.
+Open **New project**, select one or more folders, and create the project. Its workspace opens in the same window. Use **Projects** next to the logo to return. Choose Code, expand a folder, and open a file. Code changes save automatically after a 600 ms typing pause, on focus loss/tool switching, and before closing a tab or leaving the project. The status bar shows pending, saving, saved, or failed states. Cmd/Ctrl+S remains an immediate-save shortcut; Code has no normal Save button. Use Cmd/Ctrl+2 or the terminal button to open the local terminal in the selected project root from any section. From Projects or global Notes without an open project, the terminal starts in your home folder and remains available while switching between those screens.
 
 A temporary **Restart** button at the bottom left relaunches the current app/profile after saving Code, waiting for pending explicit saves, and warning about unsaved tool settings. This loads the latest rebuilt app at the same path.
 

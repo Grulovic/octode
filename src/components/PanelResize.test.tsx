@@ -5,7 +5,7 @@ import { beforeEach, afterEach, expect, it } from "vitest";
 import PanelResize, { usePanelSize } from "./PanelResize";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root;
-function Layout({ axis = "x" }: { axis?: "x" | "y" }) {
+function Layout({ axis = "x", minSize }: { axis?: "x" | "y"; minSize?: number }) {
   const panel = useRef<HTMLDivElement>(null);
   const [size, setSize] = usePanelSize("test-panel", 240);
   return (
@@ -22,6 +22,7 @@ function Layout({ axis = "x" }: { axis?: "x" | "y" }) {
         axis={axis}
         onResize={setSize}
         label="Resize test"
+        minSize={minSize}
       />
       </div>
     </div>
@@ -101,4 +102,14 @@ it("grows the terminal upward, clamps height, and stops dragging on blur", async
     window.dispatchEvent(new MouseEvent("mousemove", { clientY: 500 })),
   );
   expect(panel.style.height).toBe("660px");
+});
+
+it("respects a larger minimum width for the Notes sidebar", async () => {
+  await act(async () => root.render(<Layout minSize={320} />));
+  const { panel, handle } = mockLayout("x");
+  await act(async () => handle.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 240, bubbles: true })));
+  await act(async () => window.dispatchEvent(new MouseEvent("mousemove", { clientX: 0 })));
+  expect(panel.style.width).toBe("320px");
+  await act(async () => window.dispatchEvent(new MouseEvent("mouseup")));
+  expect(handle.getAttribute("aria-valuemin")).toBe("320");
 });

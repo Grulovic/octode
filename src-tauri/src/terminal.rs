@@ -25,6 +25,18 @@ struct Session {
 #[derive(Default)]
 pub struct Terminals(Mutex<HashMap<String, Arc<Session>>>);
 
+// A projectless terminal may start only at the resolved user home directory.
+pub fn home_root(home: &Path, requested: &str) -> Result<std::path::PathBuf, String> {
+    let home = home.canonicalize().map_err(|error| error.to_string())?;
+    let requested = Path::new(requested)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    if requested != home || !home.is_dir() {
+        return Err("A terminal without a project must start in your home folder".into());
+    }
+    Ok(home)
+}
+
 impl Terminals {
     pub fn create(
         &self,
@@ -198,5 +210,26 @@ fn size(rows: u16, cols: u16) -> PtySize {
         cols: cols.max(1),
         pixel_width: 0,
         pixel_height: 0,
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::*;
+    #[test]
+    fn projectless_terminal_only_starts_in_the_home_directory() {
+        let root =
+            std::env::temp_dir().join(format!("octode-home-terminal-{}", uuid::Uuid::new_v4()));
+        let home = root.join("home");
+        let other = root.join("other");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        assert_eq!(
+            home_root(&home, home.to_str().unwrap()).unwrap(),
+            home.canonicalize().unwrap()
+        );
+        assert!(home_root(&home, other.to_str().unwrap()).is_err());
+        assert!(home_root(&home, home.join("missing").to_str().unwrap()).is_err());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -47,13 +47,21 @@
   border: 1px solid transparent;
   border-radius: 6px 6px 0 0;
   background: transparent;
+  color: var(--oc-muted);
+  overflow: hidden;
 }
 .workspace-terminal-host .local-terminal-tabs > div.selected {
   background: #050b0e;
   border-color: #26414b;
   border-bottom-color: #050b0e;
   box-shadow: inset 0 2px 0 #80cbc4;
+  color: var(--oc-text-strong);
 }
+.workspace-terminal-host .local-terminal-tabs > div:is(:hover,:focus-within) { background: var(--oc-surface); color: var(--oc-text-strong); }
+.workspace-terminal-host .local-terminal-tabs > div.selected:is(:hover,:focus-within) { border-bottom-color: var(--oc-surface); }
+.workspace-terminal-host .local-terminal-tabs > div > button { background: transparent; color: inherit; border-radius: 0; }
+.workspace-terminal-host .local-terminal-tabs > div > button:focus-visible { outline-offset: -3px; box-shadow: none; }
+.workspace-terminal-host .local-terminal-tabs > div:is(:hover,:focus-within) .terminal-tab-label { color: inherit; }
 .workspace-terminal-host .local-terminal-tabs > div > button:first-child { padding: 0 8px 0 10px; }
 .workspace-terminal-host .terminal-tab-dot {
   flex: none;
@@ -99,7 +107,18 @@
   color: #c6ccd3;
   font: 400 11.5px var(--oc-font-mono);
 }
-.workspace-terminal-host .terminal-folder-label { gap: 6px; overflow: hidden; white-space: nowrap; }
+/* The dropdown is portaled to body, so its labels also need these styles. */
+.terminal-toolbar .terminal-folder-label,
+.terminal-folder-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.terminal-folder-label > svg { display: block; flex: none; }
+.terminal-folder-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .workspace-terminal-host .terminal-content,
 .workspace-terminal-host .terminal-mount .xterm,
 .workspace-terminal-host .terminal-mount .xterm-viewport { background: #050b0e; }
@@ -174,8 +193,9 @@
   background: #8d9aa3;
 }
 .workspace-terminal-host [data-connected='true'] .terminal-state-dot { background: #c3e88d; }
-.workspace-terminal-host .terminal-toolbar button:hover:not(:disabled),
-.workspace-terminal-host .terminal-search > button:hover { background: #26414b; color: #e3e7ea; }
+.workspace-terminal-host .terminal-toolbar > button:hover:not(:disabled),
+.workspace-terminal-host .terminal-toolbar-actions > button:hover:not(:disabled),
+.workspace-terminal-host .terminal-search > button:hover { background: var(--oc-surface); color: var(--oc-text-strong); }
 .workspace-terminal-host .terminal-resize::after {
   content: '';
   position: absolute;

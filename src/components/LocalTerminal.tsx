@@ -1,3 +1,5 @@
+import { installTerminalLinks } from "../lib/terminalLinks";
+import { HOME_TERMINAL_ID } from "../lib/terminalHome";
 import { useTerminalActivity } from "../hooks/useTerminalActivity";
 import { monoFont } from "../theme/palette";
 import {
@@ -74,6 +76,7 @@ export default function LocalTerminal({
     fitRef.current = fit;
     term.loadAddon(fit);
     term.open(container.current);
+    const stopLinks = installTerminalLinks(term, (reason) => errorRef.current(reason));
     fit.fit();
     const observer = new ResizeObserver(() => {
       if (container.current?.offsetWidth) fit.fit();
@@ -149,7 +152,7 @@ export default function LocalTerminal({
       };
       void invoke<string>("terminal_create", {
         request: {
-          projectId: project.id,
+          projectId: project.id === HOME_TERMINAL_ID ? null : project.id,
           root,
           rows: term.rows,
           cols: term.cols,
@@ -193,6 +196,7 @@ export default function LocalTerminal({
       observer.disconnect();
       input.dispose();
       resize.dispose();
+      stopLinks();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;

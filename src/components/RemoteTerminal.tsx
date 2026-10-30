@@ -1,3 +1,4 @@
+import { installTerminalLinks } from "../lib/terminalLinks";
 import { useTerminalActivity } from "../hooks/useTerminalActivity";
 import { monoFont } from "../theme/palette";
 import { terminalTheme } from "../editor/deepOcean";
@@ -59,6 +60,7 @@ export default function RemoteTerminal({
     fitRef.current = fit;
     terminal.loadAddon(fit);
     terminal.open(host.current);
+    const stopLinks = installTerminalLinks(terminal, (reason) => errorRef.current(reason));
     const highlight = installTerminalHighlighting(
       terminal,
       () => visibleRef.current && !!host.current?.isConnected,
@@ -141,6 +143,7 @@ export default function RemoteTerminal({
       observer.disconnect();
       highlight.dispose();
       highlighter.current = null;
+      stopLinks();
       terminal.dispose();
       fitRef.current = null;
       void nativeTool("ssh_shell_close", { id: session, shellKey }).catch(

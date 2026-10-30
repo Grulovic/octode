@@ -23,6 +23,7 @@ export interface SearchEntry {
     schema?: string;
   };
   line: number;
+  preview?: string;
 }
 export interface SearchIndex {
   entries: SearchEntry[];

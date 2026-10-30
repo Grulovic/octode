@@ -1,4 +1,5 @@
 import CustomSelect from "./CustomSelect";
+import "./code-tools.css";
 import "./terminal.css";
 import { registerTabCloser } from "../lib/closeTab";
 import { lazy, Suspense, useState, useRef, useEffect } from "react";
@@ -186,6 +187,18 @@ export default function TerminalPanel({
             </div>
           ))}
         </div>
+        <CustomSelect
+          aria-label="Folder for new terminal"
+          value={newRoot}
+          onChange={(event) => setNewRoot(event.target.value)}
+          renderLabel={(_path, label) => <span className="terminal-folder-label"><Folder size={12} /><span>{label}</span></span>}
+        >
+          {project.roots.map((root) => (
+            <option key={root} value={root}>
+              {filename(root)}
+            </option>
+          ))}
+        </CustomSelect>
         <button
           className="terminal-add"
           aria-label="New terminal"
@@ -196,18 +209,6 @@ export default function TerminalPanel({
           <Plus size={14} />
         </button>
         <div className="terminal-toolbar-actions">
-          <CustomSelect
-            aria-label="Folder for new terminal"
-            value={newRoot}
-            onChange={(event) => setNewRoot(event.target.value)}
-            renderLabel={(_path, label) => <span className="terminal-folder-label"><Folder size={12} />{label}</span>}
-          >
-            {project.roots.map((root) => (
-              <option key={root} value={root}>
-                {filename(root)}
-              </option>
-            ))}
-          </CustomSelect>
           <button
             title="Restart current terminal"
             aria-label="Restart terminal"

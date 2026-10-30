@@ -1,0 +1,38 @@
+.main-workspace.notes-open > :not(.notes-workspace):not(.workspace-terminal-dock) { display: none !important; }
+.notes-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--oc-bg); }
+.notes-sidebar { width: 340px; min-width: 320px; max-width: calc(100% - 320px); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--oc-border); }
+.notes-sidebar > header, .notes-main > header { display: flex; flex: none; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid var(--oc-border); background: var(--oc-panel); }
+.notes-sidebar > header > strong { white-space: nowrap; flex-shrink: 0; margin-right: auto; font-size: 13px; }
+.notes-sidebar > header > strong > span { color: var(--oc-muted); font-size: 11px; margin-left: 4px; }
+.notes-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.notes-list-row { display: flex; align-items: center; width: 100%; padding: 0; margin-bottom: 3px; text-align: left; border-radius: 6px; color: var(--oc-text); }
+.notes-list-row:hover { background: var(--oc-surface); }
+.notes-list-row.selected { background: var(--oc-selection); color: var(--oc-text-strong); }
+.notes-select > svg { flex: none; color: var(--oc-muted); }
+.notes-select > span:not(.tool-unsaved-dot) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.notes-list small { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; color: var(--oc-muted); font-size: 11px; }
+.notes-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.notes-main > header > input { flex: 1; min-width: 0; height: 30px; padding: 0 8px; color: var(--oc-text-strong); font-size: 15px; font-weight: 600; border: 1px solid transparent; border-radius: 4px; background: transparent; }
+.notes-main > header > input:focus { border-color: var(--oc-border-strong); outline: none; background: var(--oc-bg); }
+.notes-save-state { margin-left: auto; color: var(--oc-muted); font-size: 11px; white-space: nowrap; }
+.notes-editor { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
+.notes-editor > div { width: 100%; min-height: 0; }
+.notes-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--oc-muted); }
+.notes-empty h2 { margin: 0; color: var(--oc-text); font-size: 18px; }
+.notes-empty p { margin: 0; font-size: 12px; }
+.notes-main > footer { display: flex; flex: none; justify-content: space-between; gap: 12px; padding: 6px 12px; border-top: 1px solid var(--oc-border); color: var(--oc-muted); font-size: 10px; }
+.notes-save-as { white-space: nowrap; flex-shrink: 0; }
+.notes-toolbar { display: flex; align-items: center; justify-content: space-between; flex: none; min-height: 34px; padding: 0 12px; border-bottom: 1px solid var(--oc-border); color: var(--oc-muted); font-size: 11px; background: var(--oc-bg); }
+.notes-toolbar-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.notes-toolbar-actions button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border-radius: 4px; color: var(--oc-muted); }
+.notes-toolbar-actions button:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-text); }
+.notes-toolbar-actions button[aria-pressed="true"] { background: var(--oc-selection); color: var(--oc-accent); }
+.notes-workspace { position: relative; }
+.notes-sidebar > header { flex-wrap: nowrap; height: 52px; min-height: 52px; gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+.notes-file-actions { display: flex; gap: 6px; margin-left: auto; }
+.app-shell .notes-file-actions .secondary-button { gap: 4px; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+.notes-drop-overlay { position: absolute; inset: 5px; z-index: 100; display: flex; align-items: center; justify-content: center; pointer-events: none; border: 2px dashed var(--oc-accent); border-radius: 6px; background: color-mix(in srgb, var(--oc-panel) 90%, transparent); color: var(--oc-accent); font-size: 16px; }
+
+.notes-select { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px; text-align: left; color: inherit; }
+.notes-delete { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; margin-right: 6px; border-radius: 4px; color: var(--oc-muted); }
+.notes-delete:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-error); }

@@ -1,3 +1,6 @@
+import { homeTerminalProject } from "./lib/terminalHome";
+import NotesWorkspace, { NotesProvider, useNotes } from "./components/NotesWorkspace";
+import { FileText } from "lucide-react";
 import {
   createWorkspaceRuntime,
   type WorkspaceRuntime,
@@ -141,7 +144,7 @@ export default function App() {
       surface.current.replaceChildren(host);
   }, [activeKey, slots]);
   return (
-    <>
+    <NotesProvider runtime={runtime}>
       <div className="workspace-surface" ref={surface} />
       {slots.map((slot) =>
         createPortal(
@@ -159,7 +162,7 @@ export default function App() {
           slot.key,
         ),
       )}
-    </>
+    </NotesProvider>
   );
 }
 function WorkspaceApp({
@@ -181,6 +184,7 @@ function WorkspaceApp({
   onProjectRemoved: (id: string) => void;
   runtime: WorkspaceRuntime;
 }) {
+  const notes = useNotes();
   const [projects, setProjects] = useState<Project[]>([]);
   const projectRoots = JSON.stringify(initialProject?.roots);
   const project = useMemo(
@@ -296,10 +300,20 @@ function WorkspaceApp({
     update: updateSession,
     flush: flushSession,
   } = useWorkspaceSession(project, setError);
+  const [homeTerminal, setHomeTerminal] = useState<Project | null>(null);
+  useEffect(() => {
+    if (project) return;
+    let gone = false;
+    void homeTerminalProject().then((value) => {
+      if (!gone) setHomeTerminal(value);
+    }).catch((reason) => { if (!gone) setError(`Could not open home terminal: ${String(reason)}`); });
+    return () => { gone = true; };
+  }, [project]);
+  const terminalProject = project ?? homeTerminal;
   const terminal = useProjectTerminal(
-    project,
+    terminalProject,
     tool,
-    session?.activeRoot ?? project?.roots[0] ?? "",
+    session?.activeRoot ?? terminalProject?.roots[0] ?? "",
     active,
   );
   useEffect(() => {
@@ -372,7 +386,7 @@ function WorkspaceApp({
               const { confirm } = await import("@tauri-apps/plugin-dialog");
               if (
                 !(await confirm(
-                  "Discard unsaved Server, Database, or API settings and pending database row edits in open projects, and close Octode? Code recovery drafts are kept when backup succeeds.",
+                  "Discard unsaved notes, Server, Database, or API settings and pending database row edits in open projects, and close Octode? Code recovery drafts are kept when backup succeeds.",
                   { title: "Unsaved changes", kind: "warning" },
                 ))
               )
@@ -421,9 +435,9 @@ function WorkspaceApp({
         terminal.value.toggle,
         terminal.value.launch,
         () =>
-          active && !!project,
+          active && !!terminalProject,
       ),
-    [project, active, terminal.value.toggle, terminal.value.launch],
+    [terminalProject, active, terminal.value.toggle, terminal.value.launch],
   );
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -441,11 +455,15 @@ function WorkspaceApp({
         setSettings(true);
         return;
       }
-      if (!project) return;
+      if (!project) {
+        if (event.key === "0") { event.preventDefault(); notes.setVisible(false); }
+        return;
+      }
       const destination = tools.find(
         (item) => item.number === Number(event.key),
       );
       if (destination) {
+        notes.setVisible(false);
         event.preventDefault();
         setTool(destination.id);
         updateSession({ tool: destination.id });
@@ -468,11 +486,13 @@ function WorkspaceApp({
       setVisited((previous) => ({ ...previous, [tool]: true }));
   }, [tool]);
   const navigate = (next: Tool) => {
+    notes.setVisible(false);
     setTool(next);
     updateSession({ tool: next });
     if (next === "code") setCodeVisited(true);
   };
   const leaveProject = async () => {
+    notes.setVisible(false);
     // Switching parks the live workspace. Nothing is discarded or disconnected.
     if (codeAutosave.current) await codeAutosave.current();
     await flushSession();
@@ -492,7 +512,7 @@ function WorkspaceApp({
         hasUnsavedSettings: runtime.hasUnsavedSettings,
         confirmDiscard: async () =>
           (await import("./components/ToolLayout")).confirmAction(
-            "Discard unsaved Server, Database, or API settings and pending database row edits in open projects, and restart Octode?",
+            "Discard unsaved notes, Server, Database, or API settings and pending database row edits in open projects, and restart Octode?",
           ),
         flushLayout: runtime.flushAllLayouts,
       });
@@ -576,8 +596,9 @@ function WorkspaceApp({
               <button
                 className="projects-navigation"
                 aria-label="Back to projects"
-                aria-current={!project ? "page" : undefined}
+                aria-current={!project && !notes.visible ? "page" : undefined}
                 onClick={() => {
+                  notes.setVisible(false);
                   if (project)
                     void leaveProject().catch((reason) =>
                       setError(String(reason)),
@@ -606,7 +627,7 @@ function WorkspaceApp({
                   >
                     <span className="project-pill-name">{initialProject?.name ?? project.name}</span>
                   </button>
-                  {tool !== "home" && (
+                  {(notes.visible || tool !== "home") && (
                     <>
                       <span
                         className="project-nav-separator"
@@ -615,12 +636,13 @@ function WorkspaceApp({
                         /
                       </span>
                       <span className="project-nav-tool" aria-current="page">
-                        {tools.find((item) => item.id === tool)?.title}
+                        {notes.visible ? "Notes" : tools.find((item) => item.id === tool)?.title}
                       </span>
                     </>
                   )}
                 </>
               )}
+              {!project && notes.visible && <span className="project-nav-tool" aria-current="page">/ Notes</span>}
             </nav>
           </div>
           <div
@@ -644,13 +666,14 @@ function WorkspaceApp({
           <nav className="rail" aria-label="Main navigation">
             <button
               className={
-                !project || tool === "home"
+                (!project || tool === "home") && !notes.visible
                   ? "rail-button active"
                   : "rail-button"
               }
               title="Workspace home"
               aria-label="Workspace home"
               onClick={() => {
+                notes.setVisible(false);
                 if (project)
                   void leaveProject().catch((reason) =>
                     setError(String(reason)),
@@ -671,7 +694,7 @@ function WorkspaceApp({
                       : undefined
                   }
                   title={`${item.title} (${modifier}${item.number})`}
-                  className={`rail-button ${tool === item.id && project ? "active" : ""}`}
+                  className={`rail-button ${tool === item.id && project && !notes.visible ? "active" : ""}`}
                   onClick={() => navigate(item.id)}
                 >
                   <span className="rail-icon-box">
@@ -690,9 +713,12 @@ function WorkspaceApp({
               </Fragment>
             ))}
             <div className="rail-bottom">
+              <button className={`rail-button ${notes.visible ? "active" : ""}`} aria-label="Notes" title={`Notes (${modifier}6)`} onClick={() => notes.setVisible(true)}>
+                <span className="rail-icon-box"><FileText size={20} />{notes.dirty && <span className="rail-unsaved-dot" aria-label="Unsaved notes" />}</span>
+              </button>
               <button
                 className={`rail-button ${terminal.value.visible ? "terminal-open" : ""}`}
-                disabled={!project}
+                disabled={!terminalProject}
                 aria-label="Local terminal"
                 title={`Local terminal (${modifier}2)`}
                 onClick={terminal.value.toggle}
@@ -722,7 +748,7 @@ function WorkspaceApp({
           </nav>
           <main
             className={
-              project && tool !== "home" ? "main-workspace" : "main-home"
+              notes.visible ? "main-workspace notes-open" : project && tool !== "home" ? "main-workspace" : terminal.value.visible ? "main-workspace main-home terminal-home-open" : "main-home"
             }
           >
             {activeError && (
@@ -848,7 +874,7 @@ function WorkspaceApp({
                         onSessionChange={updateSession}
                         onDirtyChange={onDirtyChange}
                         onAutosaveReady={onAutosaveReady}
-                        visible={active && tool === "code"}
+                        visible={active && tool === "code" && !notes.visible}
                         onError={codeError}
                       />
                     </Suspense>
@@ -912,7 +938,8 @@ function WorkspaceApp({
                 )}
               </>
             )}
-            {project && tool !== "home" && <TerminalDock />}
+            {active && notes.visible && <NotesWorkspace />}
+            {terminalProject && <TerminalDock />}
           </main>
         </div>
         {project && everywhere && (
@@ -943,7 +970,7 @@ function WorkspaceApp({
               <RotateCcw size={12} />
               {restarting ? "Restarting…" : "Restart"}
             </button>
-            {!desktop && "Browser preview"}<span className="section-status">{project ? `${tools.find((item) => item.id === tool)?.title ?? "Code"} · ${tool !== "home" && unsaved[tool] ? "unsaved changes" : "saved"}` : "Projects"}</span>
+            {!desktop && "Browser preview"}<span className="section-status">{notes.visible ? `Notes · ${notes.saving ? "saving…" : notes.dirty ? "unsaved changes" : "saved"}` : project ? `${tools.find((item) => item.id === tool)?.title ?? "Code"} · ${tool !== "home" && unsaved[tool] ? "unsaved changes" : "saved"}` : "Projects"}</span>
           </span>
           <span>
             Octode <span className="muted">/</span> a calmer place to build
@@ -1186,7 +1213,7 @@ function WorkspaceApp({
 
               <div className="shortcut-columns">
                 {[
-                  {title: "Sections", items: [["Projects", "0"], ["Code", "1"], ["Local terminal", "2"], ["Servers", "3"], ["Database", "4"], ["API", "5"]]},
+                  {title: "Sections", items: [["Projects", "0"], ["Code", "1"], ["Local terminal", "2"], ["Servers", "3"], ["Database", "4"], ["API", "5"], ["Notes", "6"]]},
                   {title: "Edit & search", items: [["Save Code immediately", "S"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
                 ].map((group) => <section className="shortcut-group" key={group.title}><h3>{group.title}</h3>{group.items.map(([title, key]) => (
                   <div className="shortcut-row" key={title}><span>{title}</span><kbd>{key === "Shift Shift" ? "⇧ ⇧" : key === "Option Shift U" ? navigator.platform.toLowerCase().includes("mac") ? "⌥ ⇧ U" : "Alt Shift U" : `${modifier} ${key.replace("Shift", "⇧")}`}</kbd></div>

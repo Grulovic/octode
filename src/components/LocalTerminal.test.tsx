@@ -15,6 +15,9 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
+    options: any;
+    constructor(options: any) { this.options = options; }
+    registerLinkProvider() { return { dispose() {} }; }
     rows = 24;
     cols = 80;
     loadAddon() {}
@@ -187,4 +190,14 @@ it("drops a file path into the live PTY as a quoted paste without Enter", async 
     await act(async () => root.unmount());
     host.remove();
   }
+});
+
+it("starts a home terminal without a project ID while keeping project requests scoped", async () => {
+  const { HOME_TERMINAL_ID } = await import("../lib/terminalHome");
+  const host = document.createElement("div"), root = createRoot(host);
+  try {
+    await act(async () => root.render(<LocalTerminal project={{ id: HOME_TERMINAL_ID, name: "Home", roots: ["/home/user"], updatedAt: 0 }} root="/home/user" visible onError={vi.fn()} />));
+    expect(mocks.invoke).toHaveBeenCalledWith("terminal_create", expect.objectContaining({ request: expect.objectContaining({ projectId: null, root: "/home/user" }) }));
+    await act(async () => resolveSession("home-session"));
+  } finally { await act(async () => root.unmount()); }
 });

@@ -26,6 +26,7 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .rail-button { position: relative; width: var(--oc-rail-item); height: var(--oc-rail-item); min-height: var(--oc-rail-item); border-radius: var(--oc-radius-menu); }
 .app-shell .rail-button svg { width: 18px; height: 18px; }
 .app-shell .rail-button.active { background: var(--oc-selection); color: var(--oc-accent); }
+.app-shell .rail-button.terminal-open { background: var(--oc-selection); color: var(--oc-accent); }
 .app-shell .rail-button.active::before { content: ''; position: absolute; left: -8px; top: 9px; height: 18px; width: 2px; background: var(--oc-accent); border-radius: 2px; }
 .app-shell .rail-bottom { gap: var(--oc-space-2); }
 .app-shell .rail-divider { margin: var(--oc-space-2) 0; }
@@ -62,7 +63,7 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .secondary-button:hover:not(:disabled) { background: var(--oc-raised); }
 .app-shell button:disabled { opacity: 1; color: var(--oc-disabled); cursor: default; }
 .app-shell .primary-button:disabled, .app-shell .secondary-button:disabled { background: var(--oc-panel); border-color: var(--oc-border); color: var(--oc-disabled); }
-.app-shell :is(button,input,textarea,select,[tabindex]):focus-visible { outline: 1px solid var(--oc-accent); outline-offset: 1px; box-shadow: var(--oc-focus-ring); }
+.app-shell :is(button,input,textarea,select,[tabindex]):not(.inputarea):focus-visible { outline: 1px solid var(--oc-accent); outline-offset: 1px; box-shadow: var(--oc-focus-ring); }
 .app-shell input[type='checkbox'] { accent-color: var(--oc-accent); width: 14px; height: 14px; margin: 0; flex-shrink: 0; }
 .app-shell kbd { background: var(--oc-bg); color: var(--oc-muted); border: 1px solid var(--oc-border-strong); border-radius: var(--oc-radius-tag); font: var(--oc-text-meta); padding: 0 var(--oc-space-2); }
 .app-shell :is(.service-tool,.code-workspace,.explorer) { background: var(--oc-bg); }
@@ -77,7 +78,7 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .service-form-grid { max-width: 740px; gap: var(--oc-space-6); }
 .app-shell .service-field { color: var(--oc-muted); font: var(--oc-text-label); gap: var(--oc-space-3); }
 .app-shell .service-field input:not([type='checkbox']), .app-shell .service-tool input:not([type='checkbox']), .app-shell .service-tool select, .app-shell .custom-select, .app-shell .modal input:not([type='checkbox']), .app-shell .modal select { min-height: var(--oc-control); height: var(--oc-control); padding: 0 var(--oc-space-4); border-radius: var(--oc-radius-control); border: 1px solid var(--oc-border-strong); background: var(--oc-bg); color: var(--oc-text); font-size: 12px; }
-.app-shell textarea { color: var(--oc-text); background: var(--oc-bg); border: 1px solid var(--oc-border-strong); border-radius: var(--oc-radius-control); font: var(--oc-text-data); }
+.app-shell textarea:not(.inputarea) { color: var(--oc-text); background: var(--oc-bg); border: 1px solid var(--oc-border-strong); border-radius: var(--oc-radius-control); font: var(--oc-text-data); }
 .app-shell .custom-select { display: inline-flex; align-items: center; padding-right: 26px; }
 .app-shell .custom-select-menu { background: var(--oc-raised); border-color: var(--oc-border-strong); border-radius: var(--oc-radius-menu); box-shadow: var(--oc-shadow-menu); padding: var(--oc-space-2); }
 .app-shell .custom-select-option { min-height: var(--oc-control); font-size: 12px; }
@@ -503,3 +504,33 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 
 /* The global search field is part of the dialog header, without an inset focus ring. */
 .app-shell .search-everywhere .quick-open-input > input:is(:focus, :focus-visible) { outline: none; box-shadow: none; }
+
+/* Monaco owns Find/Replace input sizing; app form rules must not restyle its textareas. */
+.app-shell .monaco-editor .find-widget {
+  border: 1px solid var(--oc-border-strong);
+  border-radius: var(--oc-radius-control);
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
+}
+.app-shell .monaco-editor .find-widget .monaco-inputbox { border-radius: 4px; }
+.app-shell .monaco-editor .find-widget .monaco-inputbox .input {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--oc-text);
+  font: 400 12px/19px var(--oc-font-ui);
+  outline: none;
+  box-shadow: none;
+  resize: none;
+}
+.app-shell .monaco-editor .find-widget .monaco-inputbox .input::placeholder { color: var(--oc-muted); opacity: 1; }
+.app-shell .monaco-editor .find-widget :is(.button,.monaco-custom-toggle) { color: var(--oc-muted); border-radius: 4px; }
+.app-shell .monaco-editor .find-widget :is(.button,.monaco-custom-toggle):hover { color: var(--oc-text-strong); }
+.app-shell .monaco-editor .find-widget .monaco-custom-toggle.checked { color: var(--oc-accent); }
+.app-shell .monaco-editor .find-widget .button.disabled { color: var(--oc-disabled); }
+.app-shell .monaco-editor .find-widget .matchesCount { color: var(--oc-muted); font-family: var(--oc-font-ui); font-size: 11px; }
+.app-shell .monaco-editor .find-widget.no-results .matchesCount { color: var(--oc-error); }
+.app-shell .monaco-editor .find-widget .monaco-inputbox .mirror { font: 400 12px/19px var(--oc-font-ui); }

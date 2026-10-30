@@ -28,6 +28,8 @@ export default function EditorPane({
   onExecute,
   readOnly = false,
   modelPath,
+  languageId,
+  wordWrap,
 }: {
   document: Document;
   onChange: (value: string) => void;
@@ -38,6 +40,8 @@ export default function EditorPane({
   onExecute?: (text: string) => void;
   readOnly?: boolean;
   modelPath?: string;
+  languageId?: string;
+  wordWrap?: "on" | "off";
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -47,10 +51,12 @@ export default function EditorPane({
     onNavigate,
     onExecute,
     readOnly,
+    wordWrap,
   });
-  latest.current = { document, onChange, onNavigate, onExecute, readOnly };
+  latest.current = { document, onChange, onNavigate, onExecute, readOnly, wordWrap };
   const syncing = useRef(false);
   const uri = modelPath ?? document.path;
+  const editorLanguage = languageId ?? language(document.path);
   useEffect(() => {
     if (!host.current) return;
     const resource = monaco.Uri.parse(uri);
@@ -59,7 +65,7 @@ export default function EditorPane({
       existing ??
       monaco.editor.createModel(
         latest.current.document.text,
-        language(latest.current.document.path),
+        editorLanguage,
         resource,
       );
     // A retained model carries undo history, but disk reloads remain authoritative.
@@ -75,9 +81,11 @@ export default function EditorPane({
       minimap: { enabled: false },
       padding: { top: 22 },
       scrollBeyondLastLine: false,
+      lineNumbers: "on",
+      lineNumbersMinChars: 3,
       automaticLayout: true,
       tabSize: loadSettings().tabSize,
-      wordWrap: loadSettings().wordWrap,
+      wordWrap: latest.current.wordWrap ?? loadSettings().wordWrap,
       renderLineHighlight: "line",
       smoothScrolling: false,
       scrollbar: {
@@ -150,7 +158,7 @@ export default function EditorPane({
     });
     labelFindControls();
 
-    const settings = () => instance.updateOptions(loadSettings());
+    const settings = () => instance.updateOptions({ ...loadSettings(), wordWrap: latest.current.wordWrap ?? loadSettings().wordWrap });
     window.addEventListener("octode-editor-settings", settings);
     const execute = onExecute
       ? instance.addAction({
@@ -294,6 +302,14 @@ export default function EditorPane({
       if (modelPath) model.dispose();
     };
   }, [uri, modelPath]);
+  useEffect(() => {
+    const model = editor.current?.getModel();
+    if (model && model.getLanguageId() !== editorLanguage)
+      monaco.editor.setModelLanguage(model, editorLanguage);
+  }, [editorLanguage, uri]);
+  useEffect(() => {
+    editor.current?.updateOptions({ wordWrap: wordWrap ?? loadSettings().wordWrap });
+  }, [wordWrap, uri]);
   useEffect(() => {
     const instance = editor.current;
     const model = instance?.getModel();

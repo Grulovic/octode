@@ -247,3 +247,10 @@
 .search-everywhere > footer {
   flex-shrink: 0;
 }
+
+.search-everywhere .quick-open-results .search-content-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--oc-font-mono);
+  color: var(--oc-text);
+}
