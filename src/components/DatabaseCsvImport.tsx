@@ -5,7 +5,7 @@ import { parseCsv, csvInserts } from "../lib/csv";
 import { invoke } from "../lib/bridge";
 import { nativeTool } from "../lib/toolsBridge";
 import { confirmAction } from "./ToolLayout";
-import type { TableMetadata } from "./DatabaseRowEditor";
+import type { TableMetadata } from "../lib/databaseRows";
 import "./code-tools.css";
 interface Plan {
   statements: {

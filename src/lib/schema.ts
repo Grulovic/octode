@@ -100,37 +100,3 @@ export function createIndexSql(
       : `${identifier(schema, engine)}.${identifier(table, engine)}`;
   return `CREATE ${unique ? "UNIQUE " : ""}INDEX ${index} ON ${target} (${columns.map((column) => identifier(column, engine)).join(", ")});`;
 }
-
-export function renameTableSql(engine: Engine, schema: string, table: string, name: string) {
-  return `ALTER TABLE ${identifier(schema, engine)}.${identifier(table, engine)} RENAME TO ${identifier(name, engine)};`;
-}
-export function renameColumnSql(engine: Engine, schema: string, table: string, column: string, name: string) {
-  return `ALTER TABLE ${identifier(schema, engine)}.${identifier(table, engine)} RENAME COLUMN ${identifier(column, engine)} TO ${identifier(name, engine)};`;
-}
-export function dropTableSql(engine: Engine, schema: string, table: string) {
-  return `DROP TABLE ${identifier(schema, engine)}.${identifier(table, engine)};`;
-}
-export function dropColumnSql(engine: Engine, schema: string, table: string, column: string) {
-  return `ALTER TABLE ${identifier(schema, engine)}.${identifier(table, engine)} DROP COLUMN ${identifier(column, engine)};`;
-}
-export function editColumnSql(engine: Engine, schema: string, table: string, column: string, dataType: string, nullable: boolean, defaultValue: string, defaultIsSql = false, keepDefault = false, currentDefault: string | null = null, mysqlAttributes?: { extra?: string; collation?: string; comment?: string }) {
-  if (engine === "sqlite") throw new Error("SQLite requires rebuilding the table to change a column’s type, nullability or default. Use a reviewed migration in the SQL console; rename and drop are available here.");
-  if (!/^[a-z][a-z0-9_ ]*(?:\(\d+(?:\s*,\s*\d+)?\))?(?: [a-z][a-z0-9_ ]*)?(?:\[\])?$/i.test(dataType.trim())) throw new Error("Enter a SQL type such as VARCHAR(255), INTEGER or DECIMAL(10,2).");
-  let defaultSql = defaultValue === "" ? "" : `'${defaultValue.replaceAll("'", "''")}'`;
-  if (defaultIsSql && defaultValue !== "") {
-    if (!/^(?:NULL|TRUE|FALSE|CURRENT_TIMESTAMP(?:\(\))?|CURRENT_DATE|CURRENT_TIME|[-+]?\d+(?:\.\d+)?)$/i.test(defaultValue.trim())) throw new Error("SQL defaults support numbers, NULL, TRUE/FALSE, CURRENT_TIMESTAMP, CURRENT_DATE or CURRENT_TIME.");
-    defaultSql = defaultValue.trim();
-  }
-  if (keepDefault && engine === "mysql") defaultSql = currentDefault === null ? "" : /^(?:CURRENT_TIMESTAMP(?:\(\d*\))?|CURRENT_DATE|CURRENT_TIME)$/i.test(currentDefault) ? currentDefault : `'${currentDefault.replaceAll("'", "''")}'`;
-  const target = `${identifier(schema, engine)}.${identifier(table, engine)}`, name = identifier(column, engine);
-  let attributes = "";
-  if (engine === "mysql" && mysqlAttributes) {
-    const extra = (mysqlAttributes.extra ?? "").replace(/DEFAULT_GENERATED/gi, "").trim();
-    if (extra && !/^on update CURRENT_TIMESTAMP(?:\(\d*\))?$/i.test(extra)) throw new Error("This column has special attributes; edit it using a reviewed migration.");
-    if (mysqlAttributes.collation) attributes += ` COLLATE ${identifier(mysqlAttributes.collation, engine)}`;
-    if (extra) attributes += ` ${extra}`;
-    if (mysqlAttributes.comment) attributes += ` COMMENT '${mysqlAttributes.comment.replaceAll("'", "''")}'`;
-  }
-  if (engine === "mysql") return `ALTER TABLE ${target} MODIFY COLUMN ${name} ${dataType.trim()} ${nullable ? "NULL" : "NOT NULL"}${defaultSql ? ` DEFAULT ${defaultSql}` : ""}${attributes};`;
-  return `ALTER TABLE ${target}\n  ALTER COLUMN ${name} TYPE ${dataType.trim()},\n  ALTER COLUMN ${name} ${nullable ? "DROP" : "SET"} NOT NULL${keepDefault ? "" : `,\n  ALTER COLUMN ${name} ${defaultSql ? `SET DEFAULT ${defaultSql}` : "DROP DEFAULT"}`};`;
-}

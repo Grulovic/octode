@@ -77,3 +77,12 @@ describe("syntax-only language runtime", () => {
     expect(types).toContain("keyword.json");
   });
 });
+
+it("keeps SQL filter string/operator colors stable without generated editor CSS classes", async () => {
+  const { sqlHighlightParts } = await import("../lib/sqlHighlight");
+  const value = "name LIKE '%Alpha%'";
+  const parts = sqlHighlightParts(value, await tokens(value, "sql"));
+  expect(parts.map((part) => part.text).join("")).toBe(value);
+  expect(parts.find((part) => part.text.includes("%Alpha%"))?.color).toBe("#98d792");
+  expect(parts.find((part) => part.text.includes("LIKE"))?.color).toBe("#51c5c5");
+});

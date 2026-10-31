@@ -24,6 +24,7 @@ vi.mock("./EditorPane", () => ({
     />
   ),
 }));
+vi.mock("./ToolLayout", () => ({ confirmAction: vi.fn(async () => true) }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root;
 const result: DbResult = {
@@ -127,83 +128,31 @@ const click = async (label: string) => {
   expect(button).toBeDefined();
   await act(async () => button.click());
 };
-it("edits a cell on double-click and writes only after reviewing and explicitly applying", async () => {
+it("queues double-click edits without IPC and applies only the reviewed batch", async () => {
   await act(async () => root.render(<DatabaseDataGrid {...props} />));
-  await open();
-  await type("after");
+  await open(); await type("after"); await click("Queue cell change");
   expect(invoke).not.toHaveBeenCalled();
+  expect(document.querySelector('.database-cell-pending')?.textContent).toBe("after");
   expect(props.onDirty).toHaveBeenLastCalledWith(true);
-  await act(async () =>
-    document
-      .querySelector('[aria-label^="Edit "]')!
-      .dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-      ),
-  );
-  expect(
-    document.querySelector('[aria-label="Apply database change"]')?.textContent,
-  ).toContain("BeforebeforeAfterafter");
-  expect(invoke).toHaveBeenCalledTimes(1);
-  const change = {
-    kind: "update-cell",
-    original: {
-      id: "9007199254740993",
-      name: "before",
-      settings: result.rows[0][2].value,
-    },
-    values: { name: "after" },
-  };
-  expect(invoke).toHaveBeenCalledWith("database_row_plan", {
-    id: "session",
-    request: { schema: "main", table: "things", changes: [change] },
-  });
-  await click("Apply update");
-  expect(invoke).toHaveBeenCalledWith("database_apply_rows", {
-    id: "session",
-    request: {
-      schema: "main",
-      table: "things",
-      changes: [change],
-      reviewed: plan,
-    },
-  });
+  await click("Review SQL");
+  const change = { kind: "update-cells", original: { id: "9007199254740993", name: "before", settings: result.rows[0][2].value }, values: { name: "after" } };
+  expect(invoke).toHaveBeenCalledWith("database_row_plan", { id: "session", request: { schema: "main", table: "things", changes: [change] } });
+  expect(invoke.mock.calls.some(([command]) => command === "database_apply_rows")).toBe(false);
+  await click("Apply changes");
+  expect(invoke).toHaveBeenCalledWith("database_apply_rows", { id: "session", request: { schema: "main", table: "things", changes: [change], reviewed: plan } });
   expect(props.onApplied).toHaveBeenCalledOnce();
-  expect(
-    document.querySelector('[aria-label="Apply database change"]'),
-  ).toBeNull();
 });
-it("supports blur review, returning to edit, Escape and discard without writing", async () => {
+it("queues on blur, reopens queued values, and discards drafts without writing", async () => {
   await act(async () => root.render(<DatabaseDataGrid {...props} />));
-  await open();
-  await type("draft");
-  await act(async () =>
-    document
-      .querySelector<HTMLTextAreaElement>('[aria-label^="Edit "]')!
-      .blur(),
-  );
-  expect(
-    document.querySelector('[aria-label="Apply database change"]'),
-  ).not.toBeNull();
-  await click("Keep editing");
-  expect(
-    document.querySelector<HTMLTextAreaElement>('[aria-label^="Edit "]')?.value,
-  ).toBe("draft");
-  await act(async () =>
-    document
-      .querySelector('[aria-label^="Edit "]')!
-      .dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-      ),
-  );
+  await open(); await type("draft");
+  await act(async () => document.querySelector<HTMLTextAreaElement>('[aria-label^="Edit "]')!.blur());
   expect(document.querySelector('[aria-label^="Edit "]')).toBeNull();
-  expect(
-    invoke.mock.calls.some(([command]) => command === "database_apply_rows"),
-  ).toBe(false);
-  await open();
-  await type("again");
-  await click("Review cell change");
-  await click("Discard");
-  expect(props.onDirty).toHaveBeenLastCalledWith(false);
+  expect(invoke).not.toHaveBeenCalled();
+  await open(); expect(document.querySelector<HTMLTextAreaElement>('[aria-label^="Edit "]')!.value).toBe("draft");
+  await type("cancel me");
+  await act(async () => document.querySelector('[aria-label^="Edit "]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector('.database-cell-pending')?.textContent).toBe("draft");
+  await click("Discard changes"); expect(props.onDirty).toHaveBeenLastCalledWith(false); expect(invoke).not.toHaveBeenCalled();
 });
 it("opens formatted JSON in its own code editor, preserves number spelling and validates before review", async () => {
   await act(async () => root.render(<DatabaseDataGrid {...props} />));
@@ -220,7 +169,7 @@ it("opens formatted JSON in its own code editor, preserves number spelling and v
     )?.disabled,
   ).toBe(true);
   await type("{invalid", '[aria-label="JSON code editor"]');
-  await click("Review change");
+  await click("Queue change");
   expect(document.querySelector('[role="alert"]')?.textContent).toContain(
     "valid JSON",
   );
@@ -229,14 +178,13 @@ it("opens formatted JSON in its own code editor, preserves number spelling and v
     '{"id":9007199254740993,"scale":1.2300,"enabled":false}',
     '[aria-label="JSON code editor"]',
   );
-  await click("Review change");
-  expect(
-    document.querySelector('[aria-label="Apply database change"]')?.textContent,
-  ).toContain("enabled");
+  await click("Queue change");
+  expect(invoke).not.toHaveBeenCalled();
+  await click("Review SQL");
   expect(invoke).toHaveBeenCalledTimes(1);
-  await click("Apply update");
+  await click("Apply changes");
   expect(
-    (invoke.mock.calls[1][1] as any).request.changes[0].values.settings,
+    (invoke.mock.calls.find(([command]) => command === "database_apply_rows")![1] as any).request.changes[0].values.settings,
   ).toContain("9007199254740993");
 });
 it("keeps NULL distinct from empty strings and preserves the draft when applying fails", async () => {
@@ -245,22 +193,20 @@ it("keeps NULL distinct from empty strings and preserves the draft when applying
   await act(async () =>
     document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
   );
-  await click("Review cell change");
-  expect(
-    (invoke.mock.calls[0][1] as any).request.changes[0].values.name,
-  ).toBeNull();
+  await click("Queue cell change");
+  await click("Review SQL");
+  expect((invoke.mock.calls[0][1] as any).request.changes[0].values.name).toBeNull();
   invoke.mockImplementation(async (command) => {
     if (command === "database_apply_rows")
       throw new Error("Row changed externally");
     return plan;
   });
-  await click("Apply update");
+  await click("Apply changes");
   expect(document.querySelector('[role="alert"]')?.textContent).toContain(
     "Row changed externally",
   );
-  expect(
-    document.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
-  ).toBe(true);
+  await open();
+  expect(document.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
   expect(props.onApplied).not.toHaveBeenCalled();
   expect(props.onDirty).toHaveBeenLastCalledWith(true);
 });
@@ -342,11 +288,12 @@ it("preserves multiline cell text and leaves unchanged edits local", async () =>
   expect(
     document.querySelector<HTMLTextAreaElement>('[aria-label^="Edit "]')?.value,
   ).toBe("first\nsecond");
-  await click("Review cell change");
+  await click("Queue cell change");
   expect(invoke).not.toHaveBeenCalled();
   await open();
   await type("first\nupdated");
-  await click("Review cell change");
+  await click("Queue cell change");
+  await click("Review SQL");
   expect((invoke.mock.calls[0][1] as any).request.changes[0].values.name).toBe(
     "first\nupdated",
   );
@@ -395,12 +342,13 @@ it("allows normal and JSON cell edits when a different column is too large to di
     )?.readOnly,
   ).toBe(false);
   await type('{"enabled":false}', '[aria-label="JSON code editor"]');
-  await click("Review change");
+  await click("Queue change");
+  await click("Review SQL");
   const request = (invoke.mock.calls[0][1] as any).request;
-  expect(request.changes[0].kind).toBe("update-cell");
+  expect(request.changes[0].kind).toBe("update-cells");
   expect(request.changes[0].original).not.toHaveProperty("payload");
   expect(request.changes[0].original.id).toBe("9007199254740993");
-  await click("Apply update");
+  await click("Apply changes");
   expect(props.onApplied).toHaveBeenCalledOnce();
 });
 
@@ -447,7 +395,8 @@ it("offers a calendar alongside timestamp text and waits for review after pickin
   ).toBe("true");
   await click("Cancel");
   expect(editor.value).toBe("2026-10-29 11:28:29.123456+02:00");
-  await click("Review cell change");
+  await click("Queue cell change");
+  await click("Review SQL");
   expect(
     (invoke.mock.calls[0][1] as any).request.changes[0].values.created_at,
   ).toBe(editor.value);
@@ -641,14 +590,67 @@ it.each(["label", "checkbox"])(
     expect(editor()?.value).toBe(original);
     expect(editor()?.readOnly).toBe(false);
     await toggle();
-    await click("Review cell change");
+    await click("Queue cell change");
+    await click("Review SQL");
     expect(
       (invoke.mock.calls[0][1] as any).request.changes[0].values.deleted_at,
     ).toBeNull();
-    await click("Apply update");
+    await click("Apply changes");
     expect(
-      (invoke.mock.calls[1][1] as any).request.changes[0].values.deleted_at,
+      (invoke.mock.calls.find(([command]) => command === "database_apply_rows")![1] as any).request.changes[0].values.deleted_at,
     ).toBeNull();
     expect(props.onApplied).toHaveBeenCalledOnce();
   },
 );
+
+it("merges edits to multiple cells into one row update and can revert or undo deletion", async () => {
+  await act(async () => root.render(<DatabaseDataGrid {...props} />));
+  await open(); await type("after"); await click("Queue cell change");
+  await open(0); await type("77"); await click("Queue cell change");
+  expect(document.querySelectorAll('.database-cell-pending')).toHaveLength(2);
+  await click("Delete row 1"); expect(document.querySelector('.database-row-delete')).not.toBeNull();
+  await click("Undo delete row 1"); expect(document.querySelectorAll('.database-cell-pending')).toHaveLength(2);
+  await click("Review SQL");
+  expect((invoke.mock.calls[0][1] as any).request.changes).toEqual([expect.objectContaining({ kind: "update-cells", values: { id: "77", name: "after" }, original: expect.objectContaining({ id: "9007199254740993", name: "before" }) })]);
+  await click("Revert row 1"); expect(props.onDirty).toHaveBeenLastCalledWith(false);
+});
+it("inserts draft rows with omitted defaults, NULL and empty strings, without writing until Apply", async () => {
+  await act(async () => root.render(<DatabaseDataGrid {...props} />));
+  await click("Insert row");
+  expect(document.querySelectorAll('tbody tr')).toHaveLength(2);
+  expect(document.querySelectorAll('.database-default')).toHaveLength(3);
+  const cell = async (column: number) => act(async () => document.querySelectorAll('tbody tr')[1].querySelectorAll('td')[column].dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+  await cell(1); await type("new row"); await click("Queue cell change");
+  await cell(0); await type("5"); await click("Use default");
+  await cell(1); await type(""); await click("Queue cell change");
+  expect(invoke).not.toHaveBeenCalled();
+  await click("Review SQL");
+  expect((invoke.mock.calls[0][1] as any).request.changes).toEqual([{ kind: "insert", original: {}, values: { name: "" } }]);
+  await click("Apply changes"); expect(props.onApplied).toHaveBeenCalledOnce();
+});
+it("applies inserts, merged updates and deletions in one batch and retains all drafts after a failure", async () => {
+  const rows = { ...result, rows: [result.rows[0], [{ kind: "text" as const, value: "2" }, { kind: "text" as const, value: "remove" }, { kind: "null" as const, value: "" }]] };
+  await act(async () => root.render(<DatabaseDataGrid {...props} result={rows} />));
+  await open(); await type("after"); await click("Queue cell change");
+  await click("Delete row 2"); await click("Insert row");
+  await act(async () => document.querySelectorAll('tbody tr')[2].querySelectorAll('td')[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+  await type("inserted"); await click("Queue cell change");
+  expect(invoke).not.toHaveBeenCalled();
+  invoke.mockImplementation(async (command) => { if (command === "database_apply_rows") throw new Error("Row changed externally; batch rolled back"); return plan; });
+  await click("Apply changes");
+  const payload = (invoke.mock.calls.find(([command]) => command === "database_apply_rows")![1] as any).request;
+  expect(payload.changes.map((change: any) => change.kind)).toEqual(["update-cells", "delete", "insert"]);
+  expect(payload.changes[1].values).toEqual({});
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("rolled back");
+  expect(document.querySelectorAll('tbody tr')).toHaveLength(3);
+  expect(document.querySelector('.database-row-delete')).not.toBeNull();
+  expect(props.onDirty).toHaveBeenLastCalledWith(true); expect(props.onApplied).not.toHaveBeenCalled();
+  await click("Discard changes"); expect(document.querySelectorAll('tbody tr')).toHaveLength(2); expect(props.onDirty).toHaveBeenLastCalledWith(false);
+});
+it("does not queue a deletion for a row containing unavailable original values", async () => {
+  const rows = { ...result, rows: [[...result.rows[0].slice(0, 2), { kind: "unsupported" as const, value: "Too large" }]] };
+  await act(async () => root.render(<DatabaseDataGrid {...props} result={rows} />));
+  expect(document.querySelector<HTMLButtonElement>('[aria-label="Delete row 1"]')!.disabled).toBe(true);
+  await click("Insert row"); await click("Delete row 2");
+  expect(document.querySelectorAll('tbody tr')).toHaveLength(1); expect(invoke).not.toHaveBeenCalled();
+});

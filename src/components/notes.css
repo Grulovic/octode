@@ -64,5 +64,5 @@
 .notes-markdown th { background: var(--oc-panel); font-weight: 600; }
 .notes-search { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--oc-border); color: var(--oc-muted); }
 .notes-search > input { flex: 1; width: 0; min-width: 0; background: transparent; border: 0; padding: 4px 0; color: var(--oc-text); font-size: 12px; }
-.app-shell .notes-search > input:is(:focus,:focus-visible) { outline: none; box-shadow: none; }
-.notes-search:focus-within { box-shadow: inset 0 -1px var(--oc-accent); }
+.app-shell .notes-workspace .notes-search > input:is(:focus,:focus-visible) { outline: none; outline-offset: 0; box-shadow: none; border: 0; background: transparent; }
+.notes-search:focus-within { background: var(--oc-panel); }

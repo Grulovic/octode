@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
-import { X, Check, Copy } from "./DesignIcons";
+import { X, Check, Copy, Plus, Trash2, RotateCcw } from "./DesignIcons";
+import { confirmAction } from "./ToolLayout";
 import DatabaseDatePicker from "./DatabaseDatePicker";
 import { cellDateKind, type CellDateKind } from "../lib/databaseDate";
 import { resultCsv } from "../lib/export";
@@ -12,10 +13,19 @@ import {
   formatCellJson,
 } from "../lib/databaseCell";
 import type { DbResult } from "../toolTypes";
-import type { RowPlan, TableMetadata } from "./DatabaseRowEditor";
+import type { RowPlan, TableMetadata } from "../lib/databaseRows";
 const JsonEditor = lazy(() => import("./EditorPane"));
+interface PendingRow {
+  key: string;
+  kind: "insert" | "update-cells" | "delete";
+  original: Record<string, string | null>;
+  values: Record<string, string | null>;
+}
 interface Edit {
   row: number;
+  key: string;
+  insert: boolean;
+  initialValue: string | null | undefined;
   column: string;
   original: Record<string, string | null>;
   initial: string;
@@ -72,7 +82,7 @@ export default function DatabaseDataGrid({
   const measuredWidths = () =>
     [
       ...(gridTable.current?.querySelectorAll<HTMLTableCellElement>(
-        "thead th:not(.database-row-selector)",
+        "thead th.database-data-column",
       ) ?? []),
     ].map((cell) =>
       Math.max(64, Math.round(cell.getBoundingClientRect().width) || 160),
@@ -132,7 +142,7 @@ export default function DatabaseDataGrid({
   const selectedCsv = () =>
     resultCsv({
       ...result,
-      rows: result.rows.filter((_, index) => selected.has(index)),
+      rows: displayRows.filter((_, index) => selected.has(index)),
     });
   const copied = () => {
     setCopyError(false);
@@ -153,7 +163,7 @@ export default function DatabaseDataGrid({
   const [text, setText] = useState("");
   const [isNull, setNull] = useState(false);
   const [plan, setPlan] = useState<RowPlan | null>(null);
-  const [reviewing, setReviewing] = useState(false);
+  const [changes, setChanges] = useState<PendingRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const working = useRef(false);
@@ -166,155 +176,155 @@ export default function DatabaseDataGrid({
     !!edit &&
     edit.writable &&
     (isNull ? null : text) !==
-      (edit.original[edit.column] === null ? null : edit.initial);
+      edit.initialValue;
   useEffect(() => {
-    callbacks.current.onEditing(!!edit);
+    callbacks.current.onEditing(!!edit || busy);
     return () => callbacks.current.onEditing(false);
-  }, [!!edit]);
+  }, [!!edit, busy]);
   useEffect(() => {
-    callbacks.current.onDirty(changed);
+    callbacks.current.onDirty(changed || changes.length > 0);
     return () => callbacks.current.onDirty(false);
-  }, [changed]);
+  }, [changed, changes.length]);
   useEffect(() => {
-    if (edit && !edit.json && !reviewing) {
+    if (edit && !edit.json) {
       input.current?.focus();
       input.current?.select();
     }
-  }, [edit, reviewing]);
+  }, [edit]);
   const close = () => {
     if (working.current) return;
     setEdit(null);
     setPlan(null);
-    setReviewing(false);
     setError("");
+  };
+  const inserts = changes.filter((item) => item.kind === "insert");
+  useEffect(() => {
+    if (inserts.length) gridTable.current?.querySelector('tbody tr:last-child')?.scrollIntoView?.({ block: "nearest" });
+  }, [inserts.length]);
+  const rowKey = (row: number) => row < result.rows.length ? `row:${row}` : inserts[row - result.rows.length].key;
+  const changesByKey = new Map(changes.map((item) => [item.key, item]));
+  const pendingRow = (row: number) => changesByKey.get(rowKey(row));
+  const originalRow = (row: number) => Object.fromEntries(result.columns.flatMap((column, index) => {
+    const cell = result.rows[row]?.[index];
+    return cell && (cell.kind === "text" || cell.kind === "null") ? [[column.name, cell.kind === "null" ? null : cell.value]] : [];
+  }));
+  const displayRows = [...result.rows, ...inserts.map(() => result.columns.map(() => ({ kind: "text" as const, value: "" })))].map((row, index) => {
+    const pending = pendingRow(index);
+    return row.map((cell, column) => {
+      const name = result.columns[column].name;
+      if (!pending || pending.kind === "delete" || !Object.hasOwn(pending.values, name)) return cell;
+      const value = pending.values[name];
+      return value === null ? { kind: "null" as const, value: "" } : { kind: "text" as const, value };
+    });
+  });
+  const canWrite = !!session && !!table && !!metadata?.editable;
+  const rowCanDelete = (row: number) => {
+    const original = originalRow(row);
+    return canWrite && Object.keys(original).length === metadata!.columns.length && metadata!.columns.some((column) => column.primaryKey) && metadata!.columns.filter((column) => column.primaryKey).every((column) => original[column.name] != null);
+  };
+  const canEdit = (row: number, column: number) => {
+    if (!canWrite || pendingRow(row)?.kind === "delete") return false;
+    if (row >= result.rows.length) return !metadata!.columns.find((item) => item.name === result.columns[column].name)?.generated;
+    return editableCell(result, metadata, row, column);
+  };
+  const addRow = () => {
+    if (disabled || edit || working.current || !canWrite) return;
+    if (changes.length >= 100) { setError("Apply or discard this batch before adding more rows (100 row limit)."); return; }
+    setChanges((previous) => [...previous, { key: crypto.randomUUID(), kind: "insert", original: {}, values: {} }]);
+    setPlan(null); setError("");
+  };
+  const deleteRow = (row: number) => {
+    if (disabled || edit || working.current || !canWrite) return;
+    const key = rowKey(row), pending = pendingRow(row);
+    if (pending?.kind === "insert") setChanges((previous) => previous.filter((item) => item.key !== key));
+    else if (pending?.kind === "delete") setChanges((previous) => Object.keys(pending.values).length ? previous.map((item) => item.key === key ? { ...item, kind: "update-cells" } : item) : previous.filter((item) => item.key !== key));
+    else {
+      if (!rowCanDelete(row)) return;
+      if (!pending && changes.length >= 100) { setError("Apply or discard this batch first (100 row limit)."); return; }
+      const next: PendingRow = { key, kind: "delete", original: originalRow(row), values: pending?.values ?? {} };
+      setChanges((previous) => pending ? previous.map((item) => item.key === key ? next : item) : [...previous, next]);
+    }
+    setPlan(null); setError("");
   };
   const open = (row: number, column: number) => {
-    if (disabled || edit) return;
-    const cell = result.rows[row][column];
-    if (cell.kind !== "text" && cell.kind !== "null") {
-      setError(
-        "This cell cannot be edited because its full value is unavailable.",
-      );
-      return;
-    }
-    const name = result.columns[column].name;
-    const field = metadata?.columns.find((item) => item.name === name);
-    const json = cellJson(
-      cell.value,
-      field?.dataType ?? result.columns[column].dataType,
-    );
-    const writable = !!session && editableCell(result, metadata, row, column);
-    const reason = !session
-      ? "Connect to a database before editing."
-      : cellEditReason(result, metadata, row, column);
-    if (!writable && !json) {
-      setError(reason);
-      return;
-    }
+    if (disabled || edit || working.current || pendingRow(row)?.kind === "delete") return;
+    const cell = displayRows[row][column];
+    if (cell.kind !== "text" && cell.kind !== "null") { setError("This cell cannot be edited because its full value is unavailable."); return; }
+    const name = result.columns[column].name, field = metadata?.columns.find((item) => item.name === name);
+    const json = cellJson(cell.value, field?.dataType ?? result.columns[column].dataType);
+    const writable = canEdit(row, column), insert = row >= result.rows.length;
+    const reason = !session ? "Connect to a database before editing." : insert ? "Generated columns cannot be edited." : cellEditReason(result, metadata, row, column);
+    if (!writable && !json) { setError(reason); return; }
     let initial = cell.kind === "null" ? "" : cell.value;
-    if (json && initial) {
-      try {
-        initial = formatCellJson(initial);
-      } catch {
-        /* Invalid existing JSON stays editable. */
-      }
-    }
+    if (json && initial) { try { initial = formatCellJson(initial); } catch { /* Keep invalid existing JSON editable. */ } }
     if (!json && writable) {
       const widths = columnWidths ?? measuredWidths();
-      if (widths.length === result.columns.length && widths[column] < 360)
-        resizeColumn(column, 360, widths);
+      const minimum = insert || Object.hasOwn(pendingRow(row)?.values ?? {}, name) ? 440 : 360;
+      if (widths.length === result.columns.length && widths[column] < minimum) resizeColumn(column, minimum, widths);
     }
-    setText(initial);
-    setNull(cell.kind === "null");
-    setError("");
-    setEdit({
-      row,
-      column: name,
-      initial,
-      json,
-      nullable: !!field?.nullable,
-      writable,
-      reason,
-      dateKind: cellDateKind(
-        field?.dataType ?? result.columns[column].dataType,
-        cell.value,
-      ),
-      original: Object.fromEntries(
-        result.columns.flatMap((item, index) => {
-          const cell = result.rows[row][index];
-          return cell.kind === "text" || cell.kind === "null"
-            ? [[item.name, cell.kind === "null" ? null : cell.value]]
-            : [];
-        }),
-      ),
+    setText(initial); setNull(cell.kind === "null"); setError("");
+    setEdit({ row, key: rowKey(row), insert, column: name, initial,
+      initialValue: insert && !Object.hasOwn(pendingRow(row)!.values, name) ? undefined : cell.kind === "null" ? null : initial,
+      json, nullable: !!field?.nullable, writable, reason,
+      dateKind: cellDateKind(field?.dataType ?? result.columns[column].dataType, cell.value),
+      original: insert ? {} : originalRow(row),
     });
   };
-  const change = () => ({
-    kind: "update-cell",
-    original: edit!.original,
-    values: { [edit!.column]: isNull ? null : text },
-  });
-  const review = async () => {
-    if (!edit?.writable || !session || working.current) return;
-    if (!changed) {
-      close();
-      return;
-    }
+  const review = () => {
+    if (!edit?.writable || working.current) return;
+    if (!changed) { close(); return; }
     if (edit.json && !isNull) {
-      try {
-        formatCellJson(text);
-      } catch {
-        setError("Enter valid JSON before applying this change.");
-        return;
-      }
+      try { formatCellJson(text); } catch { setError("Enter valid JSON before queuing this change."); return; }
     }
-    working.current = true;
-    setBusy(true);
-    setError("");
-    setReviewing(true);
-    try {
-      setPlan(
-        await nativeTool<RowPlan>("database_row_plan", {
-          id: session,
-          request: { schema, table, changes: [change()] },
-        }),
-      );
-    } catch (reason) {
-      setError(String(reason));
-      setReviewing(false);
-    } finally {
-      working.current = false;
-      setBusy(false);
-    }
+    if (!changes.some((item) => item.key === edit.key) && changes.length >= 100) { setError("Apply or discard this batch first (100 row limit)."); return; }
+    const value = isNull ? null : text;
+    setChanges((previous) => {
+      const existing = previous.find((item) => item.key === edit.key);
+      const values = { ...existing?.values, [edit.column]: value };
+      if (!edit.insert && value === edit.original[edit.column]) delete values[edit.column];
+      const remaining = previous.filter((item) => item.key !== edit.key);
+      if (!edit.insert && !Object.keys(values).length) return remaining;
+      const next: PendingRow = { key: edit.key, kind: edit.insert ? "insert" : "update-cells", original: edit.original, values };
+      return existing ? previous.map((item) => item.key === edit.key ? next : item) : [...previous, next];
+    });
+    close();
+  };
+  const requestChanges = (snapshot: PendingRow[]) => snapshot.map(({ key: _, ...item }) => ({ ...item, values: item.kind === "delete" ? {} : item.values }));
+  const reviewBatch = async () => {
+    if (!session || !changes.length || working.current || edit) return;
+    working.current = true; setBusy(true); setError("");
+    try { setPlan(await nativeTool<RowPlan>("database_row_plan", { id: session, request: { schema, table, changes: requestChanges(changes) } })); }
+    catch (reason) { setError(String(reason)); }
+    finally { working.current = false; setBusy(false); }
   };
   const apply = async () => {
-    if (!plan || !edit || !session || working.current) return;
-    working.current = true;
-    setBusy(true);
-    setError("");
+    if (!session || !changes.length || working.current || edit) return;
+    working.current = true; setBusy(true); setError("");
+    const snapshot = changes, payload = requestChanges(snapshot);
     try {
-      await nativeTool("database_apply_rows", {
-        id: session,
-        request: { schema, table, changes: [change()], reviewed: plan },
-      });
-      setEdit(null);
-      setPlan(null);
-      setReviewing(false);
-      callbacks.current.onDirty(false);
-      try {
-        await onApplied();
-      } catch (reason) {
-        setError(`Change saved, but rows could not refresh: ${String(reason)}`);
-      }
-    } catch (reason) {
-      setError(String(reason));
-      setPlan(null);
-      setReviewing(false);
-    } finally {
-      working.current = false;
-      setBusy(false);
-    }
+      const reviewed = await nativeTool<RowPlan>("database_row_plan", { id: session, request: { schema, table, changes: payload } });
+      setPlan(reviewed);
+      const counts = ["insert", "update-cells", "delete"].map((kind) => `${snapshot.filter((item) => item.kind === kind).length} ${kind === "update-cells" ? "update" : kind}(s)`).join(", ");
+      if (!(await confirmAction(`Apply ${counts} to ${schema}.${table}? All queued changes use one transaction and check original values.`, "Apply changes"))) return;
+      await nativeTool("database_apply_rows", { id: session, request: { schema, table, changes: payload, reviewed } });
+      setChanges([]); setPlan(null); callbacks.current.onDirty(false);
+      try { await onApplied(); } catch (reason) { setError(`Changes saved, but rows could not refresh: ${String(reason)}`); }
+    } catch (reason) { setError(String(reason)); setPlan(null); }
+    finally { working.current = false; setBusy(false); }
   };
+  const defaultControl = edit?.writable && (edit.insert || changesByKey.get(edit.key)?.values[edit.column] !== undefined) && <button
+    className="database-reset-cell"
+    title={edit.insert ? "Leave this column unset so the database supplies its default" : "Discard this cell’s queued change"}
+    disabled={busy}
+    onMouseDown={(event) => event.preventDefault()}
+    onClick={() => {
+      setChanges((previous) => previous.flatMap((item) => {
+        if (item.key !== edit.key) return [item];
+        const values = { ...item.values }; delete values[edit.column];
+        return item.kind !== "insert" && !Object.keys(values).length ? [] : [{ ...item, values }];
+      }));
+      close();
+    }}>{edit.insert ? "Use default" : "Revert cell"}</button>;
   const nullControl = edit?.nullable && edit.writable && (
     <label
       className="inline-check"
@@ -341,6 +351,16 @@ export default function DatabaseDataGrid({
   );
   return (
     <>
+      {canWrite && <div className="database-pending-toolbar" role="toolbar" aria-label="Pending row changes">
+        <button className="secondary-button" disabled={disabled || busy || !!edit || changes.length >= 100} onClick={addRow}><Plus size={14} />Insert row</button>
+        <span aria-live="polite">{changes.length ? `${changes.length} pending row change${changes.length === 1 ? "" : "s"}` : "No pending changes"}</span>
+        {changes.length > 0 && <>
+          <button className="secondary-button" disabled={disabled || busy || !!edit} onClick={() => { setChanges([]); setPlan(null); setError(""); }}>Discard changes</button>
+          <button className="secondary-button" disabled={disabled || busy || !!edit} onClick={() => void reviewBatch()}>Review SQL</button>
+          <button className="primary-button" disabled={disabled || busy || !!edit} onClick={() => void apply()}>{busy ? "Working…" : "Apply changes"}</button>
+        </>}
+      </div>}
+      {plan && <details className="database-pending-sql"><summary>SQL and parameters ({plan.statements.length})</summary>{plan.statements.map((statement, index) => <pre key={index}>{statement.sql}{"\n"}{JSON.stringify(statement.parameters)}</pre>)}</details>}
       <div
         className="database-selectable-results"
         onCopy={(event) => {
@@ -376,7 +396,7 @@ export default function DatabaseDataGrid({
             </span>
             <button
               type="button"
-              disabled={disabled || !!edit}
+              disabled={disabled || busy || !!edit}
               onClick={() => void copySelected()}
               title="Copy selected rows as CSV with column headers (Cmd/Ctrl+C)"
             >
@@ -385,7 +405,7 @@ export default function DatabaseDataGrid({
             </button>
             <button
               type="button"
-              disabled={disabled || !!edit}
+              disabled={disabled || busy || !!edit}
               onClick={() => {
                 setSelection({
                   result,
@@ -410,7 +430,7 @@ export default function DatabaseDataGrid({
             style={
               columnWidths
                 ? {
-                    width: columnWidths.reduce((sum, width) => sum + width, 38),
+                    width: columnWidths.reduce((sum, width) => sum + width, canWrite ? 114 : 38),
                   }
                 : undefined
             }
@@ -421,6 +441,7 @@ export default function DatabaseDataGrid({
                 {columnWidths.map((width, index) => (
                   <col key={index} style={{ width }} />
                 ))}
+                {canWrite && <col style={{ width: 76 }} />}
               </colgroup>
             )}
             <thead>
@@ -435,7 +456,7 @@ export default function DatabaseDataGrid({
                 {result.columns.map((column, index) => (
                   <th key={index} className="database-data-column">
                     <button
-                      disabled={disabled || !table}
+                      disabled={disabled || busy || !!edit || changes.length > 0 || !table}
                       title={column.dataType}
                       onClick={() => onSort(column.name)}
                     >
@@ -516,13 +537,14 @@ export default function DatabaseDataGrid({
                     />
                   </th>
                 ))}
+                {canWrite && <th className="database-row-actions" scope="col">Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {result.rows.map((row, rowIndex) => (
+              {displayRows.map((row, rowIndex) => (
                 <tr
-                  key={rowIndex}
-                  className={selected.has(rowIndex) ? "selected" : ""}
+                  key={rowKey(rowIndex)}
+                  className={`${selected.has(rowIndex) ? "selected" : ""} ${pendingRow(rowIndex) ? `database-row-${pendingRow(rowIndex)!.kind}` : ""}`}
                   aria-selected={selected.has(rowIndex)}
                 >
                   <th scope="row" className="database-row-selector">
@@ -530,7 +552,7 @@ export default function DatabaseDataGrid({
                       type="button"
                       aria-label={`Select row ${rowIndex + 1}`}
                       aria-pressed={selected.has(rowIndex)}
-                      disabled={disabled || !!edit}
+                      disabled={disabled || busy || !!edit}
                       onClick={(event) => {
                         event.currentTarget.focus();
                         selectRow(
@@ -547,16 +569,17 @@ export default function DatabaseDataGrid({
                     const inline =
                       edit?.row === rowIndex &&
                       edit.column === result.columns[column].name &&
-                      !edit.json &&
-                      !reviewing;
-                    const writable =
-                      !!session &&
-                      editableCell(result, metadata, rowIndex, column);
+                      !edit.json;
+                    const writable = canEdit(rowIndex, column);
+                    const pending = pendingRow(rowIndex);
+                    const name = result.columns[column].name;
+                    const queued = !!pending && Object.hasOwn(pending.values, name);
+                    const defaultCell = pending?.kind === "insert" && !queued;
                     return (
                       <td
                         key={column}
-                        className={`${cell.kind === "null" ? "null-cell" : ""} ${writable ? "editable-cell" : ""}`}
-                        tabIndex={writable && !disabled ? 0 : undefined}
+                        className={`${cell.kind === "null" ? "null-cell" : ""} ${writable ? "editable-cell" : ""} ${queued && pending?.kind !== "delete" ? "database-cell-pending" : ""}`}
+                        tabIndex={writable && !disabled && !busy ? 0 : undefined}
                         title={
                           cell.kind === "binary"
                             ? "Binary value (base64)"
@@ -595,7 +618,7 @@ export default function DatabaseDataGrid({
                             <textarea
                               ref={input}
                               rows={Math.min(5, text.split("\n").length)}
-                              title="Enter to review; Shift+Enter for a new line"
+                              title="Enter to queue; Shift+Enter for a new line"
                               aria-label={`Edit ${edit.column} row ${rowIndex + 1}`}
                               value={isNull ? "" : text}
                               placeholder={isNull ? "NULL" : undefined}
@@ -635,9 +658,9 @@ export default function DatabaseDataGrid({
                                 }
                               />
                             )}
-                            {nullControl}
+                            {defaultControl}{nullControl}
                             <button
-                              aria-label="Review cell change"
+                              aria-label="Queue cell change"
                               disabled={busy}
                               onMouseDown={(event) => event.preventDefault()}
                               onClick={() => void review()}
@@ -654,6 +677,8 @@ export default function DatabaseDataGrid({
                             </button>
                             {error && <span role="alert">{error}</span>}
                           </div>
+                        ) : defaultCell ? (
+                          <span className="database-default" title="Leave unset to use the database default or generated value">DEFAULT</span>
                         ) : cell.kind === "null" ? (
                           <span className="database-null">NULL</span>
                         ) : cell.kind === "binary" ? (
@@ -666,11 +691,16 @@ export default function DatabaseDataGrid({
                       </td>
                     );
                   })}
+                  {canWrite && <td className="database-row-actions"><button
+                    aria-label={pendingRow(rowIndex)?.kind === "delete" ? `Undo delete row ${rowIndex + 1}` : `Delete row ${rowIndex + 1}`}
+                    title={rowIndex < result.rows.length && !rowCanDelete(rowIndex) ? "Deleting requires the complete row and primary key" : pendingRow(rowIndex)?.kind === "delete" ? "Undo queued deletion" : rowIndex >= result.rows.length ? "Remove draft row" : "Queue row deletion"}
+                    disabled={disabled || busy || !!edit || (rowIndex < result.rows.length && !rowCanDelete(rowIndex))}
+                    onClick={() => deleteRow(rowIndex)}>{pendingRow(rowIndex)?.kind === "delete" ? <RotateCcw size={14} /> : <Trash2 size={14} />}</button>{pendingRow(rowIndex)?.kind === "update-cells" && <button aria-label={`Revert row ${rowIndex + 1}`} title="Discard this row’s queued edits" disabled={disabled || busy || !!edit} onClick={() => { setChanges((previous) => previous.filter((item) => item.key !== rowKey(rowIndex))); setPlan(null); }}><RotateCcw size={14} /></button>}</td>}
                 </tr>
               ))}
             </tbody>
           </table>
-          {!result.rows.length && (
+          {!displayRows.length && (
             <p className="service-hint">No rows returned.</p>
           )}
         </div>
@@ -680,7 +710,7 @@ export default function DatabaseDataGrid({
           {error}
         </p>
       )}
-      {edit?.json && !reviewing && (
+      {edit?.json && (
         <div className="code-modal-backdrop database-cell-backdrop">
           <section
             className="database-json-drawer"
@@ -736,7 +766,7 @@ export default function DatabaseDataGrid({
                   {error}
                 </p>
               )}
-              {nullControl}
+              {defaultControl}{nullControl}
               <button
                 className="secondary-button"
                 disabled={busy}
@@ -764,106 +794,9 @@ export default function DatabaseDataGrid({
                   disabled={busy || !changed}
                   onClick={() => void review()}
                 >
-                  Review change
+                  Queue change
                 </button>
               )}
-            </footer>
-          </section>
-        </div>
-      )}
-      {edit && reviewing && (
-        <div className="code-modal-backdrop">
-          <section
-            className="database-cell-review"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Apply database change"
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && !busy) {
-                setReviewing(false);
-                setPlan(null);
-              }
-            }}
-          >
-            <header>
-              <strong>
-                Apply this change to {schema}.{table}?
-              </strong>
-            </header>
-            <p>
-              Row {edit.row + 1} · {edit.column}
-              {metadata?.columns
-                .filter((column) => column.primaryKey)
-                .map((column) => (
-                  <span key={column.name}>
-                    {" "}
-                    · {column.name} = {edit.original[column.name]}
-                  </span>
-                ))}
-            </p>
-            <dl className="database-cell-values">
-              <div>
-                <dt>Before</dt>
-                <dd>
-                  <pre>
-                    {edit.original[edit.column] === null
-                      ? "NULL"
-                      : edit.original[edit.column] === ""
-                        ? '"" (empty string)'
-                        : edit.json
-                          ? edit.initial
-                          : edit.original[edit.column]}
-                  </pre>
-                </dd>
-              </div>
-              <div>
-                <dt>After</dt>
-                <dd>
-                  <pre>
-                    {isNull ? "NULL" : text === "" ? '"" (empty string)' : text}
-                  </pre>
-                </dd>
-              </div>
-            </dl>
-            {plan && (
-              <details>
-                <summary>SQL and parameters</summary>
-                {plan.statements.map((statement, index) => (
-                  <pre key={index}>
-                    {statement.sql}
-                    {"\n"}
-                    {JSON.stringify(statement.parameters)}
-                  </pre>
-                ))}
-              </details>
-            )}
-            {error && <p role="alert">{error}</p>}
-            <footer>
-              <button
-                autoFocus
-                className="secondary-button"
-                disabled={busy}
-                onClick={() => {
-                  setReviewing(false);
-                  setPlan(null);
-                }}
-              >
-                Keep editing
-              </button>
-              <button
-                className="secondary-button"
-                disabled={busy}
-                onClick={close}
-              >
-                Discard
-              </button>
-              <button
-                className="primary-button"
-                disabled={busy || !plan}
-                onClick={() => void apply()}
-              >
-                {busy ? "Working…" : "Apply update"}
-              </button>
             </footer>
           </section>
         </div>

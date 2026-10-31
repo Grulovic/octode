@@ -572,6 +572,7 @@ fn validate_filter(filter: &str) -> Result<(), String> {
         } else {
             match character {
                 '\'' | '"' | '`' => quote = Some(character),
+                '‘' | '’' | '“' | '”' => return Err("Use straight quotes in WHERE strings, for example name LIKE '%stefan%'. Curly quotes are not SQL string delimiters.".into()),
                 '(' => depth += 1,
                 ')' => {
                     depth -= 1;
@@ -686,6 +687,20 @@ mod tests {
         ] {
             assert!(normalized_filter(value).is_err());
         }
+    }
+    #[test]
+    fn quick_filter_explains_smart_quote_errors_without_rewriting_string_contents() {
+        assert!(normalized_filter("name LIKE '%stefan%'").is_ok());
+        assert!(normalized_filter("name LIKE ‘%stefan%'")
+            .unwrap_err()
+            .contains("straight quotes"));
+        assert!(normalized_filter("name LIKE ‘%stefan%’")
+            .unwrap_err()
+            .contains("straight quotes"));
+        assert_eq!(
+            normalized_filter("name = 'O’Neil'").unwrap(),
+            "name = 'O’Neil'"
+        );
     }
     #[tokio::test]
     async fn remote_connections_require_database_before_accessing_credentials() {

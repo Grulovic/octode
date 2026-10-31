@@ -677,16 +677,12 @@ describe("browser sandbox workflows", () => {
       document.querySelector<HTMLButtonElement>(".data-grid th button")
         ?.disabled,
     ).toBe(true);
-    await click('[aria-label="Review cell change"]');
-    const review = document.querySelector(
-      '[aria-label="Apply database change"]',
-    )!;
-    expect(review.textContent).toContain("9007199254740993");
-    expect(review.textContent).toContain("BeforebeforeAfterafter");
+    await click('[aria-label="Queue cell change"]');
+    expect(document.querySelector('.database-cell-pending')?.textContent).toBe("after");
     expect(applied).toBe(false);
-    const button = [...review.querySelectorAll("button")].find(
-      (button) => button.textContent === "Apply update",
-    )!;
+    expect(document.querySelector<HTMLButtonElement>('.database-table-list .service-list-item')?.disabled).toBe(true);
+    vi.mocked(window.confirm).mockReturnValue(true);
+    const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Apply changes")!;
     await act(async () => button.click());
     await waitFor(
       () =>

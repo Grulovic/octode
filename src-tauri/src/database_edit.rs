@@ -275,7 +275,9 @@ fn plan(
     let mut statements = Vec::new();
     let mut size = 0;
     for change in changes {
-        if !["insert", "update", "update-cell", "delete"].contains(&change.kind.as_str()) {
+        if !["insert", "update", "update-cell", "update-cells", "delete"]
+            .contains(&change.kind.as_str())
+        {
             return Err("Unsupported row edit".into());
         }
         for (name, value) in change.values.iter().chain(change.original.iter()) {
@@ -287,15 +289,18 @@ fn plan(
         if size > 4 * 1024 * 1024 {
             return Err("Row edits exceed 4 MB".into());
         }
-        let cell_update = change.kind == "update-cell";
+        let cell_update = matches!(change.kind.as_str(), "update-cell" | "update-cells");
         if cell_update
-            && (change.values.len() != 1
+            && ((change.values.is_empty()
+                || (change.kind == "update-cell" && change.values.len() != 1))
                 || !change
                     .values
                     .keys()
                     .all(|name| change.original.contains_key(name)))
         {
-            return Err("A cell update requires exactly one value and its loaded original".into());
+            return Err(
+                "A cell update requires replacement values and their loaded originals".into(),
+            );
         }
         if change.kind != "insert"
             && ((!cell_update && change.original.len() != columns.len())
@@ -376,7 +381,7 @@ fn plan(
                     )
                 }
             }
-            "update" | "update-cell" => format!(
+            "update" | "update-cell" | "update-cells" => format!(
                 "UPDATE {table} SET {} WHERE {}",
                 sets.iter()
                     .map(|(name, value)| format!("{name} = {value}"))
@@ -691,6 +696,88 @@ mod sqlite_integration {
             .apply_rows("main", "cell_values", &changes, &reviewed)
             .await
             .is_err());
+        // The grid submits one mixed batch, including multiple changed cells per row.
+        let setup = rusqlite::Connection::open(&path).unwrap();
+        setup.execute_batch("CREATE TABLE queue_rows (id INTEGER PRIMARY KEY, name TEXT, count INTEGER DEFAULT 5); INSERT INTO queue_rows VALUES (1,'before',1),(2,'delete me',2);").unwrap();
+        drop(setup);
+        let mixed = vec![
+            RowChange {
+                kind: "update-cells".into(),
+                original: BTreeMap::from([
+                    ("id".into(), Some("1".into())),
+                    ("name".into(), Some("before".into())),
+                    ("count".into(), Some("1".into())),
+                ]),
+                values: BTreeMap::from([
+                    ("name".into(), Some("after".into())),
+                    ("count".into(), Some("9".into())),
+                ]),
+            },
+            RowChange {
+                kind: "delete".into(),
+                original: BTreeMap::from([
+                    ("id".into(), Some("2".into())),
+                    ("name".into(), Some("delete me".into())),
+                    ("count".into(), Some("2".into())),
+                ]),
+                values: BTreeMap::new(),
+            },
+            RowChange {
+                kind: "insert".into(),
+                original: BTreeMap::new(),
+                values: BTreeMap::from([("name".into(), Some("inserted".into()))]),
+            },
+        ];
+        let reviewed = session
+            .row_plan("main", "queue_rows", &mixed)
+            .await
+            .unwrap();
+        assert_eq!(
+            session
+                .apply_rows("main", "queue_rows", &mixed, &reviewed)
+                .await
+                .unwrap(),
+            3
+        );
+        let rows = session
+            .query("SELECT name,count FROM queue_rows ORDER BY id", 100)
+            .await
+            .unwrap();
+        assert_eq!(rows.rows.len(), 2);
+        assert_eq!(rows.rows[0][0].value, "after");
+        assert_eq!(rows.rows[0][1].value, "9");
+        assert_eq!(rows.rows[1][0].value, "inserted");
+        assert_eq!(rows.rows[1][1].value, "5");
+        let failed = vec![
+            RowChange {
+                kind: "update-cells".into(),
+                original: BTreeMap::from([
+                    ("id".into(), Some("1".into())),
+                    ("name".into(), Some("after".into())),
+                ]),
+                values: BTreeMap::from([("name".into(), Some("must roll back".into()))]),
+            },
+            RowChange {
+                kind: "insert".into(),
+                original: BTreeMap::new(),
+                values: BTreeMap::from([("name".into(), Some("must also roll back".into()))]),
+            },
+            mixed[1].clone(),
+        ];
+        let reviewed = session
+            .row_plan("main", "queue_rows", &failed)
+            .await
+            .unwrap();
+        assert!(session
+            .apply_rows("main", "queue_rows", &failed, &reviewed)
+            .await
+            .is_err());
+        let rows = session
+            .query("SELECT name,count FROM queue_rows ORDER BY id", 100)
+            .await
+            .unwrap();
+        assert_eq!(rows.rows.len(), 2);
+        assert_eq!(rows.rows[0][0].value, "after");
         std::fs::remove_file(path).unwrap();
     }
 }

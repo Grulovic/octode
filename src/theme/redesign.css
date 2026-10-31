@@ -556,3 +556,5 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .monaco-editor .find-widget .matchesCount { color: var(--oc-muted); font-family: var(--oc-font-ui); font-size: 11px; }
 .app-shell .monaco-editor .find-widget.no-results .matchesCount { color: var(--oc-error); }
 .app-shell .monaco-editor .find-widget .monaco-inputbox .mirror { font: 400 12px/19px var(--oc-font-ui); }
+.app-shell .service-tool .database-filter-field .database-sql-filter > input:is(:focus, :focus-visible) { outline: none; outline-offset: 0; box-shadow: none; border: 0; background: transparent; }
+.app-shell .database-filter-field:focus-within { background: var(--oc-panel); border-color: var(--oc-accent); }

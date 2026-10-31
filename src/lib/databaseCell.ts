@@ -1,5 +1,5 @@
 import type { DbResult } from "../toolTypes";
-import type { TableMetadata } from "../components/DatabaseRowEditor";
+import type { TableMetadata } from "./databaseRows";
 
 /** Validate and format JSON without changing numeric precision, key order or duplicate keys. */
 export function formatCellJson(source: string) {

@@ -1,3 +1,4 @@
+import SqlFilterInput from "./SqlFilterInput";
 import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
 import DatabaseDataGrid from "./DatabaseDataGrid";
@@ -40,10 +41,9 @@ import {
   type ToolProps,
 } from "./ToolLayout";
 import { exportText, resultCsv } from "../lib/export";
-import type { TableMetadata } from "./DatabaseRowEditor";
+import type { TableMetadata } from "../lib/databaseRows";
 import { desktop } from "../lib/bridge";
 const DatabaseCsvImport = lazy(() => import("./DatabaseCsvImport"));
-const DatabaseRowEditor = lazy(() => import("./DatabaseRowEditor"));
 const SqlEditor = lazy(() => import("./EditorPane"));
 export default function DatabaseWorkspace({
   project,
@@ -53,6 +53,7 @@ export default function DatabaseWorkspace({
   onDirty,
 }: ToolProps) {
   const rowDirty = useRef(false);
+  const [pendingRows, setPendingRows] = useState(false);
   const docDirty = useRef(false);
   const documentDirty = useCallback(
     (value: boolean) => {
@@ -64,6 +65,7 @@ export default function DatabaseWorkspace({
   const rowDirtyChange = useCallback(
     (value: boolean) => {
       rowDirty.current = value;
+      setPendingRows(value);
       onDirty(value || docDirty.current);
     },
     [onDirty],
@@ -105,14 +107,13 @@ export default function DatabaseWorkspace({
   const [loadingRows, setLoadingRows] = useState(false);
   const [metadata, setMetadata] = useState<TableMetadata | null>(null);
   const [tableInfo, setTableInfo] = useState(false);
-  const [rowEditor, setRowEditor] = useState(false);
   const [csvImport, setCsvImport] = useState(false);
   const [history, setHistory] = useState<
     { sql: string; time: string; rows: number; error?: string }[]
   >([]);
   const [operationBusy, setBusy] = useState(false);
   const [cellEditing, setCellEditing] = useState(false);
-  const busy = operationBusy || cellEditing;
+  const busy = operationBusy || cellEditing || pendingRows;
   const operation = useRef<string | null>(null);
   const [servers, setServers] = useState<ServerConnection[]>([]);
   const [tables, setTables] = useState<DbTable[]>([]);
@@ -187,6 +188,7 @@ export default function DatabaseWorkspace({
       handledSearch.current === searchTarget
     )
       return;
+    if (rowDirty.current || cellEditing) { onError("Apply or discard pending row edits before navigating to another database result."); return; }
     handledSearch.current = searchTarget;
     const connectionId =
       searchTarget.target.connectionId ?? searchTarget.target.id;
@@ -685,6 +687,7 @@ export default function DatabaseWorkspace({
             <button
               title="New query"
               className="sidebar-add"
+              disabled={busy}
               onClick={(event) => {
                 event.preventDefault();
                 setQueryId("");
@@ -702,6 +705,7 @@ export default function DatabaseWorkspace({
                 <button
                   key={query.id}
                   className="service-list-item"
+                  disabled={busy}
                   onClick={() => {
                     browseVersion.current++;
                     setLoadingRows(false);
@@ -1003,17 +1007,7 @@ export default function DatabaseWorkspace({
                   <div className="sftp-toolbar">
                     <label className="database-filter-field">
                       <span>WHERE</span>
-                      <input
-                        aria-label="Quick WHERE expression"
-                        placeholder="id > 10 or WHERE id > 10"
-                        title="Filter rows with a SQL condition; WHERE is optional"
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter")
-                            void task(() => browse(table, 0));
-                        }}
-                      />
+                      <SqlFilterInput value={filter} disabled={busy} onChange={setFilter} onSubmit={() => void task(() => browse(table, 0))} />
                     </label>
                     <button
                       className="secondary-button"
@@ -1185,7 +1179,7 @@ export default function DatabaseWorkspace({
             table &&
             tableInfo &&
             (metadata ? (
-              <DatabaseTableInfo metadata={metadata} engine={current.engine} schema={table?.schema ?? "main"} table={table?.name ?? ""} readOnly={current.readOnly || busy} onUseSql={(statement) => { setSql(statement); setQueryId(""); setQueryName("Schema change"); setTab("console"); setTableInfo(false); }} />
+              <DatabaseTableInfo metadata={metadata} />
             ) : !metadataError ? (
               <p className="database-notice" role="status">
                 Loading table info…
@@ -1205,13 +1199,6 @@ export default function DatabaseWorkspace({
                   </strong>
                 {tab === "tables" && metadata && (
                   <div className="database-table-edit-actions">
-                    <button
-                      className="secondary-button"
-                      disabled={busy || !metadata.editable}
-                      onClick={() => setRowEditor(true)}
-                    >
-                      Edit rows…
-                    </button>
                     <button
                       className="secondary-button"
                       disabled={busy || !metadata.editable}
@@ -1257,7 +1244,7 @@ export default function DatabaseWorkspace({
                   table={tab === "tables" ? (table?.name ?? "") : ""}
                   result={result}
                   metadata={tab === "tables" ? metadata : null}
-                  disabled={busy || loadingRows}
+                  disabled={operationBusy || loadingRows || csvImport}
                   sort={sort}
                   descending={descending}
                   onSort={(column) =>
@@ -1276,7 +1263,7 @@ export default function DatabaseWorkspace({
                 />
                 {tab === "tables" && metadata && <div className="database-grid-footer">                    <span className="service-hint">
                       {metadata.editable
-                        ? "Double-click a cell to edit. Review and Apply confirms each update."
+                        ? "Double-click cells to queue edits. Insert rows or mark rows for deletion, then Apply changes submits the whole batch."
                         : metadata.reason}
                     </span><span><i className="database-null">NULL</i> SQL NULL <span className="empty-string-key"/> empty string</span></div>}
               </div>
@@ -1293,20 +1280,6 @@ export default function DatabaseWorkspace({
             onClose={() => setCsvImport(false)}
             onApplied={() => browse()}
             onDirty={rowDirtyChange}
-          />
-        </Suspense>
-      )}
-      {rowEditor && session && table && result && metadata && (
-        <Suspense fallback={<div className="loading">Opening row editor…</div>}>
-          <DatabaseRowEditor
-            session={session}
-            schema={table.schema}
-            table={table.name}
-            result={result}
-            metadata={metadata}
-            onClose={() => setRowEditor(false)}
-            onDirty={rowDirtyChange}
-            onApplied={() => browse()}
           />
         </Suspense>
       )}
