@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { localSigningIdentity } from "./local-signing.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2];
@@ -49,6 +50,12 @@ for (const dependency of ["typescript/bin/tsc", "vite/bin/vite.js", "@tauri-apps
     process.exit(1);
   }
 }
+// Fail before building rather than silently changing the app identity with ad-hoc signing.
+const signingIdentity = localSigningIdentity();
+if (!signingIdentity) {
+  console.error("Local signing is not configured. Run npm run setupSigning once, then build again.");
+  process.exit(1);
+}
 run("cargo", ["--version"]);
 run("xcode-select", ["-p"]);
 // Build once with the selected Node. Tauri's npm hook is disabled below.
@@ -65,6 +72,6 @@ const profile = mode === "dev" ? "debug" : "release";
 const app = join(root, "src-tauri", "target", profile, "bundle", "macos", `${check ? "Octode Check" : "Octode"}.app`);
 // Rust's executable signature is invalid once placed inside an unsigned bundle.
 // Seal the finished bundle locally so Launch Services can open it reliably.
-run("codesign", ["--force", "--deep", "--sign", "-", app]);
+run("codesign", ["--force", "--deep", "--sign", signingIdentity, "--timestamp=none", app]);
 run("codesign", ["--verify", "--deep", "--strict", app]);
-console.log(`\nBuilt: ${app}\nOpen this app directly. After rebuilding, click Restart inside that same app to load changes.\nLocal ad-hoc signature verified. Developer ID signing and notarization are not included.`);
+console.log(`\nBuilt: ${app}\nOpen this app directly. After rebuilding, click Restart inside that same app to load changes.\nPersistent local signature verified. Developer ID signing and notarization are not included.`);

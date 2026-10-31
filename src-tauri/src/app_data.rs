@@ -24,11 +24,21 @@ pub struct AppData {
     #[serde(default)]
     notes: Vec<crate::notes::Note>,
 }
+#[cfg(test)]
 fn reveal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), String> {
+    export_credentials(value, project, vault, true, &mut BTreeMap::new())
+}
+fn export_credentials(
+    value: &mut Value,
+    project: &str,
+    vault: &impl Secrets,
+    include: bool,
+    cache: &mut BTreeMap<(String, String), String>,
+) -> Result<(), String> {
     match value {
         Value::Array(items) => {
             for item in items {
-                reveal(item, project, vault)?;
+                export_credentials(item, project, vault, include, cache)?;
             }
         }
         Value::Object(object) => {
@@ -37,12 +47,23 @@ fn reveal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), 
                     .get("id")
                     .and_then(Value::as_str)
                     .ok_or("Invalid credential reference")?;
-                let content = vault.get(project, id)?;
+                let content = if include {
+                    let key = (project.to_owned(), id.to_owned());
+                    if let Some(content) = cache.get(&key) {
+                        content.clone()
+                    } else {
+                        let content = vault.get(project, id)?;
+                        cache.insert(key, content.clone());
+                        content
+                    }
+                } else {
+                    String::new()
+                };
                 object.insert("value".into(), Value::String(content));
                 object.insert("hasSecret".into(), Value::Bool(false));
             }
             for child in object.values_mut() {
-                reveal(child, project, vault)?;
+                export_credentials(child, project, vault, include, cache)?;
             }
         }
         _ => {}
@@ -50,7 +71,12 @@ fn reveal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), 
     Ok(())
 }
 impl Store {
-    fn export_app(&self, vault: &impl Secrets) -> Result<AppData, String> {
+    fn export_app(
+        &self,
+        vault: &impl Secrets,
+        include_credentials: bool,
+    ) -> Result<AppData, String> {
+        let mut cache = BTreeMap::new();
         let projects = self.list()?;
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
@@ -84,7 +110,13 @@ impl Store {
             for row in rows {
                 let (tool, raw) = row.map_err(|e| e.to_string())?;
                 let mut document: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-                reveal(&mut document, &project.id, vault)?;
+                export_credentials(
+                    &mut document,
+                    &project.id,
+                    vault,
+                    include_credentials,
+                    &mut cache,
+                )?;
                 tools.insert(tool, document);
             }
             out.push(ProjectData {
@@ -280,11 +312,12 @@ impl Store {
 pub async fn export_app_data(
     window: WebviewWindow,
     store: State<'_, Store>,
+    include_credentials: Option<bool>,
 ) -> Result<AppData, String> {
     if window.label() != "main" {
         return Err("Use the main window".into());
     }
-    store.export_app(&Vault)
+    store.export_app(&Vault, include_credentials.unwrap_or(false))
 }
 #[tauri::command]
 pub async fn import_app_data(
@@ -348,7 +381,7 @@ mod tests {
                 &serde_json::json!({"version":1,"formatter":"pint"}),
             )
             .unwrap();
-        let backup = source.export_app(&vault).unwrap();
+        let backup = source.export_app(&vault, true).unwrap();
         assert!(serde_json::to_string(&backup)
             .unwrap()
             .contains("Bearer portable"));
@@ -379,6 +412,64 @@ mod tests {
         assert!(restored_doc.to_string().contains("Bearer portable"));
     }
     #[test]
+    fn credential_free_exports_never_read_keychain_and_can_be_restored() {
+        struct NoReads;
+        impl Secrets for NoReads {
+            fn set(&self, _: &str, _: &str, _: &str) -> Result<(), String> {
+                panic!("unexpected write")
+            }
+            fn get(&self, _: &str, _: &str) -> Result<String, String> {
+                panic!("unexpected Keychain read")
+            }
+        }
+        let store = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let project = store
+            .create(
+                "Fixture".into(),
+                vec![std::env::temp_dir().to_string_lossy().into_owned()],
+            )
+            .unwrap();
+        let mut document = serde_json::json!({"version":1,"connections":[],"queries":[],"credential":{"id":"draft","value":"private","secret":true}});
+        secrets::seal(
+            &mut document,
+            &project.id,
+            &crate::secrets::tests::Memory::default(),
+        )
+        .unwrap();
+        store.save_tool(&project.id, "database", &document).unwrap();
+        let backup = store.export_app(&NoReads, false).unwrap();
+        let field = &backup.projects[0].tools["database"]["credential"];
+        assert_eq!(field["value"], "");
+        assert_eq!(field["hasSecret"], false);
+        store.import_app(backup, &NoReads).unwrap();
+    }
+    #[test]
+    fn export_reads_each_reference_once_and_stops_on_denial() {
+        struct Counting(std::sync::atomic::AtomicUsize);
+        impl Secrets for Counting {
+            fn set(&self, _: &str, _: &str, _: &str) -> Result<(), String> {
+                unreachable!()
+            }
+            fn get(&self, _: &str, id: &str) -> Result<String, String> {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if id == "denied" {
+                    Err("Access denied".into())
+                } else {
+                    Ok("fixture".into())
+                }
+            }
+        }
+        let vault = Counting(std::sync::atomic::AtomicUsize::new(0));
+        let mut doc =
+            serde_json::json!([{"id":"same","hasSecret":true},{"id":"same","hasSecret":true}]);
+        reveal(&mut doc, "project", &vault).unwrap();
+        assert_eq!(vault.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let mut doc =
+            serde_json::json!([{"id":"denied","hasSecret":true},{"id":"other","hasSecret":true}]);
+        assert!(reveal(&mut doc, "project", &vault).is_err());
+        assert_eq!(vault.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+    #[test]
     fn rejects_bad_import_without_creating_projects() {
         let store = Store::open(std::path::Path::new(":memory:")).unwrap();
         let data = AppData {
@@ -404,7 +495,7 @@ mod tests {
             )
             .unwrap();
         }
-        let backup = source.export_app(&vault).unwrap();
+        let backup = source.export_app(&vault, true).unwrap();
         assert_eq!(backup.notes[0].text, "select 1;");
         let target = Store::open(std::path::Path::new(":memory:")).unwrap();
         {

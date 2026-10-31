@@ -130,7 +130,18 @@ export default function DatabaseWorkspace({
     "DatabaseWorkspace:tab",
     "settings",
   );
-  const [filter, setFilter] = useState("");
+  const [tableFilters, setTableFilters] = useToolView<Record<string, { draft: string; applied: string }>>(
+    project.id, "DatabaseWorkspace:tableFilters", {},
+  );
+  const filterKey = (item: DbTable) => JSON.stringify([selected, item.schema, item.name]);
+  const currentFilter = table ? tableFilters[filterKey(table)] : undefined;
+  const filter = currentFilter?.draft ?? "";
+  const appliedFilter = currentFilter?.applied ?? "";
+  const setFilter = (draft: string) => {
+    if (!table) return;
+    const key = filterKey(table);
+    setTableFilters((previous) => ({ ...previous, [key]: { applied: previous[key]?.applied ?? "", draft } }));
+  };
   const [sort, setSort] = useState("");
   const [descending, setDescending] = useState(false);
   const [page, setPage] = useState(0);
@@ -345,7 +356,7 @@ export default function DatabaseWorkspace({
     nextPage = page,
     nextSort = sort,
     nextDescending = descending,
-    nextFilter = filter,
+    nextFilter = nextTable ? tableFilters[filterKey(nextTable)]?.applied ?? "" : "",
   ) => {
     if (!session || !nextTable) return;
     const version = ++browseVersion.current;
@@ -405,6 +416,8 @@ export default function DatabaseWorkspace({
         },
       });
       if (!isCurrent()) return;
+      const key = filterKey(nextTable);
+      setTableFilters((previous) => ({ ...previous, [key]: { draft: previous[key]?.draft ?? nextFilter, applied: nextFilter } }));
       setPage(nextPage);
       setSort(nextSort);
       setDescending(nextDescending);
@@ -658,9 +671,8 @@ export default function DatabaseWorkspace({
                     disabled={busy}
                     className={`service-list-item ${table?.name === item.name && table.schema === item.schema && tab === "tables" ? "selected" : ""}`}
                     onClick={() => {
-                      setFilter("");
                       setResult(null);
-                      void task(() => browse(item, 0, "", false, ""));
+                      void task(() => browse(item, 0, "", false));
                     }}
                   >
                     <Table2 size={13} />
@@ -1007,12 +1019,12 @@ export default function DatabaseWorkspace({
                   <div className="sftp-toolbar">
                     <label className="database-filter-field">
                       <span>WHERE</span>
-                      <SqlFilterInput value={filter} disabled={busy} onChange={setFilter} onSubmit={() => void task(() => browse(table, 0))} />
+                      <SqlFilterInput value={filter} disabled={busy} onChange={setFilter} onSubmit={() => void task(() => browse(table, 0, sort, descending, filter))} />
                     </label>
                     <button
                       className="secondary-button"
                       disabled={busy}
-                      onClick={() => void task(() => browse(table, 0))}
+                      onClick={() => void task(() => browse(table, 0, sort, descending, filter))}
                     >
                       Load rows
                     </button>
@@ -1238,7 +1250,7 @@ export default function DatabaseWorkspace({
                     page,
                     sort,
                     descending,
-                    filter,
+                    appliedFilter,
                   ])}
                   schema={tab === "tables" ? (table?.schema ?? "") : ""}
                   table={tab === "tables" ? (table?.name ?? "") : ""}

@@ -2,7 +2,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("./bridge", () => ({ desktop: true, invoke: native.invoke }));
-import { appPreferences, importAppData, parseAppData } from "./appData";
+vi.mock("./export", () => ({ exportText: vi.fn() }));
+import { appPreferences, exportAppData, importAppData, parseAppData } from "./appData";
 beforeEach(() => { localStorage.clear(); native.invoke.mockReset(); });
 it("exports only app preferences and validates the backup before native import", async () => {
   localStorage.setItem("other-app-token", "private");
@@ -24,4 +25,12 @@ it("remaps restored project views without overwriting the existing project view"
     expect(localStorage.getItem("octode-view:missing:api")).toBeNull();
     expect(refreshed).toHaveBeenCalledOnce();
   } finally { window.removeEventListener("octode-app-data-imported", refreshed); }
+});
+
+it("exports without credential access by default and passes explicit opt-in", async () => {
+  native.invoke.mockResolvedValue({ format: "octode-app-data", version: 1, projects: [], notes: [] });
+  await exportAppData();
+  expect(native.invoke).toHaveBeenLastCalledWith("export_app_data", { includeCredentials: false });
+  await exportAppData(true);
+  expect(native.invoke).toHaveBeenLastCalledWith("export_app_data", { includeCredentials: true });
 });

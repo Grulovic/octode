@@ -558,3 +558,14 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .monaco-editor .find-widget .monaco-inputbox .mirror { font: 400 12px/19px var(--oc-font-ui); }
 .app-shell .service-tool .database-filter-field .database-sql-filter > input:is(:focus, :focus-visible) { outline: none; outline-offset: 0; box-shadow: none; border: 0; background: transparent; }
 .app-shell .database-filter-field:focus-within { background: var(--oc-panel); border-color: var(--oc-accent); }
+
+/* Keep the highlighted WHERE mirror visible in both focused and idle states. */
+.app-shell .service-tool .database-filter-field .database-sql-filter > input {
+  appearance: none; -webkit-appearance: none; border: 0; border-radius: 0;
+  background: transparent; color: transparent; -webkit-text-fill-color: transparent;
+  height: 24px; min-height: 24px; padding: 0 8px;
+  font: inherit; outline: none; box-shadow: none;
+}
+.app-shell .service-tool .database-filter-field .database-sql-filter > input::placeholder {
+  color: var(--oc-muted); -webkit-text-fill-color: var(--oc-muted);
+}

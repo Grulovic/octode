@@ -7,6 +7,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [value, setValue] = useState(loadSettings);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [includeCredentials, setIncludeCredentials] = useState(false);
   const [message, setMessage] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
   return (
@@ -96,11 +97,13 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           />
         </label>
         <h3 className="settings-section">App data</h3>
-        <p className="settings-note">Back up global Notes (including open drafts), all projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Exports include credentials; keep the file private. Source files and running sessions are not included. Save tool changes before exporting.</p>
+        <p className="settings-note">Back up global Notes (including open drafts), all projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Credentials are excluded by default, so exporting does not request Keychain access. Re-enter them after restoring. Source files and running sessions are not included. Save tool changes before exporting.</p>
+        <label><input type="checkbox" checked={includeCredentials} disabled={busy} onChange={(event) => setIncludeCredentials(event.target.checked)} /> Include saved passwords and secrets</label>
+        {includeCredentials && <p className="settings-note">Keychain may request access for each saved credential. Keep this export private. Canceling a Keychain prompt stops the export.</p>}
         <div className="settings-data-actions">
           <button type="button" disabled={busy} onClick={async () => {
             setBusy(true); setError(""); setMessage("");
-            try { await exportAppData(); } catch (reason) { setError(String(reason)); }
+            try { await exportAppData(includeCredentials); } catch (reason) { setError(String(reason)); }
             finally { setBusy(false); }
           }}>Export app data</button>
           <button type="button" disabled={busy} onClick={() => importInput.current?.click()}>Import app data</button>

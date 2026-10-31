@@ -387,3 +387,29 @@ it("opens table information from the header without disclosures and returns to t
     ),
   ).toHaveLength(1);
 });
+
+it("retains WHERE drafts and applied filters separately across tables and pagination", async () => {
+  harness.document = { version: 1, connections: [{ ...databaseConnection(), id: "db", name: "Fixture" }], queries: [] };
+  harness.native.mockImplementation(async (command) => {
+    if (command === "database_connect") return "session";
+    if (command === "database_tables") return { rows: [[{ value: "main" }, { value: "rooms" }], [{ value: "main" }, { value: "users" }]] };
+    if (command === "database_metadata") return new Promise(() => {});
+    if (command === "database_browse") return result([[{ kind: "text", value: "row" }]]);
+  });
+  await act(async () => root.render(<DatabaseWorkspace {...props} />));
+  await click("Fixturesqlite"); await click("Connect"); await click("roomsmain");
+  const input = () => document.querySelector<HTMLInputElement>('[aria-label="Quick WHERE expression"]')!;
+  const typeFilter = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input(), value);
+    input().dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await typeFilter("id > 10"); await click("Load rows");
+  await typeFilter("id > 20");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Next page"]')!.click());
+  expect(harness.native).toHaveBeenLastCalledWith("database_browse", expect.objectContaining({ request: expect.objectContaining({ filter: "id > 10", page: 1 }) }));
+  expect(input().value).toBe("id > 20");
+  await click("usersmain"); expect(input().value).toBe("");
+  await click("roomsmain"); expect(input().value).toBe("id > 20");
+  expect(harness.native).toHaveBeenLastCalledWith("database_browse", expect.objectContaining({ request: expect.objectContaining({ filter: "id > 10" }) }));
+  await click("roomsmain"); expect(input().value).toBe("id > 20");
+});

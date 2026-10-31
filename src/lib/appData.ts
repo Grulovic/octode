@@ -21,9 +21,9 @@ export function parseAppData(raw: string): Backup {
   if (value?.format !== "octode-app-data" || value.version !== 1 || !Array.isArray(value.projects) || !value.preferences || typeof value.preferences !== "object" || Array.isArray(value.preferences) || Object.entries(value.preferences).some(([key, content]) => !allowedPreference(key) || typeof content !== "string")) throw new Error("Choose a valid Octode app-data export.");
   return value;
 }
-export async function exportAppData() {
+export async function exportAppData(includeCredentials = false) {
   if (!desktop) throw new Error("Open the desktop app to export app data.");
-  const data = await invoke<Omit<Backup, "preferences">>("export_app_data");
+  const data = await invoke<Omit<Backup, "preferences">>("export_app_data", { includeCredentials });
   await exportText(JSON.stringify({ ...data, ...notesForBackup(), preferences: appPreferences() }, null, 2), `octode-app-data-${new Date().toISOString().slice(0, 10)}.json`, "Export app data");
 }
 export async function importAppData(raw: string) {
