@@ -1,3 +1,4 @@
+import { registerSelectAll } from "../lib/selectAll";
 import { installTerminalLinks } from "../lib/terminalLinks";
 import { HOME_TERMINAL_ID } from "../lib/terminalHome";
 import { useTerminalActivity } from "../hooks/useTerminalActivity";
@@ -76,6 +77,10 @@ export default function LocalTerminal({
     fitRef.current = fit;
     term.loadAddon(fit);
     term.open(container.current);
+    const stopSelectAll = registerSelectAll(() => {
+      if (!term.textarea || document.activeElement !== term.textarea) return false;
+      term.selectAll(); return true;
+    });
     const stopLinks = installTerminalLinks(term, (reason) => errorRef.current(reason));
     fit.fit();
     const observer = new ResizeObserver(() => {
@@ -197,6 +202,7 @@ export default function LocalTerminal({
       input.dispose();
       resize.dispose();
       stopLinks();
+      stopSelectAll();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;

@@ -1,6 +1,6 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import PanelResize, { usePanelSize } from "./PanelResize";
-import { Save, Plus, Trash2, X, Lock, Check, Database, Server, ArrowDownUp } from "./DesignIcons";
+import { Save, Plus, Trash2, X, Lock, Check, Database, Server, ArrowDownUp, FolderOpen } from "./DesignIcons";
 import type { SecretValue, ValueRow } from "../toolTypes";
 import { row } from "../lib/toolDefaults";
 import { desktop } from "../lib/bridge";
@@ -265,12 +265,25 @@ export function ValueRows({
   onChange: (rows: ValueRow[]) => void;
   files?: boolean;
 }) {
+  const [fileError, setFileError] = useState("");
+  const latest = useRef({ values, onChange });
+  latest.current = { values, onChange };
+  const pickFile = async (id: string) => {
+    setFileError("");
+    try {
+      const item = latest.current.values.find((item) => item.id === id);
+      if (!item) return;
+      const path = await chooseLocalFile("Choose upload file", item.value || undefined);
+      if (path) latest.current.onChange(latest.current.values.map((item) => item.id === id ? { ...item, file: true, value: path, secret: false, hasSecret: false } : item));
+    } catch (reason) { setFileError(`Could not choose file: ${String(reason)}`); }
+  };
   const update = (id: string, patch: Partial<ValueRow>) =>
     onChange(
       values.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
   return (
     <div className="value-rows">
+      {fileError && <p className="error-banner" role="alert">{fileError}</p>}
       <div className="service-subheading">
         <strong>{label}</strong>
         <button onClick={() => onChange([...values, row()])}>
@@ -296,8 +309,10 @@ export function ValueRows({
             value={item.name}
             onChange={(e) => update(item.id, { name: e.target.value })}
           />
+          <div className="value-row-field">
           <input
             aria-label={`${label} ${index + 1} value`}
+            title={files && item.file ? item.value : undefined}
             type={item.secret ? "password" : "text"}
             placeholder={
               item.hasSecret ? "Stored secret" : "Value or {{variable}}"
@@ -307,6 +322,8 @@ export function ValueRows({
               update(item.id, { value: e.target.value, hasSecret: false })
             }
           />
+          {files && <button type="button" className="multipart-file-picker" aria-label={`Choose file for ${label} ${index + 1}`} title="Choose upload file" disabled={!desktop} onClick={() => void pickFile(item.id)}><FolderOpen size={15} /></button>}
+          </div>
           <button type="button" className="secret-toggle" aria-label={`${label} ${index + 1} secret`} title={item.secret ? "Secret value (hidden)" : "Store as secret"} aria-pressed={!!item.secret} onClick={() => update(item.id, { secret: !item.secret, ...(!item.secret ? {} : {hasSecret: false}) })}><Lock size={13}/></button>
           {files && (
             <label className="inline-check">

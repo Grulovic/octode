@@ -46,7 +46,7 @@ export const apiRequest = (): ApiRequest => ({
   bodyMode: "none",
   body: "",
   form: [],
-  auth: "none",
+  auth: "inherit",
   username: "",
   credential: secret(),
   timeoutSeconds: 30,

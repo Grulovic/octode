@@ -10,7 +10,7 @@ pub struct Note {
     pub title: String,
     pub text: String,
 }
-fn load(store: &Store) -> Result<Vec<Note>, String> {
+pub(crate) fn load(store: &Store) -> Result<Vec<Note>, String> {
     let db = store.0.lock().map_err(|error| error.to_string())?;
     let mut statement = db
         .prepare("SELECT id,title,text FROM global_notes ORDER BY rowid DESC")
@@ -67,13 +67,18 @@ pub fn load_notes(window: WebviewWindow, store: State<'_, Store>) -> Result<Vec<
     load(&store)
 }
 fn delete(store: &Store, id: &str) -> Result<(), String> {
-    let db = store.0.lock().map_err(|error| error.to_string())?;
-    db.execute("DELETE FROM global_notes WHERE id=?1", [id])
+    let mut db = store.0.lock().map_err(|error| error.to_string())?;
+    let tx = db.transaction().map_err(|error| error.to_string())?;
+    tx.execute("DELETE FROM global_notes WHERE id=?1", [id])
         .map_err(|error| error.to_string())?;
-    Ok(())
+    tx.commit().map_err(|error| error.to_string())
 }
 #[tauri::command]
-pub fn delete_note(window: WebviewWindow, store: State<'_, Store>, id: String) -> Result<(), String> {
+pub fn delete_note(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    id: String,
+) -> Result<(), String> {
     if window.label() != "main" {
         return Err("Delete notes from the main window".into());
     }

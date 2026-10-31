@@ -3214,7 +3214,10 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
+ "http-body-util",
  "keyring",
+ "mime_guess",
+ "objc2-foundation",
  "portable-pty",
  "rand 0.10.3",
  "regex",

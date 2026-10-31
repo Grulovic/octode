@@ -42,9 +42,12 @@ pub async fn save_tool_document(
         }
         _ => return Err("Unknown tool".into()),
     }
+    let previous = store
+        .load_tool(&project_id, &tool)?
+        .unwrap_or(serde_json::Value::Null);
     let secret_project = project_id.clone();
     document = tauri::async_runtime::spawn_blocking(move || {
-        secrets::seal(&mut document, &secret_project, &Vault)?;
+        secrets::seal_changes(&mut document, &previous, &secret_project, &Vault)?;
         Ok::<_, String>(document)
     })
     .await
@@ -66,12 +69,19 @@ pub(crate) struct ApiDocument {
     environments: Vec<ApiEnvironment>,
 }
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 struct ApiEnvironment {
     #[allow(dead_code)]
     variables: Vec<http_client::ValueRow>,
     #[serde(default)]
     #[allow(dead_code)]
     headers: Vec<http_client::ValueRow>,
+    #[serde(default)]
+    auth: Option<String>,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    credential: Option<secrets::SecretValue>,
 }
 #[tauri::command]
 pub async fn api_send(

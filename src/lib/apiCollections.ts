@@ -1,5 +1,5 @@
 import type { ApiDocument, ApiRequest, ValueRow } from "../toolTypes";
-import { apiDocument, apiRequest, id, row } from "./toolDefaults";
+import { apiDocument, apiRequest, id, row, secret } from "./toolDefaults";
 const sensitive = new Set([
   "authorization",
   "proxy-authorization",
@@ -71,9 +71,14 @@ export function importCollection(raw: string): ApiDocument {
       const folder = record(raw);
       const newId = id();
       folders.set(string(folder.id), newId);
+    }
+    for (const raw of (Array.isArray(source.folders) ? source.folders : []).slice(0, 200)) {
+      const folder = record(raw);
+      const newId = folders.get(string(folder.id))!;
       out.folders.push({
         id: newId,
         name: string(folder.name, "Imported folder"),
+        parentId: folders.get(string(folder.parentId)) ?? "",
       });
     }
     for (const raw of source.requests.slice(0, 1000)) {
@@ -93,7 +98,7 @@ export function importCollection(raw: string): ApiDocument {
         )
           ? item.bodyMode
           : "none",
-        auth: ["none", "bearer", "basic"].includes(string(item.auth))
+        auth: ["inherit", "none", "bearer", "basic"].includes(string(item.auth))
           ? item.auth
           : "none",
         username: string(item.username),
@@ -115,13 +120,16 @@ export function importCollection(raw: string): ApiDocument {
         name: string(item.name, "Imported environment"),
         variables: rows(item.variables),
         headers: rows(item.headers),
+        auth: ["bearer", "basic"].includes(string(item.auth)) ? item.auth as "bearer" | "basic" : "none",
+        username: string(item.username),
+        credential: { ...secret(), value: string(record(item.credential).value) },
       });
     }
     return out;
   }
   if (!Array.isArray(parsed.item))
     throw new Error("Choose an Octode export or a Postman v2 collection.");
-  const visit = (items: unknown[], folderId = "", prefix = "", depth = 0) => {
+  const visit = (items: unknown[], folderId = "", depth = 0) => {
     if (depth > 12)
       throw new Error("Collection folder nesting exceeds 12 levels.");
     for (const raw of items) {
@@ -134,10 +142,11 @@ export function importCollection(raw: string): ApiDocument {
       if (Array.isArray(item.item)) {
         const folder = {
           id: id(),
-          name: prefix ? `${prefix} / ${name}` : name,
+          name,
+          parentId: folderId,
         };
         out.folders.push(folder);
-        visit(item.item, folder.id, folder.name, depth + 1);
+        visit(item.item, folder.id, depth + 1);
         continue;
       }
       const source =
@@ -181,7 +190,8 @@ export function importCollection(raw: string): ApiDocument {
           );
       }
       const auth = record(source.auth);
-      if (auth.type === "bearer") {
+      if (auth.type === "noauth") request.auth = "none";
+      else if (auth.type === "bearer") {
         request.auth = "bearer";
         request.credential.value =
           rows(auth.bearer).find((value) => value.name === "token")?.value ??

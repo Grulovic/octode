@@ -31,7 +31,6 @@ export default function GitPanel({
   onBusy,
   onCount,
   renderMerge,
-  onChooseVersion,
 }: {
   project: Project;
   overlayHost?: Element;
@@ -44,8 +43,7 @@ export default function GitPanel({
   onBusy: (busy: boolean) => void;
   onCount?: (count: number) => void;
   onOpen: (path: string) => Promise<void>;
-  renderMerge: (path: string) => ReactNode;
-  onChooseVersion: (path: string, text: string) => void;
+  renderMerge: (path: string, conflict: GitConflict) => ReactNode;
 }) {
   const [state, setState] = useState<GitSnapshot | null>(null);
   useEffect(() => { if (state) onCount?.(state.entries.length); }, [state, onCount]);
@@ -57,6 +55,9 @@ export default function GitPanel({
   const [pushPrompt, setPushPrompt] = useState(false);
   const [branch, setBranch] = useState("");
   const [newBranch, setNewBranch] = useState("");
+  const [managedBranch, setManagedBranch] = useState("");
+  const [renamedBranch, setRenamedBranch] = useState("");
+  useEffect(() => { setManagedBranch(""); setRenamedBranch(""); }, [root]);
   const [remote, setRemote] = useState("");
   const [view, setView] = useState<{
     path: string;
@@ -99,6 +100,7 @@ export default function GitPanel({
       });
       if (mounted.current && epoch.current === version) {
         setState(snapshot);
+        setManagedBranch((previous) => snapshot.branches.includes(previous) ? previous : "");
         setError("");
         setRemote((previous) =>
           snapshot.remotes.includes(previous)
@@ -179,7 +181,7 @@ export default function GitPanel({
         "push",
         "stash",
         "stash-apply",
-        "resolve",
+        "resolve", "rename-branch", "delete-branch", "revert", "abort-revert", "stash-drop",
       ].includes(action);
       if (
         confirm &&
@@ -192,6 +194,11 @@ export default function GitPanel({
                 ? `Commit the reviewed staged changes?\n\n${value}`
                 : action === "merge"
                   ? `Merge ${value} into ${state.branch}? The merge will stop before committing so you can review the result.`
+                  : action === "delete-branch" ? `Delete local branch “${path}”? Unmerged branches will be refused.`
+                  : action === "rename-branch" ? `Rename local branch “${path}” to “${value}”?`
+                  : action === "revert" ? `Apply the inverse of commit ${value.slice(0, 8)}? Changes will be staged for review; no commit is created automatically.`
+                  : action === "stash-drop" ? `Drop ${path}? Its saved changes will be removed from the stash list.`
+                  : action === "abort-revert" ? "Abort this revert and discard its result edits?"
                   : `${action} ${value || path || remote}?`,
         ))
       )
@@ -446,6 +453,7 @@ export default function GitPanel({
               Abort merge…
             </button>
           )}
+          {state.reverting && <button className="secondary-button git-wide" disabled={busy} onClick={() => void act("abort-revert")}>Abort revert…</button>}
           {["conflicts", "unstaged", "staged"].map((group) => {
             const entries = state.entries.filter((entry) =>
               group === "conflicts"
@@ -632,6 +640,9 @@ export default function GitPanel({
             >
               Create & switch
             </button>
+            <label className="git-control">Manage local branch<CustomSelect aria-label="Manage local branch" value={managedBranch} onChange={(event) => { setManagedBranch(event.target.value); setRenamedBranch(event.target.value); }}><option value="">Select branch…</option>{state.branches.map((name) => <option key={name}>{name}</option>)}</CustomSelect></label>
+            <input aria-label="Rename branch to" placeholder="New branch name" value={renamedBranch} onChange={(event) => setRenamedBranch(event.target.value)} />
+            <div className="git-action-row"><button disabled={busy || !managedBranch || !renamedBranch.trim() || renamedBranch === managedBranch} onClick={() => void act("rename-branch", managedBranch, renamedBranch)}>Rename branch</button><button className="danger-action" disabled={busy || !managedBranch || managedBranch === state.branch} onClick={() => void act("delete-branch", managedBranch)}>Delete branch</button></div>
             <label className="git-control">
               Remote
               <CustomSelect
@@ -663,13 +674,8 @@ export default function GitPanel({
               >
                 Stash changes
               </button>
-              <button
-                disabled={busy || !!state.entries.length || state.merging}
-                onClick={() => void act("stash-apply")}
-              >
-                Apply latest stash
-              </button>
             </div>
+            <div className="git-stashes" aria-label="Saved stashes">{(state.stashes ?? []).length ? (state.stashes ?? []).map((stash) => <div key={`${stash.reference}:${stash.hash}`} className="git-stash-row"><span title={stash.subject}><code>{stash.reference}</code> {stash.subject}</span><button disabled={busy || !!state.entries.length || state.merging || state.reverting} onClick={() => void act("stash-apply", stash.reference, stash.hash)}>Apply</button><button className="danger-action" disabled={busy || state.merging || state.reverting} onClick={() => void act("stash-drop", stash.reference, stash.hash)}>Drop</button></div>) : <p className="git-help">No saved stashes.</p>}</div>
             <p className="git-help">
               Applying keeps the stash. Network operations use your configured
               Git credentials and SSH agent.
@@ -860,6 +866,7 @@ export default function GitPanel({
               </pre>
             )}
             <footer>
+              {view.historical && <button className="secondary-button" disabled={busy || !!state?.entries.length || state?.merging || state?.reverting} onClick={() => { const hash = view.path; setView(null); void act("revert", "", hash); }}>Revert commit…</button>}
               {!view.historical && (
                 <>
                   <button
@@ -903,7 +910,7 @@ export default function GitPanel({
       {merge && (
         <div className="code-modal-backdrop">
           <section
-            className="code-review-modal"
+            className="code-review-modal merge-conflict-modal"
             role="dialog"
             aria-modal="true"
             aria-label="Merge conflict"
@@ -914,43 +921,7 @@ export default function GitPanel({
                 <X size={17} />
               </button>
             </header>
-            <p className="git-help">
-              Compare the three versions and edit the result below. Code
-              autosaves it; validate and stage when the result is ready.
-            </p>
-            <div className="merge-sources">
-              {[
-                ["Base", merge.data.base],
-                ["Ours (current branch)", merge.data.ours],
-                ["Theirs (incoming branch)", merge.data.theirs],
-              ].map(([title, text]) => (
-                <div key={title}>
-                  <strong>{title}</strong>
-                  {title !== "Base" && (
-                    <button
-                      disabled={busy}
-                      onClick={async () => {
-                        if (
-                          await confirmAction(
-                            `Replace the entire result with ${title}? Code will autosave the result.`,
-                          )
-                        )
-                          onChooseVersion(`${root}/${merge.path}`, text);
-                      }}
-                    >
-                      Use this version
-                    </button>
-                  )}
-                  <pre>{text}</pre>
-                </div>
-              ))}
-            </div>
-            <strong className="merge-result-label">
-              Result · Code autosaves
-            </strong>
-            <div className="merge-editor">
-              {renderMerge(`${root}/${merge.path}`)}
-            </div>
+            {renderMerge(`${root}/${merge.path}`, merge.data)}
             <footer>
               <button
                 className="secondary-button"

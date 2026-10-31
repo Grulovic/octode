@@ -217,3 +217,14 @@
 .workspace-terminal-host [data-connected='true'] .terminal-output-dot,
 .terminal-output-dot { display: inline-block; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--oc-unsaved, #fb9551); border-color: var(--oc-unsaved, #fb9551); }
 .remote-terminal-status { display: inline-flex; align-items: center; gap: 8px; }
+.workspace-terminal-host .terminal-toolbar > .terminal-folder-menu.custom-select {
+  flex: 0 0 26px;
+  width: 26px;
+  max-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.workspace-terminal-host .terminal-folder-menu > .custom-select-label { display: flex; align-items: center; justify-content: center; }

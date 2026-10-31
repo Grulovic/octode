@@ -1,3 +1,4 @@
+import { registerSelectAll } from "../lib/selectAll";
 import "monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css";
 // Load syntax grammars and editing controls without language-service or suggestion engines.
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
@@ -92,3 +93,11 @@ monaco.languages.setLanguageConfiguration("json", {
 });
 
 export { monaco };
+
+// Covers Code, Notes, SQL, merge panes and diff editors using this runtime.
+registerSelectAll(() => {
+  const focused = monaco.editor.getEditors().find((editor) => editor.hasTextFocus() && editor.getDomNode()?.contains(document.activeElement));
+  if (!focused) return false;
+  focused.trigger("keyboard", "editor.action.selectAll", null);
+  return true;
+});

@@ -97,6 +97,32 @@ pub fn row_value(row: &ValueRow, project: &str, vault: &impl Secrets) -> Result<
     )
 }
 
+fn bearer_token(value: &str) -> Result<&str, String> {
+    let mut token = value.trim();
+    while token
+        .get(..6)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer"))
+        && token
+            .get(6..)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+    {
+        token = token[6..].trim_start();
+    }
+    if token.is_empty() {
+        return Err("Enter a Bearer token in the request or its environment".into());
+    }
+    if token
+        .chars()
+        .any(|char| char.is_whitespace() || char.is_control())
+    {
+        return Err(
+            "The Bearer token contains whitespace. Paste only the token or 'Bearer <token>'."
+                .into(),
+        );
+    }
+    Ok(token)
+}
+
 async fn prepare(
     request: ApiRequest,
     environment: Vec<ValueRow>,
@@ -154,6 +180,13 @@ async fn prepare(
     {
         let name = reqwest::header::HeaderName::from_bytes(row.name.as_bytes())
             .map_err(|_| "A header name is invalid")?;
+        // Multipart owns its Content-Type: its boundary must match the generated body.
+        // Inherited application/json or a pasted multipart boundary prevents server parsing.
+        if request.body_mode == "multipart"
+            && (name == reqwest::header::CONTENT_TYPE || name == reqwest::header::CONTENT_LENGTH)
+        {
+            continue;
+        }
         has_content_type |= name == reqwest::header::CONTENT_TYPE;
         let mut value = reqwest::header::HeaderValue::from_str(&expand(
             &row_value(row, project, vault)?,
@@ -167,10 +200,8 @@ async fn prepare(
     }
     match request.auth.as_str() {
         "bearer" => {
-            builder = builder.bearer_auth(expand(
-                &resolve(&request.credential, project, vault)?,
-                &variables,
-            )?)
+            let expanded = expand(&resolve(&request.credential, project, vault)?, &variables)?;
+            builder = builder.bearer_auth(bearer_token(&expanded)?);
         }
         "basic" => {
             builder = builder.basic_auth(
@@ -243,13 +274,20 @@ async fn prepare(
                         .map_err(|_| "An upload file could not be read")?;
                     form = form.part(
                         name,
-                        reqwest::multipart::Part::bytes(bytes).file_name(
-                            std::path::Path::new(&value)
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .into_owned(),
-                        ),
+                        reqwest::multipart::Part::bytes(bytes)
+                            .file_name(
+                                std::path::Path::new(&value)
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            )
+                            .mime_str(
+                                mime_guess::from_path(&value)
+                                    .first_or_octet_stream()
+                                    .as_ref(),
+                            )
+                            .map_err(|_| "The upload media type is invalid")?,
                     );
                 } else {
                     form = form.text(name, value);
@@ -381,6 +419,141 @@ mod tests {
         let mut invalid = request();
         invalid.url = "file:///etc/passwd".into();
         assert!(prepare(invalid, vec![], "project", &vault).await.is_err());
+    }
+    #[tokio::test]
+    async fn environment_authorization_is_sealed_and_resolves_its_shared_credential_when_sending() {
+        use crate::secrets::{self, tests::Memory};
+        let vault = Memory::default();
+        let mut document = serde_json::json!({"requests":[],"environments":[{"variables":[],"auth":"bearer","credential":{"id":"draft","value":"shared-test-token","secret":true}}]});
+        assert!(
+            serde_json::from_value::<crate::tool_commands::ApiDocument>(document.clone()).is_ok()
+        );
+        secrets::seal(&mut document, "project", &vault).unwrap();
+        let credential = document["environments"][0]["credential"].clone();
+        assert_eq!(credential["value"], "");
+        assert_eq!(credential["hasSecret"], true);
+        assert!(!document.to_string().contains("shared-test-token"));
+        let mut request: ApiRequest = serde_json::from_value(serde_json::json!({"id":"request","name":"Test","method":"GET","url":"https://example.test/","bodyMode":"none","auth":"bearer","timeoutSeconds":30})).unwrap();
+        request.credential = serde_json::from_value(credential).unwrap();
+        let built = prepare(request, vec![], "project", &vault)
+            .await
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(built.headers()["authorization"], "Bearer shared-test-token");
+        assert!(built.headers()["authorization"].is_sensitive());
+        let malformed = serde_json::json!({"requests":[],"environments":[{"variables":[],"auth":"bearer","credential":"plaintext"}]});
+        assert!(serde_json::from_value::<crate::tool_commands::ApiDocument>(malformed).is_err());
+        let legacy = serde_json::json!({"requests":[],"environments":[{"variables":[]}]});
+        assert!(serde_json::from_value::<crate::tool_commands::ApiDocument>(legacy).is_ok());
+    }
+    #[tokio::test]
+    async fn multipart_upload_sends_file_bytes_with_matching_boundary_despite_inherited_content_headers(
+    ) {
+        use http_body_util::BodyExt;
+        let path = std::env::temp_dir().join(format!("octode-upload-{}.png", uuid::Uuid::new_v4()));
+        std::fs::write(&path, b"disposable-file-bytes").unwrap();
+        let mut request = request();
+        request.url = "https://example.test/upload".into();
+        request.body_mode = "multipart".into();
+        request.auth = "none".into();
+        request.params.clear();
+        request.headers = serde_json::from_value(serde_json::json!([
+            {"id":"type","name":"Content-Type","value":"application/json","enabled":true},
+            {"id":"length","name":"Content-Length","value":"1","enabled":true}
+        ]))
+        .unwrap();
+        request.form = serde_json::from_value(serde_json::json!([
+            {"id":"file","name":"image","value":path.to_string_lossy(),"file":true,"enabled":true},
+            {"id":"caption","name":"caption","value":"test caption","enabled":true},
+            {"id":"disabled","name":"ignored","value":"/missing/file","file":true,"enabled":false}
+        ]))
+        .unwrap();
+        let mut built = prepare(
+            request,
+            vec![],
+            "project",
+            &crate::secrets::tests::Memory::default(),
+        )
+        .await
+        .unwrap()
+        .build()
+        .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let types: Vec<_> = built
+            .headers()
+            .get_all(reqwest::header::CONTENT_TYPE)
+            .iter()
+            .collect();
+        assert_eq!(types.len(), 1);
+        let content_type = types[0].to_str().unwrap().to_owned();
+        assert!(content_type.starts_with("multipart/form-data; boundary="));
+        assert_ne!(
+            built
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .map(|v| v.to_str().unwrap()),
+            Some("1")
+        );
+        let body = String::from_utf8(
+            built
+                .body_mut()
+                .take()
+                .unwrap()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .to_vec(),
+        )
+        .unwrap();
+        let boundary = content_type.split("boundary=").nth(1).unwrap();
+        assert!(body.starts_with(&format!("--{boundary}\r\n")));
+        assert!(body.contains("name=\"image\"; filename=\"octode-upload-"));
+        assert!(body.contains("Content-Type: image/png"));
+        assert!(body.contains("disposable-file-bytes"));
+        assert!(body.contains("name=\"caption\""));
+        assert!(body.contains("test caption"));
+        assert!(!body.contains("/missing/file"));
+        assert!(body.ends_with(&format!("--{boundary}--\r\n")));
+    }
+    #[test]
+    fn bearer_prefix_is_added_exactly_once_and_invalid_tokens_are_rejected() {
+        for input in [
+            "test-token",
+            " Bearer test-token ",
+            "bearer test-token",
+            "Bearer Bearer test-token",
+        ] {
+            assert_eq!(bearer_token(input).unwrap(), "test-token");
+        }
+        assert_eq!(bearer_token("bearerToken").unwrap(), "bearerToken");
+        for invalid in [
+            "",
+            "Bearer",
+            "Bearer ",
+            "Bearer two tokens",
+            "abc\r\nInjected:yes",
+        ] {
+            assert!(bearer_token(invalid).is_err());
+        }
+    }
+    #[tokio::test]
+    async fn prefixed_bearer_input_builds_a_single_authorization_header() {
+        let vault = crate::secrets::tests::Memory::default();
+        let mut request = request();
+        request.url = "https://example.test".into();
+        request.body_mode = "none".into();
+        request.body = String::new();
+        request.params.clear();
+        request.credential.value = "Bearer pasted-token".into();
+        let built = prepare(request, vec![], "project", &vault)
+            .await
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(built.headers()["authorization"], "Bearer pasted-token");
+        assert_eq!(built.headers().get_all("authorization").iter().count(), 1);
     }
     #[test]
     fn variables_expand_once_and_missing_values_fail() {

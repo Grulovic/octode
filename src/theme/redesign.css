@@ -109,6 +109,8 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .request-folder { padding: var(--oc-space-3) 0; }
 .app-shell .service-api .api-request-row .service-list-item { height: var(--oc-row-list); min-height: var(--oc-row-list); }
 .app-shell .http-method { min-width: 40px; font: 500 10px/14px var(--oc-font-mono); }
+.app-shell .api-route-row .http-method { flex: 0 0 7ch; width: 7ch; min-width: 0; }
+.app-shell .api-route-row > .service-list-item { gap: 8px; }
 .app-shell [data-method='GET'] { color: var(--oc-get); }
 .app-shell [data-method='POST'] { color: var(--oc-post); }
 .app-shell [data-method='PUT'] { color: var(--oc-put); }
@@ -409,6 +411,23 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .request-bar .variable-input input { border-radius: 0 var(--oc-radius-control) var(--oc-radius-control) 0; }
 .app-shell .service-database .service-form-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .app-shell .service-tool .request-bar .variable-input input { border-radius: 0; }
+.app-shell .service-api .request-bar .variable-input { height: 32px; border-radius: 0; }
+.app-shell .service-api .request-bar .variable-input > :is(input,.variable-input-mirror) {
+  height: 30px;
+  min-height: 0;
+  padding: 0 10px;
+  font: 400 12px/30px var(--oc-font-mono);
+  letter-spacing: normal;
+}
+.app-shell .service-api .request-bar .variable-input > input {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: transparent;
+  border: 0;
+  caret-color: var(--oc-accent);
+}
+.app-shell .service-api .request-bar .variable-input > input::placeholder { -webkit-text-fill-color: var(--oc-faint); }
+.app-shell .service-api .request-bar .variable-input > input:is(:focus,:focus-visible) { outline: none; box-shadow: none; }
 .app-shell .data-grid td:has(.database-inline-edit) { max-width: none; overflow: visible; }
 .app-shell .database-inline-edit { min-width: 340px; }
 .app-shell .database-inline-edit > textarea { flex: 1 1 180px; width: 180px; }

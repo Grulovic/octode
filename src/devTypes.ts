@@ -29,6 +29,8 @@ export interface GitSnapshot {
   remotes: string[];
   stagedRevision: string;
   merging: boolean;
+  reverting?: boolean;
+  stashes?: { reference: string; hash: string; subject: string }[];
   history: { hash: string; subject: string; author: string; date: string }[];
 }
 export interface GitConflict {

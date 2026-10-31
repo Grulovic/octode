@@ -65,9 +65,11 @@ import {
   type SaveState,
 } from "../lib/autosave";
 
+const MergeEditor = lazy(() => import("./MergeEditor"));
 const EditorPane = lazy(() =>
   desktop ? import("./EditorPane") : import("./PreviewEditor"),
 );
+const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 const FormatPhp = lazy(() => import("./FormatPhp"));
 import { WorkspaceTerminalContext } from "./WorkspaceTerminal";
 
@@ -164,6 +166,8 @@ export default function CodeWorkspace({
   const [documents, setDocuments] = useState<Document[]>([]);
   const [active, setActive] = useState("");
   const [formatter, setFormatter] = useState(false);
+  const [markdownPath, setMarkdownPath] = useState<string | null>(null);
+  const markdownPreview = !!active && markdownPath === active;
   const [root, setRoot] = useState(initial.activeRoot);
   useEffect(() => {
     const owner = rootForPath(project.roots, active);
@@ -477,7 +481,7 @@ export default function CodeWorkspace({
     if (owner) setRoot(owner);
     if (record) recordHistory(path, line);
 
-    if (line) setSelection({ path, line, revision: Date.now() });
+    if (line) { setMarkdownPath(null); setSelection({ path, line, revision: Date.now() }); }
     if (documentsRef.current.some((item) => item.path === path)) {
       setActive(path);
       return;
@@ -555,6 +559,7 @@ export default function CodeWorkspace({
         return;
       event.preventDefault();
       event.stopPropagation();
+      setMarkdownPath(null);
       setFindToken((value) => value + 1);
     };
     window.addEventListener("keydown", find, true);
@@ -1157,7 +1162,7 @@ export default function CodeWorkspace({
                 (await autosave.current?.flush()) ?? true
               }
               onOpen={(path) => open(path)}
-              renderMerge={(path) => {
+              renderMerge={(path, conflict) => {
                 const item = documents.find((item) => item.path === path);
                 return item ? (
                   <Suspense
@@ -1165,9 +1170,10 @@ export default function CodeWorkspace({
                       <div className="loading">Loading result editor…</div>
                     }
                   >
-                    <EditorPane
+                    <MergeEditor
                       key={item.path}
                       document={item}
+                      conflict={conflict}
                       modelPath={`octode-merge:${project.id}:${path}`}
                       readOnly={fileBusy || gitBusy}
                       onChange={(text) => editDocument(path, text)}
@@ -1177,7 +1183,6 @@ export default function CodeWorkspace({
                   <p>Open the result in Code to edit it.</p>
                 );
               }}
-              onChooseVersion={editDocument}
               onChanged={async () => {
                 setTreeVersion((value) => value + 1);
                 stamps.current.clear();
@@ -1272,7 +1277,7 @@ export default function CodeWorkspace({
             title="Find in file (Cmd/Ctrl+F)"
             aria-label="Find in file"
             disabled={!document}
-            onClick={() => setFindToken((value) => value + 1)}
+            onClick={() => { setMarkdownPath(null); setFindToken((value) => value + 1); }}
           >
             <Search size={15} />
           </button>
@@ -1294,6 +1299,16 @@ export default function CodeWorkspace({
             onClick={() => setFormatter(true)}
           >
             <WandSparkles size={15} />
+          </button>
+          <button
+            className={`icon-button${markdownPreview ? " active" : ""}`}
+            title="Toggle Markdown preview"
+            aria-label="Markdown preview"
+            aria-pressed={markdownPreview}
+            disabled={!document}
+            onClick={() => setMarkdownPath(markdownPreview ? null : active)}
+          >
+            MD
           </button>
         </div>
         <div className="split-editor-layout">
@@ -1330,7 +1345,7 @@ export default function CodeWorkspace({
                     </button>
                   </div>
                 )}
-                <div className="editor-surface">
+                <div className="editor-surface" style={markdownPreview ? { display: "none" } : undefined}>
                   <Suspense
                     fallback={<div className="loading">Loading editor…</div>}
                   >
@@ -1347,6 +1362,7 @@ export default function CodeWorkspace({
                     />
                   </Suspense>
                 </div>
+                {markdownPreview && <Suspense fallback={<div className="loading">Loading preview…</div>}><MarkdownPreview text={document.text} /></Suspense>}
               </>
             ) : (
               <div className="editor-empty">
@@ -1568,8 +1584,7 @@ export default function CodeWorkspace({
             <p>{filePrompt.path}</p>
             {filePrompt.action === "delete" ? (
               <p>
-                Delete this {filePrompt.directory ? "empty folder" : "file"}{" "}
-                permanently? Source files are not moved to Trash.
+                Move this {filePrompt.directory ? "folder and its contents" : "file"} to system Trash? You can restore it using your file manager.
               </p>
             ) : (
               <label>
@@ -1603,7 +1618,7 @@ export default function CodeWorkspace({
                 {fileBusy
                   ? "Working…"
                   : filePrompt.action === "delete"
-                    ? "Delete permanently"
+                    ? "Move to Trash"
                     : "Apply"}
               </button>
             </footer>

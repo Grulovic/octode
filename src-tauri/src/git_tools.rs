@@ -202,6 +202,28 @@ pub struct Snapshot {
     pub staged_revision: String,
     pub merging: bool,
     pub history: Vec<Commit>,
+    pub stashes: Vec<Stash>,
+    pub reverting: bool,
+}
+#[derive(Serialize)]
+pub struct Stash {
+    pub reference: String,
+    pub hash: String,
+    pub subject: String,
+}
+fn stashes(root: &Path) -> Result<Vec<Stash>, String> {
+    let text = string(root, &["stash", "list", "--format=%gd%x00%H%x00%gs"])?;
+    Ok(text
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, '\0');
+            Some(Stash {
+                reference: parts.next()?.into(),
+                hash: parts.next()?.into(),
+                subject: parts.next()?.into(),
+            })
+        })
+        .collect())
 }
 #[derive(Serialize)]
 pub struct Commit {
@@ -277,6 +299,8 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
         })
         .collect();
     Ok(Snapshot {
+        stashes: stashes(root)?,
+        reverting: output(root, &["rev-parse", "--verify", "REVERT_HEAD"])?.ok,
         branch,
         head,
         entries,
@@ -693,7 +717,10 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
             run(root, &["commit", "-m", &request.value])?
         }
         "switch" | "create-branch" | "merge" => {
-            if before.merging || (request.action != "switch" && !before.entries.is_empty()) {
+            if before.merging
+                || before.reverting
+                || (request.action != "switch" && !before.entries.is_empty())
+            {
                 return Err(
                     "Commit or explicitly stash local changes before switching or merging branches"
                         .into(),
@@ -727,7 +754,9 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
             if !before.remotes.contains(&request.remote) {
                 return Err("Choose a configured remote".into());
             }
-            if request.action == "pull" && (!before.entries.is_empty() || before.merging) {
+            if request.action == "pull"
+                && (!before.entries.is_empty() || before.merging || before.reverting)
+            {
                 return Err("Commit or stash local changes before pulling".into());
             }
             if before.branch == "Detached HEAD" && request.action != "fetch" {
@@ -761,7 +790,7 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
             run(root, &["merge", "--abort"])?
         }
         "stash" => {
-            if before.merging || before.entries.iter().any(|e| e.conflict) {
+            if before.merging || before.reverting || before.entries.iter().any(|e| e.conflict) {
                 return Err("Finish the merge before stashing".into());
             }
             run(
@@ -775,13 +804,73 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
                 ],
             )?
         }
-        "stash-apply" => {
-            if !before.entries.is_empty() || before.merging {
-                return Err(
-                    "Start with a clean working tree before applying the latest stash".into(),
-                );
+        "rename-branch" | "delete-branch" => {
+            if before.merging || before.reverting {
+                return Err("Finish the merge/revert before changing branches".into());
             }
-            run(root, &["stash", "apply", "stash@{0}"])?
+            if !before.branches.contains(&request.path) {
+                return Err("Choose an existing local branch".into());
+            }
+            branch_name(root, &request.path)?;
+            if request.action == "rename-branch" {
+                branch_name(root, &request.value)?;
+                run(root, &["branch", "-m", "--", &request.path, &request.value])?
+            } else {
+                if request.path == before.branch {
+                    return Err("Switch away from this branch before deleting it".into());
+                }
+                run(root, &["branch", "-d", "--", &request.path])?
+            }
+        }
+        "revert" => {
+            if !before.entries.is_empty() || before.merging || before.reverting {
+                return Err("Start with a clean working tree before reverting a commit".into());
+            }
+            if !(40..=64).contains(&request.value.len())
+                || !request.value.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                return Err("Choose a full commit hash from history".into());
+            }
+            let parents = string(root, &["rev-list", "--parents", "-n", "1", &request.value])?;
+            if parents.split_whitespace().count() > 2 {
+                return Err("Reverting a merge commit requires choosing a mainline parent; use the terminal for this case".into());
+            }
+            let result = output(root, &["revert", "--no-commit", &request.value])?;
+            if !result.ok && !snapshot(root)?.entries.iter().any(|entry| entry.conflict) {
+                return Err(String::from_utf8_lossy(&result.stderr).into());
+            }
+            b"Revert applied without committing. Review the changes and commit when ready.".to_vec()
+        }
+        "abort-revert" => {
+            if !before.reverting {
+                return Err("No revert is in progress".into());
+            }
+            if before.staged_revision != request.expected_staged {
+                return Err("The index changed; review before aborting".into());
+            }
+            run(root, &["revert", "--abort"])?
+        }
+        "stash-apply" | "stash-drop" => {
+            if before.merging || before.reverting {
+                return Err("Finish the merge/revert first".into());
+            }
+            let stash = if request.path.is_empty() && request.action == "stash-apply" {
+                before.stashes.first()
+            } else {
+                before
+                    .stashes
+                    .iter()
+                    .find(|stash| stash.reference == request.path && stash.hash == request.value)
+            }
+            .ok_or("This stash changed or disappeared; refresh and select it again")?;
+            if request.action == "stash-apply" {
+                if !before.entries.is_empty() {
+                    return Err("Start with a clean working tree before applying a stash".into());
+                }
+                run(root, &["stash", "apply", &stash.hash])?
+            } else {
+                run(root, &["stash", "drop", &stash.reference])?
+            }
         }
         _ => return Err("Unsupported Git action".into()),
     };
@@ -1239,5 +1328,93 @@ mod tests {
             .unwrap()
             .contains("Base"));
         assert!(show_commit(&repo.0, "HEAD;echo bad").is_err());
+    }
+    #[test]
+    fn branch_management_stash_selection_and_revert_leave_reviewable_state() {
+        let repo = Repo::new();
+        std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "base"]).unwrap();
+        run(&repo.0, &["branch", "old-name"]).unwrap();
+        act(&repo.0, "rename-branch", "old-name", "new-name").unwrap();
+        assert!(snapshot(&repo.0)
+            .unwrap()
+            .branches
+            .contains(&"new-name".into()));
+        assert!(act(&repo.0, "delete-branch", "main", "").is_err());
+        act(&repo.0, "delete-branch", "new-name", "").unwrap();
+        std::fs::write(repo.0.join("file.txt"), "first stash\n").unwrap();
+        act(&repo.0, "stash", "", "").unwrap();
+        let first = stashes(&repo.0).unwrap().remove(0);
+        std::fs::write(repo.0.join("file.txt"), "second stash\n").unwrap();
+        act(&repo.0, "stash", "", "").unwrap();
+        assert!(act(&repo.0, "stash-drop", &first.reference, &first.hash).is_err());
+        let list = stashes(&repo.0).unwrap();
+        assert_eq!(list.len(), 2);
+        act(&repo.0, "stash-apply", &list[1].reference, &list[1].hash).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+            "first stash\n"
+        );
+        assert_eq!(stashes(&repo.0).unwrap().len(), 2);
+        run(&repo.0, &["restore", "file.txt"]).unwrap();
+        act(&repo.0, "stash-drop", &list[0].reference, &list[0].hash).unwrap();
+        assert_eq!(stashes(&repo.0).unwrap().len(), 1);
+        std::fs::write(repo.0.join("file.txt"), "updated\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "update"]).unwrap();
+        let head = snapshot(&repo.0).unwrap().head;
+        act(&repo.0, "revert", "", &head).unwrap();
+        let after = snapshot(&repo.0).unwrap();
+        assert_eq!(after.head, head);
+        assert!(!after.staged_revision.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+            "base\n"
+        );
+        assert!(act(&repo.0, "revert", "", &head).is_err());
+    }
+    #[test]
+    fn unmerged_branches_are_not_deleted() {
+        let repo = Repo::new();
+        run(&repo.0, &["commit", "--allow-empty", "-m", "base"]).unwrap();
+        run(&repo.0, &["switch", "-c", "feature"]).unwrap();
+        run(&repo.0, &["commit", "--allow-empty", "-m", "feature"]).unwrap();
+        run(&repo.0, &["switch", "main"]).unwrap();
+        assert!(act(&repo.0, "delete-branch", "feature", "").is_err());
+        assert!(snapshot(&repo.0)
+            .unwrap()
+            .branches
+            .contains(&"feature".into()));
+    }
+    #[test]
+    fn conflicted_reverts_offer_abort_without_losing_the_pre_revert_commit() {
+        let repo = Repo::new();
+        for (text, message) in [
+            ("base\n", "base"),
+            ("updated\n", "update"),
+            ("later\n", "later"),
+        ] {
+            std::fs::write(repo.0.join("file.txt"), text).unwrap();
+            run(&repo.0, &["add", "."]).unwrap();
+            run(&repo.0, &["commit", "-m", message]).unwrap();
+        }
+        let head = snapshot(&repo.0).unwrap().head;
+        let older = string(&repo.0, &["rev-parse", "HEAD~1"])
+            .unwrap()
+            .trim()
+            .to_owned();
+        act(&repo.0, "revert", "", &older).unwrap();
+        let status = snapshot(&repo.0).unwrap();
+        assert!(status.reverting);
+        assert!(status.entries.iter().any(|entry| entry.conflict));
+        assert!(act(&repo.0, "create-branch", "", "blocked").is_err());
+        act(&repo.0, "abort-revert", "", "").unwrap();
+        assert!(!snapshot(&repo.0).unwrap().reverting);
+        assert_eq!(snapshot(&repo.0).unwrap().head, head);
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+            "later\n"
+        );
     }
 }

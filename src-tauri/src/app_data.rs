@@ -21,6 +21,8 @@ pub struct AppData {
     format: String,
     version: u8,
     projects: Vec<ProjectData>,
+    #[serde(default)]
+    notes: Vec<crate::notes::Note>,
 }
 fn reveal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), String> {
     match value {
@@ -99,7 +101,25 @@ impl Store {
                 tools,
             });
         }
+        let read_notes = |table: &str| -> Result<Vec<crate::notes::Note>, String> {
+            let mut statement = tx
+                .prepare(&format!(
+                    "SELECT id,title,text FROM {table} ORDER BY rowid DESC"
+                ))
+                .map_err(|e| e.to_string())?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok(crate::notes::Note {
+                        id: row.get(0)?,
+                        title: row.get(1)?,
+                        text: row.get(2)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+            rows.map(|row| row.map_err(|e| e.to_string())).collect()
+        };
         Ok(AppData {
+            notes: read_notes("global_notes")?,
             format: "octode-app-data".into(),
             version: 1,
             projects: out,
@@ -112,6 +132,14 @@ impl Store {
     ) -> Result<BTreeMap<String, String>, String> {
         if data.format != "octode-app-data" || data.version != 1 || data.projects.len() > 1000 {
             return Err("Unsupported Octode app data".into());
+        }
+        if data.notes.len() > 10000
+            || data
+                .notes
+                .iter()
+                .any(|note| note.title.chars().count() > 200 || note.text.len() > 2 * 1024 * 1024)
+        {
+            return Err("Invalid notes in app data".into());
         }
         let mut ids = BTreeMap::new();
         let mut seen = HashSet::new();
@@ -193,6 +221,14 @@ impl Store {
         }
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
+        // Import copies with new IDs; existing live notes/drafts are never overwritten.
+        for note in data.notes.into_iter().rev() {
+            tx.execute(
+                "INSERT INTO global_notes(id,title,text) VALUES (?1,?2,?3)",
+                params![uuid::Uuid::new_v4().to_string(), note.title, note.text],
+            )
+            .map_err(|e| e.to_string())?;
+        }
         for item in data.projects {
             let p = item.project;
             tx.execute(
@@ -346,6 +382,7 @@ mod tests {
     fn rejects_bad_import_without_creating_projects() {
         let store = Store::open(std::path::Path::new(":memory:")).unwrap();
         let data = AppData {
+            notes: vec![],
             format: "wrong".into(),
             version: 1,
             projects: vec![],
@@ -354,5 +391,47 @@ mod tests {
             .import_app(data, &crate::secrets::tests::Memory::default())
             .is_err());
         assert!(store.list().unwrap().is_empty());
+    }
+    #[test]
+    fn notes_round_trip_as_copies_and_legacy_backups_remain_valid() {
+        let vault = crate::secrets::tests::Memory::default();
+        let source = Store::open(std::path::Path::new(":memory:")).unwrap();
+        {
+            let db = source.0.lock().unwrap();
+            db.execute(
+                "INSERT INTO global_notes VALUES ('note','scratch.sql','select 1;')",
+                [],
+            )
+            .unwrap();
+        }
+        let backup = source.export_app(&vault).unwrap();
+        assert_eq!(backup.notes[0].text, "select 1;");
+        let target = Store::open(std::path::Path::new(":memory:")).unwrap();
+        {
+            target
+                .0
+                .lock()
+                .unwrap()
+                .execute(
+                    "INSERT INTO global_notes VALUES ('existing','Existing','keep')",
+                    [],
+                )
+                .unwrap();
+        }
+        target.import_app(backup, &vault).unwrap();
+        let notes = crate::notes::load(&target).unwrap();
+        assert_eq!(notes.len(), 2);
+        assert!(notes
+            .iter()
+            .any(|note| note.id != "note" && note.text == "select 1;"));
+        let legacy: AppData = serde_json::from_value(
+            serde_json::json!({"format":"octode-app-data","version":1,"projects":[]}),
+        )
+        .unwrap();
+        target.import_app(legacy, &vault).unwrap();
+        assert_eq!(crate::notes::load(&target).unwrap().len(), 2);
+        let invalid: AppData = serde_json::from_value(serde_json::json!({"format":"octode-app-data","version":1,"projects":[],"notes":[{"id":"x","title":"x","text":"x".repeat(2*1024*1024+1)}]})).unwrap();
+        assert!(target.import_app(invalid, &vault).is_err());
+        assert_eq!(crate::notes::load(&target).unwrap().len(), 2);
     }
 }

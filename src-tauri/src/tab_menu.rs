@@ -8,6 +8,14 @@ use tauri::{
 pub fn install(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::default(app.handle())?;
     let close_window_text = PredefinedMenuItem::close_window(app, None)?.text()?;
+    let select_all_text = PredefinedMenuItem::select_all(app, None)?.text()?;
+    let select_all = MenuItem::with_id(
+        app,
+        "octode.select-all",
+        "Select All",
+        true,
+        Some("CmdOrCtrl+A"),
+    )?;
     let close_tab = MenuItem::with_id(
         app,
         "octode.close-tab",
@@ -22,6 +30,11 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
                 if let Some(predefined) = child.as_predefined_menuitem() {
                     if !close_window_text.is_empty() && predefined.text()? == close_window_text {
                         submenu.remove_at(position)?;
+                    } else if !select_all_text.is_empty() && predefined.text()? == select_all_text {
+                        // WKWebView's selectAll: only selects Monaco's hidden
+                        // textarea. Route the native command to the focused control.
+                        submenu.remove_at(position)?;
+                        submenu.insert(&select_all, position)?;
                     }
                 }
             }
@@ -38,6 +51,8 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
     app.on_menu_event(|app, event| {
         if event.id().as_ref() == "octode.close-tab" {
             let _ = app.emit_to("main", "octode-close-tab", ());
+        } else if event.id().as_ref() == "octode.select-all" {
+            let _ = app.emit_to("main", "octode-select-all", ());
         }
     });
     Ok(())

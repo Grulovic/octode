@@ -12,6 +12,10 @@ export interface ColumnMetadata {
   primaryKey: boolean;
   defaultValue: string | null;
   generated: boolean;
+  fullType?: string;
+  extra?: string;
+  collation?: string;
+  comment?: string;
 }
 export interface TableMetadata {
   columns: ColumnMetadata[];

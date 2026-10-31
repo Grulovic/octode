@@ -252,3 +252,25 @@ describe("file-bound editor events", () => {
     expect(harness.models.size).toBe(0);
   });
 });
+
+it("retains a note model and its undo history across editor unmounts without resetting its text", async () => {
+  const { disposeRetainedEditorModel } = await import("../lib/retainedEditorModels");
+  const path = "notes://undo-test.txt";
+  const doc = file(path, "edited note");
+  try {
+    const render = () => root.render(<EditorPane document={doc} modelPath={path} retainModel onChange={() => {}} />);
+    await act(async () => render());
+    const model = harness.models.get(path);
+    model.undoHistory = ["original note"];
+    const reset = vi.spyOn(model, "setValue");
+    await act(async () => root.render(null));
+    expect(harness.models.get(path)).toBe(model);
+    await act(async () => render());
+    expect(harness.instances.at(-1).model).toBe(model);
+    expect(model.undoHistory).toEqual(["original note"]);
+    expect(reset).not.toHaveBeenCalled();
+    await act(async () => root.render(null));
+    disposeRetainedEditorModel(path);
+    expect(harness.models.has(path)).toBe(false);
+  } finally { disposeRetainedEditorModel(path); }
+});

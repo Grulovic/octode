@@ -57,3 +57,23 @@ describe("schema SQL generation", () => {
     ).toBe('CREATE INDEX "users_key" ON "public"."users" ("id");');
   });
 });
+
+import { renameTableSql, renameColumnSql, dropTableSql, dropColumnSql, editColumnSql } from "./schema";
+it("generates quoted table/column rename and drop SQL without implicit CASCADE", () => {
+  expect(renameTableSql("sqlite", "main", "old", "new")).toBe('ALTER TABLE "main"."old" RENAME TO "new";');
+  expect(renameColumnSql("mysql", "db", "table", "old", "new")).toBe('ALTER TABLE `db`.`table` RENAME COLUMN `old` TO `new`;');
+  expect(dropColumnSql("postgres", "public", "table", "column")).toBe('ALTER TABLE "public"."table" DROP COLUMN "column";');
+  expect(dropTableSql("sqlite", "main", 'odd"table')).toBe('DROP TABLE "main"."odd""table";');
+});
+it("alters supported column properties while retaining existing defaults on request", () => {
+  expect(editColumnSql("postgres", "public", "items", "title", "VARCHAR(255)", false, "", false, true)).not.toContain("DEFAULT");
+  expect(editColumnSql("mysql", "db", "items", "title", "VARCHAR(255)", true, "", false, true, "O'Reilly")).toContain("DEFAULT 'O''Reilly'");
+  expect(editColumnSql("postgres", "public", "items", "number", "INTEGER", true, "12", true)).toContain("SET DEFAULT 12");
+  expect(() => editColumnSql("mysql", "db", "items", "title", "TEXT; DROP TABLE x", true, "")).toThrow();
+  expect(() => editColumnSql("sqlite", "main", "items", "title", "TEXT", true, "")).toThrow("rebuilding");
+});
+it("keeps MySQL collation, comments and on-update expressions when editing a column", () => {
+  const sql = editColumnSql("mysql", "db", "items", "updated_at", "TIMESTAMP", false, "", false, true, "CURRENT_TIMESTAMP", { extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP", collation: "utf8mb4_unicode_ci", comment: "O'Reilly" });
+  expect(sql).toContain("DEFAULT CURRENT_TIMESTAMP"); expect(sql).toContain("on update CURRENT_TIMESTAMP");
+  expect(sql).toContain("COLLATE `utf8mb4_unicode_ci`"); expect(sql).toContain("COMMENT 'O''Reilly'");
+});

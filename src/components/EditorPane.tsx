@@ -6,6 +6,7 @@ import { monaco } from "../editor/runtime";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { loadSettings } from "../lib/settings";
 import { language } from "../lib/workspace";
+import { retainEditorModel } from "../lib/retainedEditorModels";
 import type { Document, EditorSelection } from "../types";
 
 Object.assign(self, {
@@ -30,6 +31,8 @@ export default function EditorPane({
   modelPath,
   languageId,
   wordWrap,
+  onReady,
+  retainModel = false,
 }: {
   document: Document;
   onChange: (value: string) => void;
@@ -42,6 +45,8 @@ export default function EditorPane({
   modelPath?: string;
   languageId?: string;
   wordWrap?: "on" | "off";
+  retainModel?: boolean;
+  onReady?: (editor: monaco.editor.IStandaloneCodeEditor) => void | (() => void);
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -52,8 +57,9 @@ export default function EditorPane({
     onExecute,
     readOnly,
     wordWrap,
+    onReady,
   });
-  latest.current = { document, onChange, onNavigate, onExecute, readOnly, wordWrap };
+  latest.current = { document, onChange, onNavigate, onExecute, readOnly, wordWrap, onReady };
   const syncing = useRef(false);
   const uri = modelPath ?? document.path;
   const editorLanguage = languageId ?? language(document.path);
@@ -68,6 +74,7 @@ export default function EditorPane({
         editorLanguage,
         resource,
       );
+    const detachRetainedModel = retainModel ? retainEditorModel(uri, model) : undefined;
     // A retained model carries undo history, but disk reloads remain authoritative.
     if (model.getValue() !== latest.current.document.text)
       model.setValue(latest.current.document.text);
@@ -104,6 +111,7 @@ export default function EditorPane({
       acceptSuggestionOnEnter: "off",
     });
     editor.current = instance;
+    const readyCleanup = latest.current.onReady?.(instance);
     const unregisterCase = registerCaseEditor(() => {
       if (
         !host.current?.isConnected ||
@@ -285,6 +293,7 @@ export default function EditorPane({
     });
     return () => {
       window.removeEventListener("octode-editor-settings", settings);
+      readyCleanup?.();
       editor.current = null;
       execute?.dispose();
       change.dispose();
@@ -299,9 +308,10 @@ export default function EditorPane({
       unregisterCase();
       findObserver.disconnect();
       instance.dispose();
-      if (modelPath) model.dispose();
+      detachRetainedModel?.();
+      if (modelPath && !retainModel) model.dispose();
     };
-  }, [uri, modelPath]);
+  }, [uri, modelPath, retainModel]);
   useEffect(() => {
     const model = editor.current?.getModel();
     if (model && model.getLanguageId() !== editorLanguage)

@@ -24,7 +24,7 @@ export interface ApiRequest {
   bodyMode: "none" | "json" | "text" | "form" | "multipart";
   body: string;
   form: ValueRow[];
-  auth: "none" | "bearer" | "basic";
+  auth: "inherit" | "none" | "bearer" | "basic";
   username: string;
   credential: SecretValue;
   timeoutSeconds: number;
@@ -34,10 +34,14 @@ export interface ApiEnvironment {
   name: string;
   variables: ValueRow[];
   headers?: ValueRow[];
+  auth?: "none" | "bearer" | "basic";
+  username?: string;
+  credential?: SecretValue;
 }
+export interface ApiFolder { id: string; name: string; parentId?: string }
 export interface ApiDocument {
   version: 1;
-  folders: { id: string; name: string }[];
+  folders: ApiFolder[];
   requests: ApiRequest[];
   environments: ApiEnvironment[];
 }

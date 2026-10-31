@@ -47,16 +47,14 @@ export default function TerminalPanel({
     { id: string; root: string; generation: number; startupCommand?: string }[]
   >(() => [{ id: crypto.randomUUID(), root: initialRoot, generation: 0 }]);
   const [active, setActive] = useState<string>(() => tabs[0].id);
-  const [newRoot, setNewRoot] = useState(initialRoot);
-  useEffect(() => setNewRoot(initialRoot), [initialRoot]);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [activity, setActivity] = useState<Record<string, boolean>>({});
   const hasOutput = tabs.some((tab) => activity[tab.id]);
   useEffect(() => { onActivityChange?.(hasOutput); }, [hasOutput, onActivityChange]);
   const current = tabs.find((item) => item.id === active);
-  const add = () => {
+  const add = (root = initialRoot) => {
     if (tabs.length >= 6) return;
-    const tab = { id: crypto.randomUUID(), root: newRoot, generation: 0 };
+    const tab = { id: crypto.randomUUID(), root, generation: 0 };
     setTabs((previous) => [...previous, tab]);
     setActive(tab.id);
   };
@@ -192,36 +190,19 @@ export default function TerminalPanel({
             </div>
           ))}
         </div>
-        <CustomSelect
-          aria-label="Folder for new terminal"
-          value={newRoot}
-          onChange={(event) => setNewRoot(event.target.value)}
-          renderLabel={(_path, label) => <span className="terminal-folder-label"><Folder size={12} /><span>{label}</span></span>}
-        >
-          {project.roots.map((root) => (
-            <option key={root} value={root}>
-              {filename(root)}
-            </option>
-          ))}
-        </CustomSelect>
-        <button
-          className="terminal-add"
-          aria-label="New terminal"
-          title="New terminal (Cmd/Ctrl+T while terminal is focused; up to six)"
+        {[false, true].map((ai) => <CustomSelect
+          key={String(ai)}
+          className={`terminal-add terminal-folder-menu ${ai ? "terminal-ai-launch" : ""}`}
+          aria-label={ai ? "New AI terminal" : "New terminal"}
+          title={ai ? "Choose a folder and run the terminal launch command" : "Choose a folder for a new terminal (Cmd/Ctrl+T uses the Code folder)"}
           disabled={tabs.length >= 6}
-          onClick={add}
+          value={initialRoot}
+          triggerContent={ai ? <Sparkle size={16} /> : <Plus size={14} />}
+          onChange={(event) => ai ? launchCommand(event.target.value, loadSettings().terminalCommand) : add(event.target.value)}
+          renderLabel={(_path, label) => <span className="terminal-folder-label"><Folder size={14} /><span>{label}</span></span>}
         >
-          <Plus size={14} />
-        </button>
-        <button
-          className="terminal-add terminal-ai-launch"
-          aria-label="New AI terminal"
-          title="Run the terminal launch command in the selected folder"
-          disabled={tabs.length >= 6}
-          onClick={() => launchCommand(newRoot, loadSettings().terminalCommand)}
-        >
-          <Sparkle size={16} />
-        </button>
+          {project.roots.map((root) => <option key={root} value={root}>{filename(root)}</option>)}
+        </CustomSelect>)}
         <div className="terminal-toolbar-actions">
           <button
             title="Restart current terminal"
@@ -274,7 +255,7 @@ export default function TerminalPanel({
       {!tabs.length && (
         <div className="terminal-empty">
           <span>No terminal sessions.</span>
-          <button onClick={add}>Open terminal</button>
+          <button onClick={() => add()}>Open terminal</button>
         </div>
       )}
     </div>

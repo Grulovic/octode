@@ -1,3 +1,5 @@
+import { folderAncestors, orderedFolders, canMoveFolder } from "../lib/apiFolders";
+import { environmentCredential, requestWithEnvironment } from "../lib/apiAuthorization";
 import { inheritHeaders } from "../lib/apiHeaders";
 import { resolvedPublicUrl } from "../lib/resolvedPublicUrl";
 import { changedIds } from "../lib/toolChanges";
@@ -10,7 +12,7 @@ import VariableInput from "./VariableInput";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Copy, Search, X, ChevronDown, ChevronRight, FolderPlus, Plus, Send, Trash2, Pencil, ArrowLeft, Lock } from "./DesignIcons";
 import { useToolDocument } from "../hooks/useToolDocument";
-import { apiDocument, apiRequest, id } from "../lib/toolDefaults";
+import { apiDocument, apiRequest, id, secret } from "../lib/toolDefaults";
 import { nativeTool } from "../lib/toolsBridge";
 import {
   exportCollection,
@@ -21,7 +23,7 @@ import {
 } from "../lib/apiCollections";
 import { exportText } from "../lib/export";
 import { desktop, invoke } from "../lib/bridge";
-import type { ApiRequest, ApiResponse } from "../toolTypes";
+import type { ApiEnvironment, ApiRequest, ApiResponse } from "../toolTypes";
 import {
   ToolLayout,
   Field,
@@ -61,6 +63,7 @@ export default function ApiWorkspace({
       if (after?.folderId) dirtyFolders.add(after.folderId);
     }
   }
+  for (const folderId of [...dirtyFolders]) for (const ancestor of folderAncestors(doc.folders, folderId)) dirtyFolders.add(ancestor);
   const [requestSearch, setRequestSearch] = useState("");
   const requestSearchInput = useRef<HTMLInputElement>(null);
   const requestQuery = requestSearch.trim().toLocaleLowerCase();
@@ -75,7 +78,7 @@ export default function ApiWorkspace({
       (requestQuery &&
         doc.folders.some(
           (folder) =>
-            folder.id === request.folderId &&
+            (folder.id === request.folderId || folderAncestors(doc.folders, request.folderId).includes(folder.id)) &&
             folder.name.toLocaleLowerCase().includes(requestQuery),
         )),
   );
@@ -111,11 +114,22 @@ export default function ApiWorkspace({
     setEditingFolder(folder.id);
   };
   const draggedRequest = useRef<string | null>(null);
+  const draggedFolder = useRef<string | null>(null);
+  const moveFolder = (folderId: string, parentId: string) => set((previous) => canMoveFolder(previous.folders, folderId, parentId) ? {
+    ...previous, folders: previous.folders.map((item) => item.id === folderId ? { ...item, parentId } : item),
+  } : previous);
+  const createFolder = (parentId = "") => {
+    const folder = { id: id(), name: "New folder", parentId };
+    set((previous) => ({ ...previous, folders: [...previous.folders, folder] }));
+    setCollapsedFolders((previous) => previous.filter((item) => item !== parentId));
+    editFolder(folder);
+  };
   const pointerDrag = useRef<{
     id: string;
     x: number;
     y: number;
     moved: boolean;
+    kind?: "folder";
   } | null>(null);
   const suppressRequestClick = useRef(false);
   const moveRequest = (requestId: string, folderId: string) =>
@@ -158,17 +172,11 @@ export default function ApiWorkspace({
           ?.closest<HTMLElement>("[data-request-folder]");
         if (target) {
           const folderId = target.dataset.requestFolder ?? "";
-          set((previous) =>
-            !folderId ||
-            previous.folders.some((folder) => folder.id === folderId)
-              ? {
-                  ...previous,
-                  requests: previous.requests.map((item) =>
-                    item.id === drag.id ? { ...item, folderId } : item,
-                  ),
-                }
-              : previous,
-          );
+          set((previous) => {
+            if (drag.kind === "folder") return canMoveFolder(previous.folders, drag.id, folderId) ? { ...previous, folders: previous.folders.map((item) => item.id === drag.id ? { ...item, parentId: folderId } : item) } : previous;
+            return !folderId || previous.folders.some((folder) => folder.id === folderId) ? { ...previous, requests: previous.requests.map((item) => item.id === drag.id ? { ...item, folderId } : item) } : previous;
+          });
+          if (drag.kind === "folder") setCollapsedFolders((previous) => previous.filter((id) => id !== folderId));
         }
         suppressRequestClick.current = true;
         setTimeout(() => {
@@ -237,7 +245,7 @@ export default function ApiWorkspace({
       setTab("environment");
     } else if (searchTarget.kind === "folder") {
       setCollapsedFolders((previous) =>
-        previous.filter((value) => value !== id),
+        previous.filter((value) => value !== id && !folderAncestors(doc.folders, id).includes(value)),
       );
       const request = doc.requests.find((item) => item.folderId === id);
       if (request) select(request.id);
@@ -248,7 +256,7 @@ export default function ApiWorkspace({
       const request = doc.requests.find((item) => item.id === id);
       if (request)
         setCollapsedFolders((previous) =>
-          previous.filter((value) => value !== request.folderId),
+          previous.filter((value) => value !== request.folderId && !folderAncestors(doc.folders, request.folderId).includes(value)),
         );
     }
   }, [searchTarget, loading]);
@@ -310,7 +318,7 @@ export default function ApiWorkspace({
       const value = await nativeTool<ApiResponse>("api_send", {
         projectId: project.id,
         operationId,
-        request: { ...current, headers: inheritHeaders(doc.environments.find((item) => item.id === env)?.headers ?? [], current.headers) },
+        request: requestWithEnvironment(current, doc.environments.find((item) => item.id === env)),
         environment:
           doc.environments.find((item) => item.id === env)?.variables ?? [],
       });
@@ -442,13 +450,15 @@ export default function ApiWorkspace({
           data-request-folder=""
           title="Drop requests here to move them out of a folder"
           onDragOver={(event) => {
-            if (!draggedRequest.current) return;
+            if (!draggedRequest.current && !draggedFolder.current) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
             setDropFolder("");
           }}
           onDragLeave={() => setDropFolder(null)}
           onDrop={(event) => {
+            const folder = draggedFolder.current;
+            if (folder) { event.preventDefault(); event.stopPropagation(); draggedFolder.current = null; setDropFolder(null); moveFolder(folder, ""); return; }
             const request = draggedRequest.current;
             if (!request) return;
             event.preventDefault();
@@ -461,14 +471,7 @@ export default function ApiWorkspace({
           <span className="api-request-actions-spacer" />
           <button
             title="New folder"
-            onClick={() => {
-              const folder = { id: id(), name: "New folder" };
-              set((previous) => ({
-                ...previous,
-                folders: [...previous.folders, folder],
-              }));
-              editFolder(folder);
-            }}
+            onClick={() => createFolder()}
           >
             <FolderPlus size={15} />
           </button>
@@ -477,24 +480,23 @@ export default function ApiWorkspace({
           </button>
         </div>
         </div>
-        {[{ id: "", name: "Unfiled" }, ...doc.folders]
-          .filter(
-            (folder) =>
-              !requestQuery ||
-              visibleRequests.some(
-                (request) => request.folderId === folder.id,
-              ) ||
-              folder.name.toLocaleLowerCase().includes(requestQuery),
-          )
-          .map((folder) => (
+        {[{ folder: { id: "", name: "Unfiled", parentId: "" }, depth: 0 }, ...orderedFolders(doc.folders)]
+          .filter(({ folder }) => {
+            const ancestors = folderAncestors(doc.folders, folder.id);
+            if (!requestQuery) return !ancestors.some((id) => collapsedFolders.includes(id));
+            return [folder.id, ...ancestors].some((id) => doc.folders.find((item) => item.id === id)?.name.toLocaleLowerCase().includes(requestQuery))
+              || visibleRequests.some((request) => request.folderId === folder.id || folderAncestors(doc.folders, request.folderId).includes(folder.id));
+          })
+          .map(({ folder, depth }) => (
             <div
               className={`request-folder ${!folder.id ? "root-requests" : ""} ${dropFolder === folder.id ? "request-folder-drop" : ""}`}
               key={folder.id}
+              style={{ marginLeft: depth * 14 }}
               role="group"
               data-request-folder={folder.id}
               aria-label={`Request folder ${folder.name}`}
               onDragOver={(event) => {
-                if (!draggedRequest.current) return;
+                if (!draggedRequest.current && !draggedFolder.current) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
                 setDropFolder(folder.id);
@@ -510,6 +512,8 @@ export default function ApiWorkspace({
                 );
               }}
               onDrop={(event) => {
+                const movingFolder = draggedFolder.current;
+                if (movingFolder) { event.preventDefault(); event.stopPropagation(); draggedFolder.current = null; setDropFolder(null); moveFolder(movingFolder, folder.id); return; }
                 const requestId = draggedRequest.current;
                 if (!requestId) return;
                 event.preventDefault();
@@ -534,7 +538,16 @@ export default function ApiWorkspace({
               }}
             >
               {folder.id ? (
-                <div className="folder-heading">
+                <div className="folder-heading" draggable={false}
+                  onMouseDown={(event) => {
+                    if (event.button !== 0 || editingFolder === folder.id || (event.target as Element).closest(".folder-edit,.folder-delete,input")) return;
+                    event.preventDefault();
+                    pointerDrag.current = { id: folder.id, kind: "folder", x: event.clientX, y: event.clientY, moved: false };
+                  }}
+                  title="Drag folder to move it inside another folder, or to the top actions row to move it to the root"
+                  onDragStart={(event) => { draggedFolder.current = folder.id; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-octode-api-folder", folder.id); }}
+                  onDragEnd={() => { draggedFolder.current = null; setDropFolder(null); }}>
+
                   <button
                     className={`folder-toggle ${editingFolder === folder.id ? "" : "folder-name-button"}`}
                     aria-label={`${!requestQuery && collapsedFolders.includes(folder.id) ? "Expand" : "Collapse"} folder ${folder.name}`}
@@ -546,13 +559,14 @@ export default function ApiWorkspace({
                         ? "Expand folder"
                         : "Collapse folder"
                     }
-                    onClick={() =>
+                    onClick={() => {
+                      if (suppressRequestClick.current) return;
                       setCollapsedFolders((previous) =>
                         previous.includes(folder.id)
                           ? previous.filter((id) => id !== folder.id)
                           : [...previous, folder.id],
-                      )
-                    }
+                      );
+                    }}
                   >
                     {!requestQuery && collapsedFolders.includes(folder.id) ? (
                       <ChevronRight size={18} />
@@ -571,7 +585,7 @@ export default function ApiWorkspace({
                       />
                     )}
                   </button>
-                  <span className="folder-count">{doc.requests.filter((request) => request.folderId === folder.id && visibleRequestIds.has(request.id)).length}</span>
+                  <span className="folder-count">{doc.requests.filter((request) => (request.folderId === folder.id || folderAncestors(doc.folders, request.folderId).includes(folder.id)) && visibleRequestIds.has(request.id)).length}</span>
                   {editingFolder === folder.id && (
                     <input
                       aria-label="Folder name"
@@ -600,6 +614,7 @@ export default function ApiWorkspace({
                       }}
                     />
                   )}
+                  <button className="folder-edit" title="New subfolder" aria-label={`New subfolder in ${folder.name}`} onClick={() => createFolder(folder.id)}><FolderPlus size={14} /></button>
                   <button
                     className="folder-edit"
                     title="Edit folder name"
@@ -614,12 +629,10 @@ export default function ApiWorkspace({
                     onClick={() =>
                       set((previous) => ({
                         ...previous,
-                        folders: previous.folders.filter(
-                          (item) => item.id !== folder.id,
-                        ),
+                        folders: previous.folders.filter((item) => item.id !== folder.id).map((item) => item.parentId === folder.id ? { ...item, parentId: folder.parentId ?? "" } : item),
                         requests: previous.requests.map((item) =>
                           item.folderId === folder.id
-                            ? { ...item, folderId: "" }
+                            ? { ...item, folderId: folder.parentId ?? "" }
                             : item,
                         ),
                       }))
@@ -677,7 +690,7 @@ export default function ApiWorkspace({
                       }}
                       onPointerMove={(event) => {
                         const drag = pointerDrag.current;
-                        if (!drag) return;
+                        if (!drag || drag.kind === "folder") return;
                         if (
                           !drag.moved &&
                           Math.hypot(
@@ -710,6 +723,7 @@ export default function ApiWorkspace({
                       }}
                       onPointerUp={(event) => {
                         const drag = pointerDrag.current;
+                        if (drag?.kind === "folder") return;
                         pointerDrag.current = null;
                         if (drag?.moved) {
                           const target = window.document
@@ -847,10 +861,13 @@ export default function ApiWorkspace({
     </>
   );
   const environment = doc.environments.find((item) => item.id === env);
+  const patchEnvironment = (value: Partial<ApiEnvironment>) => set((previous) => ({
+    ...previous, environments: previous.environments.map((item) => item.id === env ? { ...item, ...value } : item),
+  }));
   const inheritedHeaders = inheritHeaders(environment?.headers ?? [], current?.headers ?? [])
     .filter((header) => header.enabled && header.name.trim() && !current?.headers.includes(header));
   const createEnvironment = () => {
-    const environment = { id: id(), name: "New environment", variables: [], headers: [] };
+    const environment: ApiEnvironment = { id: id(), name: "New environment", variables: [], headers: [], auth: "none", username: "", credential: secret() };
     set((previous) => ({
       ...previous,
       environments: [...previous.environments, environment],
@@ -1050,7 +1067,7 @@ export default function ApiWorkspace({
             className={tab === value ? "active" : ""}
             onClick={() => setTab(value)}
           >
-            {value[0].toUpperCase() + value.slice(1)}{current && <span className="tab-count">{value === "params" ? current.params.length : value === "headers" ? current.headers.length + inheritedHeaders.length : value === "body" ? current.bodyMode : current.auth === "none" ? "" : current.auth}</span>}
+            {value[0].toUpperCase() + value.slice(1)}{current && <span className="tab-count">{value === "params" ? current.params.length : value === "headers" ? current.headers.length + inheritedHeaders.length : value === "body" ? current.bodyMode : current.auth === "none" ? "" : current.auth === "inherit" ? "inherited" : current.auth}</span>}
           </button>
         ))}
       </div>
@@ -1094,6 +1111,17 @@ export default function ApiWorkspace({
                   }))
                 }
               />
+              <h3 className="api-value-section-title">Authorization</h3>
+              <p className="service-hint">Inherited by requests using “Inherit from environment”. Request authorization overrides these defaults. Values support {"{{variable}}"}.</p>
+              <div className="service-form-grid">
+                <Field label="Environment authentication">
+                  <CustomSelect value={environment.auth ?? "none"} onChange={(event) => patchEnvironment({ auth: event.target.value as ApiEnvironment["auth"] })}>
+                    <option value="none">None</option><option value="bearer">Bearer token</option><option value="basic">Basic authentication</option>
+                  </CustomSelect>
+                </Field>
+                {environment.auth === "basic" && <Field label="Environment username"><input value={environment.username ?? ""} onChange={(event) => patchEnvironment({ username: event.target.value })} /></Field>}
+                {(environment.auth === "bearer" || environment.auth === "basic") && <SecretField label={environment.auth === "bearer" ? "Environment token" : "Environment password"} value={environmentCredential(environment)} onChange={(credential) => patchEnvironment({ credential })} />}
+              </div>
               <h3 className="api-value-section-title">Headers</h3>
               <p className="service-hint">Inherited by every request. Request headers override matching names.</p>
               <ValueRows
@@ -1197,11 +1225,18 @@ export default function ApiWorkspace({
                       patch({ auth: e.target.value as ApiRequest["auth"] })
                     }
                   >
+                    <option value="inherit">Inherit from environment</option>
                     <option value="none">None</option>
                     <option value="bearer">Bearer token</option>
                     <option value="basic">Basic authentication</option>
                   </CustomSelect>
                 </Field>
+                {current.auth === "inherit" && <section className="api-inherited-authorization" aria-label="Inherited authorization">
+                  <h3 className="api-value-section-title"><Lock size={13} />{environment ? `Inherited from ${environment.name}` : "No environment selected"}</h3>
+                  <p className="service-hint">{!environment ? "Select an environment above to inherit authorization." : current.headers.some((row) => row.enabled && row.name.trim().toLowerCase() === "authorization") ? "This request’s Authorization header overrides the environment authorization." : environment.auth === "bearer" ? "Bearer token from this environment." : environment.auth === "basic" ? "Basic authentication from this environment." : "This environment has no authorization configured."} Edit authorization in the environment, or choose a request-specific mode above.</p>
+                  {environment?.auth === "basic" && <Field label="Inherited username"><input readOnly value={environment.username ?? ""} /></Field>}
+                  {environment && (environment.auth === "bearer" || environment.auth === "basic") && <Field label={environment.auth === "bearer" ? "Inherited token" : "Inherited password"}><input readOnly type="password" value={environmentCredential(environment).value} placeholder={environment.credential?.hasSecret ? "Stored secret" : "Not set"} /></Field>}
+                </section>}
                 {current.auth === "basic" && (
                   <Field label="Username">
                     <input
@@ -1210,7 +1245,7 @@ export default function ApiWorkspace({
                     />
                   </Field>
                 )}
-                {current.auth !== "none" && (
+                {(current.auth === "bearer" || current.auth === "basic") && (
                   <SecretField
                     label={current.auth === "bearer" ? "Token" : "Password"}
                     value={current.credential}

@@ -388,67 +388,16 @@
   color: inherit;
   cursor: pointer;
 }
-.merge-sources {
+.merge-conflict-modal {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  flex: 1;
-  min-height: 0;
-  gap: 1px;
-  background: var(--oc-border-strong);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-width: 100%;
+  max-height: 100%;
 }
-.merge-sources > div {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: var(--oc-bg);
-  padding: 10px;
-}
-.merge-sources strong {
-  font-size: 10px;
-  color: var(--oc-muted);
-}
-.merge-sources pre {
-  overflow: auto;
-  white-space: pre;
-  flex: 1;
-  user-select: text;
-  font-size: 11px;
-  line-height: 1.7;
-}
-.merge-result {
-  padding: 10px 20px;
-  max-height: 160px;
-  overflow: auto;
-  white-space: pre;
-  user-select: text;
-  font-size: 11px;
-}
-.merge-result-label {
-  padding: 8px 20px;
-  font-size: 11px;
-  background: var(--oc-surface);
-}
-.merge-editor {
-  position: relative;
-  flex: 1;
-  min-height: 190px;
-  display: flex;
-  background: var(--oc-bg);
-}
-.merge-editor > .monaco-host {
-  position: absolute;
-  inset: 0;
-}
-.merge-sources {
-  flex: 0 1 38%;
-  min-height: 120px;
-}
-.merge-sources button {
-  font-size: 10px;
-  text-align: left;
-  color: var(--oc-muted);
-  margin-top: 7px;
-}
+.merge-conflict-modal > header { min-width: 0; }
+.merge-conflict-modal > header > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-conflict-modal > header > button { flex: none; }
+.merge-conflict-modal > footer { flex-wrap: wrap; }
 .git-hunk-review {
   flex: 1;
   overflow: auto;
@@ -965,3 +914,6 @@
   color: var(--oc-text);
 }
 .git-commit-file > h3 { margin: 18px 0 10px; color: var(--oc-text-strong); font: 500 12px/1.6 var(--oc-font-mono); overflow-wrap: anywhere; }
+.git-stash-row { display: flex; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--oc-border); }
+.git-stash-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
+.git-stash-row > button { padding: 4px 6px; border: 1px solid var(--oc-border-strong); border-radius: 4px; font-size: 11px; }

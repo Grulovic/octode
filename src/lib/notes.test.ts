@@ -13,3 +13,13 @@ it.each([
 it.each([["scratch.sql", "scratch.sql"], ["Scratch", "Scratch.txt"], ["", "Untitled note.txt"], ["../scratch.php", "scratch.php"]])("suggests a filename for %s", (title, expected) => {
   expect(noteFilename(title)).toBe(expected);
 });
+
+import { registerNotesBackup, notesForBackup } from "./notes";
+it("includes live note drafts in a detached backup snapshot and skips unloaded providers", () => {
+  const notes = [{ id: "draft", title: "Unsaved", text: "latest text" }];
+  const stop = registerNotesBackup(() => ({ notes }));
+  const snapshot = notesForBackup()!; expect(snapshot.notes[0].text).toBe("latest text");
+  notes[0].text = "more editing"; expect(snapshot.notes[0].text).toBe("latest text");
+  stop(); expect(notesForBackup()).toBeNull();
+  const unloaded = registerNotesBackup(() => null); expect(notesForBackup()).toBeNull(); unloaded();
+});

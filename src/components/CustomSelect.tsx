@@ -64,11 +64,13 @@ function optionsFrom(children: ReactNode, disabled = false): Option[] {
 export default function CustomSelect(
   props: SelectHTMLAttributes<HTMLSelectElement> & {
     renderLabel?: (value: string, label: string) => ReactNode;
+    triggerContent?: ReactNode;
   },
 ) {
   const {
     children,
     renderLabel,
+    triggerContent,
     value,
     defaultValue,
     disabled,
@@ -367,14 +369,14 @@ export default function CustomSelect(
         onKeyDown={keyDown}
       >
         <span className="custom-select-label">
-          {options[selected]
+          {triggerContent ?? (options[selected]
             ? (renderLabel?.(
                 options[selected].value,
                 options[selected].label,
               ) ?? options[selected].label)
-            : "Choose…"}
+            : "Choose…")}
         </span>
-        <ChevronDown size={14} aria-hidden="true" />
+        {triggerContent === undefined && <ChevronDown size={14} aria-hidden="true" />}
       </button>
       {open &&
         createPortal(

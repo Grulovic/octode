@@ -9,6 +9,10 @@ pub struct MetaColumn {
     pub primary_key: bool,
     pub default_value: Option<String>,
     pub generated: bool,
+    pub full_type: String,
+    pub extra: String,
+    pub collation: String,
+    pub comment: String,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,8 +82,8 @@ impl DatabaseSession {
         let t = literal(table);
         let (column_sql,index_sql,fk_sql)=match self.config.engine.as_str(){
    "sqlite"=>(format!("SELECT name, type, CASE WHEN \"notnull\"=0 THEN 1 ELSE 0 END AS nullable, CASE WHEN pk>0 THEN 1 ELSE 0 END AS primary_key, dflt_value, CASE WHEN hidden>0 THEN 1 ELSE 0 END AS octode_generated FROM pragma_table_xinfo({t},{s})"),format!("SELECT name, \"unique\", origin, partial FROM pragma_index_list({t},{s})"),format!("SELECT * FROM pragma_foreign_key_list({t},{s})")),
-   "postgres"=>(format!("SELECT c.column_name, c.data_type, CASE WHEN c.is_nullable='YES' THEN 1 ELSE 0 END AS nullable, CASE WHEN EXISTS (SELECT 1 FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage k ON k.constraint_name=tc.constraint_name AND k.constraint_schema=tc.constraint_schema AND k.table_name=tc.table_name WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=c.table_schema AND tc.table_name=c.table_name AND k.column_name=c.column_name) THEN 1 ELSE 0 END AS primary_key, c.column_default, CASE WHEN c.is_generated='ALWAYS' THEN 1 ELSE 0 END AS octode_generated FROM information_schema.columns c WHERE c.table_schema={s} AND c.table_name={t} ORDER BY c.ordinal_position"),format!("SELECT indexname AS name, indexdef AS definition FROM pg_indexes WHERE schemaname={s} AND tablename={t}"),format!("SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS target_schema, ccu.table_name AS target_table, ccu.column_name AS target_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.constraint_schema=kcu.constraint_schema JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name AND ccu.constraint_schema=tc.constraint_schema WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema={s} AND tc.table_name={t}")),
-   _=>(format!("SELECT COLUMN_NAME, DATA_TYPE, CASE WHEN IS_NULLABLE='YES' THEN 1 ELSE 0 END AS nullable, CASE WHEN COLUMN_KEY='PRI' THEN 1 ELSE 0 END AS primary_key, COLUMN_DEFAULT, CASE WHEN (EXTRA LIKE '%VIRTUAL GENERATED%' OR EXTRA LIKE '%STORED GENERATED%') THEN 1 ELSE 0 END AS octode_generated FROM information_schema.columns WHERE TABLE_SCHEMA={s} AND TABLE_NAME={t} ORDER BY ORDINAL_POSITION"),format!("SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, SEQ_IN_INDEX FROM information_schema.statistics WHERE TABLE_SCHEMA={s} AND TABLE_NAME={t} ORDER BY INDEX_NAME,SEQ_IN_INDEX"),format!("SELECT CONSTRAINT_NAME,COLUMN_NAME,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA={s} AND TABLE_NAME={t} AND REFERENCED_TABLE_NAME IS NOT NULL"))
+   "postgres"=>(format!("SELECT c.column_name, c.data_type, CASE WHEN c.is_nullable='YES' THEN 1 ELSE 0 END AS nullable, CASE WHEN EXISTS (SELECT 1 FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage k ON k.constraint_name=tc.constraint_name AND k.constraint_schema=tc.constraint_schema AND k.table_name=tc.table_name WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=c.table_schema AND tc.table_name=c.table_name AND k.column_name=c.column_name) THEN 1 ELSE 0 END AS primary_key, c.column_default, CASE WHEN c.is_generated='ALWAYS' THEN 1 ELSE 0 END AS octode_generated, (SELECT pg_catalog.format_type(a.atttypid,a.atttypmod) FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class r ON r.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname=c.table_schema AND r.relname=c.table_name AND a.attname=c.column_name AND a.attnum>0 LIMIT 1) AS full_type FROM information_schema.columns c WHERE c.table_schema={s} AND c.table_name={t} ORDER BY c.ordinal_position"),format!("SELECT indexname AS name, indexdef AS definition FROM pg_indexes WHERE schemaname={s} AND tablename={t}"),format!("SELECT tc.constraint_name, kcu.column_name, ccu.table_schema AS target_schema, ccu.table_name AS target_table, ccu.column_name AS target_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.constraint_schema=kcu.constraint_schema JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name AND ccu.constraint_schema=tc.constraint_schema WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema={s} AND tc.table_name={t}")),
+   _=>(format!("SELECT COLUMN_NAME, DATA_TYPE, CASE WHEN IS_NULLABLE='YES' THEN 1 ELSE 0 END AS nullable, CASE WHEN COLUMN_KEY='PRI' THEN 1 ELSE 0 END AS primary_key, COLUMN_DEFAULT, CASE WHEN (EXTRA LIKE '%VIRTUAL GENERATED%' OR EXTRA LIKE '%STORED GENERATED%') THEN 1 ELSE 0 END AS octode_generated, COLUMN_TYPE, EXTRA, COLLATION_NAME, COLUMN_COMMENT FROM information_schema.columns WHERE TABLE_SCHEMA={s} AND TABLE_NAME={t} ORDER BY ORDINAL_POSITION"),format!("SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, SEQ_IN_INDEX FROM information_schema.statistics WHERE TABLE_SCHEMA={s} AND TABLE_NAME={t} ORDER BY INDEX_NAME,SEQ_IN_INDEX"),format!("SELECT CONSTRAINT_NAME,COLUMN_NAME,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA={s} AND TABLE_NAME={t} AND REFERENCED_TABLE_NAME IS NOT NULL"))
   };
         let raw = self.metadata_query(&column_sql, 1000).await?;
         let columns = raw
@@ -95,6 +99,10 @@ impl DatabaseSession {
                     .filter(|cell| cell.kind != "null")
                     .map(|cell| cell.value.clone()),
                 generated: flag(row, 5),
+                full_type: text(row, 6),
+                extra: text(row, 7),
+                collation: text(row, 8),
+                comment: text(row, 9),
             })
             .collect::<Vec<_>>();
         let mut reason = if self.config.read_only {
@@ -409,6 +417,10 @@ mod tests {
                 primary_key: true,
                 default_value: None,
                 generated: false,
+                full_type: String::new(),
+                extra: String::new(),
+                collation: String::new(),
+                comment: String::new(),
             },
             MetaColumn {
                 name: "name".into(),
@@ -417,6 +429,10 @@ mod tests {
                 primary_key: false,
                 default_value: None,
                 generated: false,
+                full_type: String::new(),
+                extra: String::new(),
+                collation: String::new(),
+                comment: String::new(),
             },
         ]
     }

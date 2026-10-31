@@ -28,3 +28,10 @@ export async function deleteNote(id: string): Promise<void> {
   const previous = await loadNotes();
   localStorage.setItem(key, JSON.stringify(previous.filter((note) => note.id !== id)));
 }
+
+let backupReader: (() => { notes: Note[] } | null) | undefined;
+export function registerNotesBackup(read: () => { notes: Note[] } | null) {
+  backupReader = read;
+  return () => { if (backupReader === read) backupReader = undefined; };
+}
+export function notesForBackup() { const notes = backupReader?.(); return notes ? structuredClone(notes) : null; }

@@ -4,6 +4,13 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import TerminalPanel from "./TerminalPanel";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+async function chooseFolder(host: HTMLElement, label: string, name: string) {
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${label}"]`)!.click());
+  const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((item) => item.textContent === name)!;
+  expect(option).toBeTruthy();
+  await act(async () => option.click());
+}
+
 it("middle-click closes only its terminal and respects cancellation", async () => {
   const host = document.createElement("div");
   document.body.append(host);
@@ -21,11 +28,7 @@ it("middle-click closes only its terminal and respects cancellation", async () =
         />,
       ),
     );
-    await act(async () =>
-      host
-        .querySelector<HTMLButtonElement>('[aria-label="New terminal"]')!
-        .click(),
-    );
+    await chooseFolder(host, "New terminal", "project");
     const tabs = () =>
       host.querySelectorAll<HTMLElement>(".local-terminal-tabs > div");
     expect(tabs()).toHaveLength(2);
@@ -208,17 +211,10 @@ it("Cmd/Ctrl+T opens plain tabs only in the focused visible terminal and respect
     outside.focus();
     expect((await key()).defaultPrevented).toBe(false);
     expect(tabs()).toHaveLength(1);
-    const folder = host.querySelector<HTMLSelectElement>(
-      'select[aria-label="Folder for new terminal"]',
-    )!;
-    await act(async () => {
-      folder.value = "/frontend";
-      folder.dispatchEvent(new Event("change", { bubbles: true }));
-    });
     focus();
     expect((await key()).defaultPrevented).toBe(true);
     expect(tabs()).toHaveLength(2);
-    expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
+    expect(tabs()[1].querySelector("button")?.title).toBe("/api");
     expect(tabs()[1].classList.contains("selected")).toBe(true);
     await key({ repeat: true });
     await key({ shiftKey: true });
@@ -318,26 +314,26 @@ it("Cmd+T creates the first session from an empty pane without needing an existi
   }
 });
 
-it("AI star launches the current configured command in the picker folder in a new tab", async () => {
+it("AI star offers folders and launches the current configured command on selection", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const key = "octode-editor-settings", previous = localStorage.getItem(key);
   try {
     localStorage.setItem(key, JSON.stringify({ version: 1, terminalCommand: "codex --resume" }));
     await act(async () => root.render(<TerminalPanel project={{ id: "ai", name: "AI", roots: ["/api", "/frontend"], updatedAt: 0 }} initialRoot="/api" visible onError={() => {}} onHide={() => {}} />));
-    const picker = host.querySelector<HTMLSelectElement>("select")!;
-    await act(async () => { picker.value = "/frontend"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
-    const star = host.querySelector<HTMLButtonElement>('[aria-label="New AI terminal"]')!;
-    await act(async () => star.click());
     const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
-    expect(tabs()).toHaveLength(2);
-    expect(tabs()[1].classList.contains("selected")).toBe(true);
+    const star = host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="New AI terminal"]')!;
+    await act(async () => star.click()); expect(tabs()).toHaveLength(1);
+    const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((item) => item.textContent === "frontend")!;
+    await act(async () => option.click());
+    expect(tabs()).toHaveLength(2); expect(tabs()[1].classList.contains("selected")).toBe(true);
     expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
     expect(host.textContent).toContain("codex --resume");
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
     localStorage.setItem(key, JSON.stringify({ version: 1, terminalCommand: "claude" }));
-    await act(async () => star.click());
+    await chooseFolder(host, "New AI terminal", "api");
     expect(tabs()).toHaveLength(3); expect(host.textContent).toContain("claude");
-    for (let count = 0; count < 3; count++) await act(async () => star.click());
+    for (let count = 0; count < 3; count++) await chooseFolder(host, "New AI terminal", "api");
     expect(tabs()).toHaveLength(6); expect(star.disabled).toBe(true);
     await act(async () => star.click()); expect(tabs()).toHaveLength(6);
   } finally {
@@ -346,27 +342,27 @@ it("AI star launches the current configured command in the picker folder in a ne
   }
 });
 
-it("syncs the new-terminal folder with sidebar changes without changing existing sessions", async () => {
+it("plus launches in the chosen folder and Cmd+T always follows the active Code folder", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const project = { id: "folders", name: "Folders", roots: ["/api", "/frontend"], updatedAt: 0 };
   const render = (folder: string) => root.render(<TerminalPanel project={project} initialRoot={folder} visible onError={() => {}} onHide={() => {}} />);
+  const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
+  const shortcut = async () => {
+    host.querySelector<HTMLButtonElement>(".local-terminal-tabs button")!.focus();
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "t", metaKey: true, cancelable: true, bubbles: true })));
+  };
   try {
     await act(async () => render("/api"));
-    const picker = host.querySelector<HTMLSelectElement>("select")!;
-    expect(picker.value).toBe("/api");
-    await act(async () => render("/frontend"));
-    expect(picker.value).toBe("/frontend");
-    const tabs = () => host.querySelectorAll(".local-terminal-tabs > div");
-    expect(tabs()).toHaveLength(1);
-    expect(tabs()[0].querySelector("button")?.title).toBe("/api");
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="New terminal"]')!.click());
+    const plus = host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="New terminal"]')!;
+    await act(async () => plus.click()); expect(tabs()).toHaveLength(1);
+    await act(async () => plus.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(tabs()).toHaveLength(1); expect(document.querySelector('[role="listbox"]')).toBeNull();
+    await chooseFolder(host, "New terminal", "frontend");
     expect(tabs()[1].querySelector("button")?.title).toBe("/frontend");
-    await act(async () => { picker.value = "/api"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+    await shortcut(); expect(tabs()[2].querySelector("button")?.title).toBe("/api");
     await act(async () => render("/frontend"));
-    expect(picker.value).toBe("/api");
-    await act(async () => render("/api"));
-    await act(async () => render("/frontend"));
-    expect(picker.value).toBe("/frontend");
+    await shortcut(); expect(tabs()[3].querySelector("button")?.title).toBe("/frontend");
+    expect(tabs()[0].querySelector("button")?.title).toBe("/api");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

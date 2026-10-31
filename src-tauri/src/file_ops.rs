@@ -105,19 +105,79 @@ pub fn rename(roots: &[String], path: &str, destination: &str) -> Result<String,
     }
     Ok(target.to_string_lossy().into())
 }
+fn move_to_trash(source: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_foundation::{NSFileManager, NSString, NSURL};
+        let path = source.to_str().ok_or("This path is not valid UTF-8")?;
+        let url = NSURL::fileURLWithPath(&NSString::from_str(path));
+        NSFileManager::defaultManager()
+            .trashItemAtURL_resultingItemURL_error(&url, None)
+            .map_err(|error| format!("Could not move item to Trash: {error}"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let status = std::process::Command::new("gio")
+            .arg("trash")
+            .arg("--")
+            .arg(source)
+            .status()
+            .map_err(|_| {
+                "System Trash is unavailable; install gio or move the item using your file manager"
+            })?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("Could not move item to system Trash; nothing was permanently deleted".into())
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use base64::Engine;
+        let path = source
+            .to_str()
+            .ok_or("This path is not valid UTF-8")?
+            .replace('\'', "''");
+        let script = format!("Add-Type -AssemblyName Microsoft.VisualBasic; $p='{path}'; if ([System.IO.Directory]::Exists($p)) {{ [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p,'OnlyErrorDialogs','SendToRecycleBin') }} else {{ [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p,'OnlyErrorDialogs','SendToRecycleBin') }}");
+        let encoded = base64::prelude::BASE64_STANDARD.encode(
+            script
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>(),
+        );
+        let status = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .status()
+            .map_err(|_| "Recycle Bin is unavailable")?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("Could not move item to Recycle Bin; nothing was permanently deleted".into())
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        Err("System Trash is not supported on this platform".into())
+    }
+}
 pub fn delete(roots: &[String], path: &str, expected: Option<&str>) -> Result<(), String> {
+    delete_with(roots, path, expected, move_to_trash)
+}
+fn delete_with(
+    roots: &[String],
+    path: &str,
+    expected: Option<&str>,
+    trash: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     let source = mutable_path(roots, path)?;
-    if source.is_dir() {
-        fs::remove_dir(source)
-            .map_err(|_| "Only empty folders can be deleted; remove their files first".into())
-    } else {
+    if source.is_file() {
         if let Some(expected) = expected {
             if file_core::read(&source)? != expected {
-                return Err("The file changed on disk; review it before deleting".into());
+                return Err("The file changed on disk; review it before moving it to Trash".into());
             }
         }
-        fs::remove_file(source).map_err(|e| e.to_string())
     }
+    trash(&source)
 }
 
 fn copy_name(source: &Path, attempt: usize) -> String {
@@ -246,10 +306,13 @@ mod tests {
         assert!(delete(&roots, &one, Some("old")).is_err());
         let moved = rename(&roots, &one, "moved.php").unwrap();
         assert_eq!(fs::read_to_string(&moved).unwrap(), "hello");
-        delete(&roots, &moved, Some("hello")).unwrap();
-        delete(&roots, &two, None).unwrap();
+        let trash = |path: &Path| {
+            fs::rename(path, path.with_extension("trashed")).map_err(|e| e.to_string())
+        };
+        delete_with(&roots, &moved, Some("hello"), trash).unwrap();
+        delete_with(&roots, &two, None, trash).unwrap();
         assert!(delete(&roots, &roots[0], None).is_err());
-        fs::remove_dir(dir).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn copies_binary_files_and_uses_unique_names_without_replacement() {
@@ -344,6 +407,31 @@ mod tests {
         std::os::unix::fs::symlink(std::env::temp_dir(), dir.join("escape")).unwrap();
         let roots = vec![dir.canonicalize().unwrap().to_string_lossy().into_owned()];
         assert!(create(&roots, &roots[0], "escape/octode-outside", false).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn trash_moves_nonempty_directories_and_never_falls_back_to_deletion() {
+        let dir = std::env::temp_dir().join(format!("octode-trash-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(dir.join("project/folder")).unwrap();
+        fs::write(dir.join("project/folder/child.txt"), "keep me").unwrap();
+        let roots = vec![dir
+            .join("project")
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()];
+        let path = dir.join("project/folder").to_string_lossy().into_owned();
+        assert!(delete_with(&roots, &path, None, |_| Err("Trash unavailable".into())).is_err());
+        assert!(Path::new(&path).join("child.txt").exists());
+        delete_with(&roots, &path, None, |source| {
+            fs::rename(source, dir.join("trashed-folder")).map_err(|e| e.to_string())
+        })
+        .unwrap();
+        assert!(!Path::new(&path).exists());
+        assert_eq!(
+            fs::read_to_string(dir.join("trashed-folder/child.txt")).unwrap(),
+            "keep me"
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 }

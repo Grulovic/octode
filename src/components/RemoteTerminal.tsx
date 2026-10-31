@@ -1,3 +1,4 @@
+import { registerSelectAll } from "../lib/selectAll";
 import { installTerminalLinks } from "../lib/terminalLinks";
 import { useTerminalActivity } from "../hooks/useTerminalActivity";
 import { monoFont } from "../theme/palette";
@@ -60,6 +61,10 @@ export default function RemoteTerminal({
     fitRef.current = fit;
     terminal.loadAddon(fit);
     terminal.open(host.current);
+    const stopSelectAll = registerSelectAll(() => {
+      if (!terminal.textarea || document.activeElement !== terminal.textarea) return false;
+      terminal.selectAll(); return true;
+    });
     const stopLinks = installTerminalLinks(terminal, (reason) => errorRef.current(reason));
     const highlight = installTerminalHighlighting(
       terminal,
@@ -144,6 +149,7 @@ export default function RemoteTerminal({
       highlight.dispose();
       highlighter.current = null;
       stopLinks();
+      stopSelectAll();
       terminal.dispose();
       fitRef.current = null;
       void nativeTool("ssh_shell_close", { id: session, shellKey }).catch(

@@ -63,4 +63,8 @@ args.push("--", "--locked");
 run(node, args, true);
 const profile = mode === "dev" ? "debug" : "release";
 const app = join(root, "src-tauri", "target", profile, "bundle", "macos", `${check ? "Octode Check" : "Octode"}.app`);
-console.log(`\nBuilt: ${app}\nOpen this app directly. After rebuilding, click Restart inside that same app to load changes.\nLocal build: code signing and notarization are not included.`);
+// Rust's executable signature is invalid once placed inside an unsigned bundle.
+// Seal the finished bundle locally so Launch Services can open it reliably.
+run("codesign", ["--force", "--deep", "--sign", "-", app]);
+run("codesign", ["--verify", "--deep", "--strict", app]);
+console.log(`\nBuilt: ${app}\nOpen this app directly. After rebuilding, click Restart inside that same app to load changes.\nLocal ad-hoc signature verified. Developer ID signing and notarization are not included.`);

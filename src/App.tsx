@@ -6,6 +6,7 @@ import {
   type WorkspaceRuntime,
 } from "./lib/workspaceRegistry";
 import { installTerminalShortcut } from "./lib/terminalShortcut";
+import { installSelectAllShortcut } from "./lib/selectAll";
 import { installCloseTabShortcut } from "./lib/closeTab";
 import { installDoubleShift } from "./lib/doubleShift";
 import type { SearchEntry } from "./lib/searchEverywhere";
@@ -98,6 +99,7 @@ function ProjectFolders({ project, visible }: { project: Project; visible: boole
 export default function App() {
   useEffect(installCaseShortcut, []);
   useEffect(installCloseTabShortcut, []);
+  useEffect(installSelectAllShortcut, []);
   const surface = useRef<HTMLDivElement>(null);
   const [slots, setSlots] = useState(() => [
     {

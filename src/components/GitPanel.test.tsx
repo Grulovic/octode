@@ -382,3 +382,19 @@ it("renders recent commits as read-only per-file before/after comparisons", asyn
   expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
   expect(dialog.textContent).not.toContain("Stage selected hunks");
 });
+
+it("applies and drops individually selected stashes using immutable hashes", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  const stashes = [{ reference: "stash@{0}", hash: "a".repeat(40), subject: "Newest changes" }, { reference: "stash@{1}", hash: "b".repeat(40), subject: "Older changes" }];
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return { ...await original(command, args), stashes };
+    if (command === "git_action") return "Done";
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  const rows = document.querySelectorAll('.git-stash-row'); expect(rows).toHaveLength(2);
+  await act(async () => rows[1].querySelector<HTMLButtonElement>('button')!.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action: "stash-apply", path: "stash@{1}", value: "b".repeat(40) }) }));
+  await act(async () => document.querySelectorAll('.git-stash-row')[0].querySelectorAll<HTMLButtonElement>('button')[1].click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action: "stash-drop", path: "stash@{0}", value: "a".repeat(40) }) }));
+});

@@ -76,6 +76,24 @@ afterEach(async () => {
 });
 
 describe("browser sandbox workflows", () => {
+  it("previews Markdown in Code without replacing the editor or changing its text", async () => {
+    await enterCode();
+    await click('.file-tree [title="/welcome/README.md"]');
+    await type('[aria-label="Edit README.md"]', "# Code preview\n\n**Keep this source**");
+    const editor = document.querySelector('[aria-label="Edit README.md"]');
+    const toggle = document.querySelector<HTMLButtonElement>('[aria-label="Markdown preview"]')!;
+    expect(toggle.previousElementSibling?.getAttribute("aria-label")).toBe("Format PHP in container");
+    await act(async () => toggle.click());
+    await waitFor(() => document.querySelector('article[aria-label="Markdown preview"] h1'));
+    expect(document.querySelector('article h1')?.textContent).toBe("Code preview");
+    expect(document.querySelector('article strong')?.textContent).toBe("Keep this source");
+    expect(document.querySelector('[aria-label="Edit README.md"]')).toBe(editor);
+    expect(editor?.closest<HTMLElement>('.editor-surface')?.style.display).toBe("none");
+    await click('[aria-label="Find in file"]');
+    expect(document.querySelector('article[aria-label="Markdown preview"]')).toBeNull();
+    expect((editor as HTMLTextAreaElement).value).toBe("# Code preview\n\n**Keep this source**");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  });
   it("Cmd+1 always selects Files from Git, Search and another section", async () => {
     await enterCode();
     const choose = async (name: string) => {
@@ -161,7 +179,8 @@ describe("browser sandbox workflows", () => {
     const editor = document.querySelector('[aria-label="Edit README.md"]');
     await click('[aria-label="Local terminal"]');
     await waitFor(() => document.querySelector(".preview-terminal"));
-    await click('[aria-label="New terminal"]');
+    await click('[role="combobox"][aria-label="New terminal"]');
+    await click('[role="option"]');
     const alphaSessions = [
       ...document.querySelectorAll(".local-terminal-session"),
     ];
@@ -345,7 +364,8 @@ describe("browser sandbox workflows", () => {
     const first = await waitFor(() =>
       document.querySelector(".local-terminal-session"),
     );
-    await click('[aria-label="New terminal"]');
+    await click('[role="combobox"][aria-label="New terminal"]');
+    await click('[role="option"]');
     const dock = document.querySelector(".main-workspace > .workspace-terminal-dock");
     expect(dock?.querySelector(".workspace-terminal-host")).not.toBeNull();
     expect(document.querySelectorAll(".workspace-terminal-dock")).toHaveLength(1);
@@ -847,6 +867,46 @@ describe("browser sandbox workflows", () => {
     await click(".request-bar .primary-button");
     expect(send).toHaveBeenLastCalledWith("api_send", expect.objectContaining({ request: expect.objectContaining({ headers: [expect.objectContaining({ name: "x-workspace", value: "request override" })] }) }));
   });
+  it("inherits environment authorization, permits request overrides, and saves the inheritance setting", async () => {
+    const send = vi.spyOn(toolsBridge, "nativeTool").mockResolvedValue({ status: 200, statusText: "OK", headers: [], body: "ok", bytes: 2, elapsedMs: 1, truncated: false, contentType: "text/plain", binary: false });
+    const save = vi.spyOn(toolsBridge, "saveTool").mockImplementation(async (_project, _tool, value) => structuredClone(value));
+    await enterCode(); await click('[aria-label="API"]');
+    await click('[aria-label="API workspace"] button[title="New request"]');
+    await type('[aria-label="Request URL"]', "https://example.test");
+    await click('[aria-label="New environment"]');
+    const selectField = async (caption: string, value: string) => {
+      const select = [...document.querySelectorAll<HTMLSelectElement>("select")].find((item) => item.closest("label")?.querySelector("span")?.textContent === caption)!;
+      expect(select).toBeTruthy();
+      await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    };
+    const textField = (caption: string) => [...document.querySelectorAll<HTMLLabelElement>("label")].find((item) => item.querySelector("span")?.textContent === caption)!.querySelector<HTMLInputElement>("input")!;
+    const setTextField = async (caption: string, value: string) => {
+      const input = textField(caption);
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    };
+    await selectField("Environment authentication", "bearer");
+    await setTextField("Environment token", "{{token}}");
+    const back = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Back to request")!;
+    await act(async () => back.click());
+    await click(".request-bar .primary-button");
+    expect(send).toHaveBeenLastCalledWith("api_send", expect.objectContaining({ request: expect.objectContaining({ auth: "bearer", credential: expect.objectContaining({ value: "{{token}}", secret: true }) }) }));
+    const authTab = [...document.querySelectorAll<HTMLButtonElement>(".api-request-tabs button")].find((button) => button.textContent?.startsWith("Auth"))!;
+    await act(async () => authTab.click());
+    expect(document.querySelector('[aria-label="Inherited authorization"]')?.textContent).toContain("Inherited from New environment");
+    expect(textField("Inherited token").readOnly).toBe(true);
+    expect(textField("Inherited token").type).toBe("password");
+    await selectField("Authentication", "none");
+    expect(document.querySelector('[aria-label="Inherited authorization"]')).toBeNull();
+    await click(".request-bar .primary-button");
+    expect(send).toHaveBeenLastCalledWith("api_send", expect.objectContaining({ request: expect.objectContaining({ auth: "none" }) }));
+    await selectField("Authentication", "basic");
+    await setTextField("Username", "request-user"); await setTextField("Password", "request-password");
+    await click(".request-bar .primary-button");
+    expect(send).toHaveBeenLastCalledWith("api_send", expect.objectContaining({ request: expect.objectContaining({ auth: "basic", username: "request-user", credential: expect.objectContaining({ value: "request-password" }) }) }));
+    await selectField("Authentication", "inherit");
+    await click('[aria-label="API workspace"] .service-toolbar .primary-button');
+    expect(save).toHaveBeenLastCalledWith(expect.anything(), "api", expect.objectContaining({ requests: [expect.objectContaining({ auth: "inherit" })], environments: [expect.objectContaining({ auth: "bearer", credential: expect.objectContaining({ value: "{{token}}" }) })] }));
+  });
   it("manages API environments above the dropdown without an environment sidebar or request tab", async () => {
     await enterCode();
     await click('[aria-label="API"]');
@@ -1193,7 +1253,8 @@ describe("browser sandbox workflows", () => {
     await enterCode();
     await click('[aria-label="Local terminal"]');
     await waitFor(() => document.querySelector(".preview-terminal"));
-    await click('[aria-label="New terminal"]');
+    await click('[role="combobox"][aria-label="New terminal"]');
+    await click('[role="option"]');
     await waitFor(
       () => document.querySelectorAll(".local-terminal-session").length === 2,
     );
@@ -2435,4 +2496,71 @@ it("opens a home-folder terminal from global Notes without a project and keeps i
   await click('[aria-label="Hide terminal"]');
   await click('[aria-label="Local terminal"]');
   expect(document.querySelector(".local-terminal-session")).toBe(session);
+});
+
+it("nests API folders, preserves descendants on deletion, filters ancestor paths and prevents cyclic moves", async () => {
+  const request = { ...apiRequest(), name: "Nested request", folderId: "child" };
+  const original = toolsBridge.loadTool;
+  vi.spyOn(toolsBridge, "loadTool").mockImplementation(async (project, tool, fallback) => tool === "api" ? {
+    ...apiDocument(), folders: [{ id: "parent", name: "Parent" }, { id: "child", name: "Child", parentId: "parent" }, { id: "other", name: "Other" }], requests: [request],
+  } as any : original(project, tool, fallback));
+  await enterCode(); await click('[aria-label="API"]');
+  const group = (name: string) => document.querySelector<HTMLElement>(`[aria-label="Request folder ${name}"]`)!;
+  await waitFor(() => group("Child"));
+  expect(group("Child").style.marginLeft).toBe("14px");
+  await click('[aria-label="Collapse folder Parent"]'); expect(group("Child")).toBeNull();
+  await type('[aria-label="Search requests"]', "Nested request");
+  expect(group("Parent")).not.toBeNull(); expect(group("Child").textContent).toContain("Nested request");
+  await click('[aria-label="Clear request search"]');
+  await click('[aria-label="Expand folder Parent"]');
+  const drag = async (element: Element, type: string) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { setData: vi.fn(), effectAllowed: "", dropEffect: "" } });
+    await act(async () => element.dispatchEvent(event));
+  };
+  await drag(group("Parent").querySelector(".folder-heading")!, "dragstart");
+  await drag(group("Child"), "drop");
+  expect(group("Parent").style.marginLeft).toBe("0px"); expect(group("Child").style.marginLeft).toBe("14px");
+  await drag(group("Child").querySelector(".folder-heading")!, "dragstart"); await drag(group("Other"), "drop");
+  expect(group("Child").style.marginLeft).toBe("14px");
+  await click('[aria-label="Collapse folder Other"]'); expect(group("Child")).toBeNull();
+  await click('[aria-label="Expand folder Other"]');
+  await act(async () => group("Other").querySelector<HTMLButtonElement>('.folder-delete')!.click());
+  expect(group("Other")).toBeNull(); expect(group("Child").style.marginLeft).toBe("0px");
+  expect(group("Child").textContent).toContain("Nested request");
+  await click('[aria-label="New subfolder in Child"]');
+  await type('[aria-label="Folder name"]', "Grandchild");
+  await act(async () => document.querySelector<HTMLInputElement>('[aria-label="Folder name"]')!.blur());
+  expect(group("Grandchild").style.marginLeft).toBe("14px");
+});
+
+it("moves API folders using mouse dragging, including into collapsed parents, and rejects descendant targets", async () => {
+  const original = toolsBridge.loadTool;
+  vi.spyOn(toolsBridge, "loadTool").mockImplementation(async (project, tool, fallback) => tool === "api" ? {
+    ...apiDocument(), folders: [{ id: "one", name: "First" }, { id: "two", name: "Second" }, { id: "child", name: "Child", parentId: "one" }], requests: [],
+  } as any : original(project, tool, fallback));
+  await enterCode(); await click('[aria-label="API"]');
+  const group = (name: string) => document.querySelector<HTMLElement>(`[aria-label="Request folder ${name}"]`)!;
+  await waitFor(() => group("Child"));
+  const previous = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
+  let target: Element | null = null;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => target });
+  const drag = async (from: string, to: Element) => {
+    target = to;
+    await act(async () => group(from).querySelector('.folder-name-button')!.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true, cancelable: true, clientX: 20, clientY: 20 })));
+    await act(async () => window.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, clientX: 100, clientY: 100 })));
+    await act(async () => window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 100, clientY: 100 })));
+  };
+  try {
+    await click('[aria-label="Collapse folder Second"]');
+    await drag("First", group("Second"));
+    expect(group("First").style.marginLeft).toBe("14px");
+    expect(group("Child").style.marginLeft).toBe("28px");
+    await drag("Second", group("Child"));
+    expect(group("Second").style.marginLeft).toBe("0px");
+    expect(group("First").style.marginLeft).toBe("14px");
+    await drag("First", document.querySelector('.api-request-heading')!);
+    expect(group("First").style.marginLeft).toBe("0px");
+    expect(group("Child").style.marginLeft).toBe("14px");
+  } finally { if (previous) Object.defineProperty(document, "elementFromPoint", previous); else Reflect.deleteProperty(document, "elementFromPoint"); }
 });

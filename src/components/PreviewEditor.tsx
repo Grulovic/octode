@@ -20,6 +20,7 @@ export default function PreviewEditor({
   onNavigate?: (query: string, line?: number) => void;
   readOnly?: boolean;
   modelPath?: string;
+  retainModel?: boolean;
   languageId?: string;
   wordWrap?: "on" | "off";
 }) {

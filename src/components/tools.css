@@ -913,13 +913,11 @@ fieldset.service-form-grid {
 }
 
 .api-route-row > .api-request-action {
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 .api-route-row:hover > .api-request-action,
 .api-route-row:focus-within > .api-request-action {
-  opacity: 1;
-  pointer-events: auto;
+  display: flex;
 }
 .api-route-row > .service-list-item {
   overflow: hidden;
@@ -936,8 +934,7 @@ fieldset.service-form-grid {
 }
 @media (hover: none) {
   .api-route-row > .api-request-action {
-    opacity: 1;
-    pointer-events: auto;
+    display: flex;
   }
 }
 
@@ -1890,3 +1887,22 @@ fieldset.service-form-grid {
   color: var(--oc-muted);
   font-size: 11px;
 }
+.api-inherited-authorization { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; border: 1px solid var(--oc-border); border-radius: var(--oc-radius-control); background: var(--oc-bg); }
+.api-inherited-authorization > :is(h3,p) { grid-column: 1 / -1; margin: 0; }
+.api-inherited-authorization > h3 { display: flex; align-items: center; gap: 6px; }
+.value-row-field { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.value-row-field > input { flex: 1; min-width: 0; width: 0; }
+.multipart-file-picker { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; color: var(--oc-muted); border: 1px solid var(--oc-border-strong); border-radius: var(--oc-radius-control); }
+.multipart-file-picker:hover:not(:disabled) { color: var(--oc-accent); background: var(--oc-surface); }
+.folder-heading[draggable="false"] { touch-action: none; -webkit-user-drag: none; user-select: none; }
+.folder-heading[draggable="false"] * { -webkit-user-drag: none; }
+.folder-heading[draggable="false"]:active { cursor: grabbing; }
+.table-info-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.table-info-actions > strong { margin-right: auto; }
+.table-column-actions { display: flex; gap: 10px; }
+.table-column-actions > button { color: var(--oc-accent); font-size: 11px; white-space: nowrap; }
+.table-column-actions > .danger-action { color: var(--oc-error); }
+.schema-change-fields { padding: 16px 20px; max-height: 60vh; overflow: auto; }
+.schema-change-fields .service-field { margin: 0 0 12px; padding: 0; }
+.schema-change-fields .inline-check { padding: 0; flex-direction: row; align-items: center; }
+.schema-sql-preview { padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--oc-bg); border: 1px solid var(--oc-border); font: 12px/1.6 var(--oc-font-mono); user-select: text; }

@@ -62,10 +62,56 @@ pub fn resolve(value: &SecretValue, project: &str, vault: &impl Secrets) -> Resu
 }
 
 pub fn seal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), String> {
+    seal_inner(value, project, vault, &std::collections::HashSet::new())
+}
+/// Existing persisted references need no Keychain lookup when unrelated settings change.
+/// Newly supplied references still require verification; new values always get read back.
+pub fn seal_changes(
+    value: &mut Value,
+    previous: &Value,
+    project: &str,
+    vault: &impl Secrets,
+) -> Result<(), String> {
+    fn collect(value: &Value, ids: &mut std::collections::HashSet<String>) {
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    collect(item, ids);
+                }
+            }
+            Value::Object(object) => {
+                if object.get("hasSecret").and_then(Value::as_bool) == Some(true)
+                    && object
+                        .get("value")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .is_empty()
+                {
+                    if let Some(id) = object.get("id").and_then(Value::as_str) {
+                        ids.insert(id.to_owned());
+                    }
+                }
+                for child in object.values() {
+                    collect(child, ids);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut ids = std::collections::HashSet::new();
+    collect(previous, &mut ids);
+    seal_inner(value, project, vault, &ids)
+}
+fn seal_inner(
+    value: &mut Value,
+    project: &str,
+    vault: &impl Secrets,
+    persisted: &std::collections::HashSet<String>,
+) -> Result<(), String> {
     match value {
         Value::Array(items) => {
             for item in items {
-                seal(item, project, vault)?;
+                seal_inner(item, project, vault, persisted)?;
             }
         }
         Value::Object(object) => {
@@ -107,9 +153,11 @@ pub fn seal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<()
                     object.insert("hasSecret".into(), Value::Bool(true));
                 } else if object.get("hasSecret").and_then(Value::as_bool) == Some(true) {
                     let id = object.get("id").and_then(Value::as_str).unwrap_or_default();
-                    vault.get(project, id).map_err(|reason| {
+                    if !persisted.contains(id) {
+                        vault.get(project, id).map_err(|reason| {
                         format!("A saved credential could not be verified. {reason} Re-enter the affected password or secret and Save again; other changes are still unsaved.")
                     })?;
+                    }
                 }
             }
             for (name, child) in object.iter_mut() {
@@ -118,7 +166,7 @@ pub fn seal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<()
                         field.insert("secret".into(), Value::Bool(true));
                     }
                 }
-                seal(child, project, vault)?;
+                seal_inner(child, project, vault, persisted)?;
             }
         }
         _ => {}
@@ -164,6 +212,38 @@ pub mod tests {
             let _ = entry.delete_credential();
         }
         result.expect("Native credential store round trip failed");
+    }
+    #[test]
+    fn saving_unchanged_references_does_not_reprompt_but_new_values_are_verified() {
+        struct Counting {
+            values: Memory,
+            reads: std::sync::atomic::AtomicUsize,
+        }
+        impl Secrets for Counting {
+            fn set(&self, project: &str, id: &str, value: &str) -> Result<(), String> {
+                self.values.set(project, id, value)
+            }
+            fn get(&self, project: &str, id: &str) -> Result<String, String> {
+                self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                self.values.get(project, id)
+            }
+        }
+        let vault = Counting {
+            values: Memory::default(),
+            reads: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let mut previous = serde_json::json!({"environments":[{"credential":{"id":"draft","value":"test-only","secret":true}}]});
+        seal(&mut previous, "project", &vault).unwrap();
+        assert_eq!(vault.reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let mut edited = previous.clone();
+        edited["name"] = serde_json::json!("Renamed");
+        seal_changes(&mut edited, &previous, "project", &vault).unwrap();
+        assert_eq!(vault.reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+        edited["environments"][0]["credential"]["value"] = serde_json::json!("replacement");
+        seal_changes(&mut edited, &previous, "project", &vault).unwrap();
+        assert_eq!(vault.reads.load(std::sync::atomic::Ordering::SeqCst), 2);
+        let mut unknown = serde_json::json!({"credential":{"id":"unknown","value":"","secret":true,"hasSecret":true}});
+        assert!(seal_changes(&mut unknown, &previous, "project", &vault).is_err());
     }
     #[test]
     fn missing_saved_credentials_are_not_silently_resaved() {

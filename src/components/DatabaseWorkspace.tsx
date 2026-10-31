@@ -449,6 +449,15 @@ export default function DatabaseWorkspace({
         });
         if (alive.current) {
           setResult(value);
+          if (/^\s*(?:ALTER|DROP|CREATE|RENAME)\b/i.test(statement)) {
+            // Refresh metadata after successful DDL without turning a refresh error into a failed write.
+            void nativeTool<DbResult>("database_tables", { id: session }).then((info) => {
+              if (!alive.current || sessionRef.current !== session) return;
+              const next = info.rows.map((row) => ({ schema: row[0].value, name: row[1].value }));
+              setTables(next);
+              setTable((previous) => previous && next.some((item) => item.schema === previous.schema && item.name === previous.name) ? previous : null);
+            }).catch((reason) => { if (alive.current) setMetadataError(`SQL completed; could not refresh tables: ${String(reason)}`); });
+          }
           setHistory((previous) =>
             [
               {
@@ -1176,7 +1185,7 @@ export default function DatabaseWorkspace({
             table &&
             tableInfo &&
             (metadata ? (
-              <DatabaseTableInfo metadata={metadata} />
+              <DatabaseTableInfo metadata={metadata} engine={current.engine} schema={table?.schema ?? "main"} table={table?.name ?? ""} readOnly={current.readOnly || busy} onUseSql={(statement) => { setSql(statement); setQueryId(""); setQueryName("Schema change"); setTab("console"); setTableInfo(false); }} />
             ) : !metadataError ? (
               <p className="database-notice" role="status">
                 Loading table info…

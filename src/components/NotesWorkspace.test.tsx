@@ -9,7 +9,7 @@ import type { Note } from "../lib/notes";
 const storage = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), delete: vi.fn(), export: vi.fn(), readPaths: vi.fn(), readFiles: vi.fn() }));
 vi.mock("../lib/noteFiles", () => ({ pickNoteFiles: vi.fn(), readNotePaths: storage.readPaths, readNoteFiles: storage.readFiles }));
 vi.mock("../lib/export", () => ({ exportText: storage.export }));
-vi.mock("../lib/notes", () => ({ loadNotes: storage.load, saveNote: storage.save, deleteNote: storage.delete, noteLanguage: () => "plaintext", noteFilename: (title: string) => title || "Untitled note.txt" }));
+vi.mock("../lib/notes", () => ({ loadNotes: storage.load, registerNotesBackup: () => () => {}, saveNote: storage.save, deleteNote: storage.delete, noteLanguage: () => "plaintext", noteFilename: (title: string) => title || "Untitled note.txt" }));
 vi.mock("./PreviewEditor", () => ({ default: () => <div>Plain text editor</div> }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 it("keeps all note drafts globally and only acknowledges the version explicitly saved", async () => {
@@ -148,7 +148,7 @@ it("deletes persisted notes only after confirmation and retains notes on failure
     storage.delete.mockClear();
     await act(async () => model.create());
     await act(async () => { await model.remove(model.active); });
-    expect(storage.delete).not.toHaveBeenCalled(); expect(model.dirty).toBe(false);
+    expect(storage.delete).toHaveBeenCalledOnce(); expect(model.dirty).toBe(false);
   } finally { confirm.mockRestore(); await act(async () => root.unmount()); host.remove(); }
 });
 it("toggles Markdown preview beside wrap without changing or saving the draft", async () => {
@@ -171,4 +171,25 @@ it("toggles Markdown preview beside wrap without changing or saving the draft", 
     expect(model.note?.text).toBe("# Preview\n\n**Hello**"); expect(model.dirty).toBe(true);
     expect(storage.save).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); }
+});
+
+it("searches note titles and contents and deletes notes after confirmation", async () => {
+  storage.load.mockResolvedValue([{ id: "one", title: "query.sql", text: "select rooms" }, { id: "two", title: "Shopping", text: "buy milk" }]);
+  storage.save.mockImplementation(async (note) => note); storage.delete.mockResolvedValue(undefined);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
+    await act(async () => model.setSearch("ROOMS"));
+    expect(host.querySelector('.notes-list')?.textContent).toContain("query.sql"); expect(host.querySelector('.notes-list')?.textContent).not.toContain("Shopping");
+    await act(async () => model.setSearch("Shopping")); expect(host.querySelector('.notes-list')?.textContent).toContain("buy milk");
+    await act(async () => { model.setSearch(""); model.setActive("one"); });
+    await act(async () => model.update({ text: "latest unsaved draft" }));
+    await act(async () => { await model.remove("one"); });
+    expect(storage.delete).toHaveBeenCalledWith("one");
+    expect(model.notes.some((note) => note.id === "one")).toBe(false);
+    expect(host.querySelector('[aria-label="Restore note query.sql"]')).toBeNull();
+  } finally { confirm.mockRestore(); await act(async () => root.unmount()); }
 });

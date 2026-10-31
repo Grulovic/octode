@@ -96,7 +96,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           />
         </label>
         <h3 className="settings-section">App data</h3>
-        <p className="settings-note">Back up all projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Exports include credentials; keep the file private. Source files and running sessions are not included. Save tool changes before exporting.</p>
+        <p className="settings-note">Back up global Notes (including open drafts), all projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Exports include credentials; keep the file private. Source files and running sessions are not included. Save tool changes before exporting.</p>
         <div className="settings-data-actions">
           <button type="button" disabled={busy} onClick={async () => {
             setBusy(true); setError(""); setMessage("");
@@ -105,15 +105,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           }}>Export app data</button>
           <button type="button" disabled={busy} onClick={() => importInput.current?.click()}>Import app data</button>
         </div>
-        <p className="settings-note">Import adds projects as new copies and restores preferences. Existing projects are kept. Project folders must be available at their saved paths or relinked through Edit project.</p>
+        <p className="settings-note">Import adds projects and Notes as new copies and restores preferences. Existing projects are kept. Project folders must be available at their saved paths or relinked through Edit project.</p>
         <input ref={importInput} type="file" accept=".json,application/json" aria-label="App data file" hidden onChange={async (event) => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (!file) return;
           setBusy(true); setError(""); setMessage("");
           try {
             if (file.size > 20 * 1024 * 1024) throw new Error("App data exceeds 20 MB.");
-            const count = await importAppData(await file.text());
-            setValue(loadSettings()); setMessage(`Imported ${count} project${count === 1 ? "" : "s"}.`);
+            const raw = await file.text();
+            const count = await importAppData(raw);
+            const backup = JSON.parse(raw);
+            const noteCount = (backup.notes?.length ?? 0);
+            setValue(loadSettings()); setMessage(`Imported ${count} project${count === 1 ? "" : "s"} and ${noteCount} note${noteCount === 1 ? "" : "s"}.`);
           } catch (reason) { setError(String(reason)); }
           finally { setBusy(false); }
         }} />

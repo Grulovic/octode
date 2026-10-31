@@ -274,19 +274,12 @@ export async function fileAction(
     return destination;
   }
   if (
-    Object.keys(sampleFiles).some((path) =>
-      path.startsWith(`${request.path}/`),
-    ) ||
-    [...sampleFolders].some((path) => path.startsWith(`${request.path}/`))
-  )
-    throw new Error("Only empty folders can be deleted");
-  if (
     request.expected !== undefined &&
     sampleFiles[request.path] !== request.expected
   )
     throw new Error("This file changed on disk");
-  delete sampleFiles[request.path];
-  sampleFolders.delete(request.path);
+  for (const path of Object.keys(sampleFiles)) if (path === request.path || path.startsWith(`${request.path}/`)) delete sampleFiles[path];
+  for (const path of [...sampleFolders]) if (path === request.path || path.startsWith(`${request.path}/`)) sampleFolders.delete(path);
   return request.path;
 }
 export async function inspectFiles(
