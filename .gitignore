@@ -11,3 +11,4 @@ src-tauri/gen/schemas/
 .env.*
 !.env.example
 !.env.*.example
+.aider*
