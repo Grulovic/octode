@@ -249,7 +249,7 @@ it.each([null, "commit", "push"] as const)(
         expectedHead: "new-head",
         expectedStaged: "",
       });
-      expect(message.value).toBe("");
+      expect(message.value).toBe("Fix rooms");
       if (failure === "push")
         expect(document.querySelector('[role="alert"]')?.textContent).toContain(
           "Commit succeeded locally, but push failed",
@@ -381,6 +381,33 @@ it("renders recent commits as read-only per-file before/after comparisons", asyn
   expect(dialog.textContent).toContain("Binary files");
   expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
   expect(dialog.textContent).not.toContain("Stage selected hunks");
+});
+
+it("prefills the latest recent message and preserves edits across refreshes and commits", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return {
+      ...await original(command, args),
+      stagedRevision: "reviewed-index",
+      history: [{ hash: "a".repeat(40), subject: args.root === props.root ? "Latest message" : "Other repository", author: "Test", date: "2026-11-03" }],
+    };
+    if (command === "git_action") return "Committed";
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  const message = document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!;
+  expect(message.value).toBe("Latest message");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(message, "My next message");
+    message.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => root.render(<GitPanel {...props} revision={1} />));
+  expect(message.value).toBe("My next message");
+  await act(async () => document.querySelector<HTMLButtonElement>(".git-commit-actions button")!.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action: "commit", value: "My next message" }) }));
+  expect(message.value).toBe("My next message");
+  await act(async () => root.render(<GitPanel {...props} root="/project/other" />));
+  expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!.value).toBe("Other repository");
 });
 
 it("applies and drops individually selected stashes using immutable hashes", async () => {

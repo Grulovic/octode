@@ -1,3 +1,4 @@
+import { markdownEdit, type MarkdownCommand } from "../lib/markdownEditing";
 import { monoFont } from "../theme/palette";
 import { nextTextCase, registerCaseEditor } from "../lib/textCase";
 import { deepOcean } from "../editor/deepOcean";
@@ -33,7 +34,11 @@ export default function EditorPane({
   wordWrap,
   onReady,
   retainModel = false,
+  markdownCommand,
+  onMarkdownHandled,
 }: {
+  markdownCommand?: MarkdownCommand | null;
+  onMarkdownHandled?: () => void;
   document: Document;
   onChange: (value: string) => void;
   selection?: EditorSelection;
@@ -345,5 +350,22 @@ export default function EditorPane({
     void editor.current.getAction("actions.find")?.run();
     onFindHandled?.();
   }, [findToken, uri, onFindHandled]);
+  useEffect(() => {
+    if (!markdownCommand || readOnly) return;
+    const instance = editor.current;
+    const model = instance?.getModel();
+    const selected = instance?.getSelection();
+    if (!instance || !model || !selected) return;
+    const edit = markdownEdit(model.getValue(), model.getOffsetAt(selected.getStartPosition()), model.getOffsetAt(selected.getEndPosition()), markdownCommand);
+    const start = model.getPositionAt(edit.start), end = model.getPositionAt(edit.end);
+    instance.pushUndoStop();
+    instance.executeEdits("octode.markdown", [{ range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column), text: edit.text }]);
+    const from = model.getPositionAt(edit.selectionStart), to = model.getPositionAt(edit.selectionEnd);
+    instance.setSelection(new monaco.Selection(from.lineNumber, from.column, to.lineNumber, to.column));
+    instance.pushUndoStop();
+    instance.focus();
+    instance.revealRange(instance.getSelection()!);
+    onMarkdownHandled?.();
+  }, [markdownCommand, onMarkdownHandled, readOnly]);
   return <div className="monaco-host" ref={host} />;
 }

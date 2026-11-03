@@ -76,6 +76,54 @@ afterEach(async () => {
 });
 
 describe("browser sandbox workflows", () => {
+  it("opens visible projects with plain number keys while preserving search and dialog typing", async () => {
+    await act(async () => root.unmount());
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([bridge.previewProject]);
+    root = createRoot(document.getElementById("root")!);
+    await act(async () => root.render(<App />));
+    await waitFor(() => document.querySelector(".project-card"));
+    expect(document.querySelector(".project-shortcut")?.textContent).toBe("1");
+    const key = async (target: EventTarget, value: string, modifiers = {}) => {
+      await act(async () => {
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true, ...modifiers }));
+      });
+    };
+    const search = document.querySelector<HTMLInputElement>('[aria-label="Find a project"]')!;
+    search.focus();
+    await key(search, "1");
+    expect(document.querySelector(".dashboard")).not.toBeNull();
+    search.blur();
+    await key(window, "9");
+    await key(window, "1", { altKey: true });
+    await key(window, "1", { repeat: true });
+    await key(window, "1", { isComposing: true });
+    expect(document.querySelector(".dashboard")).not.toBeNull();
+    await key(window, ",", { metaKey: true });
+    await waitFor(() => document.querySelector('[aria-modal="true"]'));
+    await key(window, "1");
+    expect(document.querySelector(".dashboard")).not.toBeNull();
+    await click('[aria-label="Close settings"]');
+    await key(window, "1");
+    await waitFor(() => document.querySelector(".tree-root"));
+    expect(document.querySelector(".dashboard")).toBeNull();
+  });
+
+  it("numbers only the first nine projects and follows the filtered display order", async () => {
+    await act(async () => root.unmount());
+    vi.spyOn(bridge, "listProjects").mockResolvedValue(Array.from({ length: 10 }, (_, index) => ({
+      ...bridge.previewProject, id: `numbered-${index}`, name: `Project ${index + 1}`,
+    })));
+    root = createRoot(document.getElementById("root")!);
+    await act(async () => root.render(<App />));
+    await waitFor(() => document.querySelectorAll(".project-card").length === 10);
+    expect(Array.from(document.querySelectorAll(".project-shortcut"), (item) => item.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", ""]);
+    await type('[aria-label="Find a project"]', "Project 9");
+    expect(document.querySelector(".project-shortcut")?.textContent).toBe("1");
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true, cancelable: true })));
+    await waitFor(() => document.querySelector(".tree-root"));
+    expect(localStorage.getItem("octode-active-project")).toBe("numbered-8");
+  });
+
   it("previews Markdown in Code without replacing the editor or changing its text", async () => {
     await enterCode();
     await click('.file-tree [title="/welcome/README.md"]');
@@ -84,6 +132,9 @@ describe("browser sandbox workflows", () => {
     const toggle = document.querySelector<HTMLButtonElement>('[aria-label="Markdown preview"]')!;
     expect(toggle.previousElementSibling?.getAttribute("aria-label")).toBe("Format PHP in container");
     await act(async () => toggle.click());
+    expect(document.querySelector('[aria-label="Markdown formatting"]')).not.toBeNull();
+    const preview = Array.from(document.querySelectorAll<HTMLButtonElement>('[aria-label="Markdown formatting"] button')).find((button) => button.textContent === "Preview")!;
+    await act(async () => preview.click());
     await waitFor(() => document.querySelector('article[aria-label="Markdown preview"] h1'));
     expect(document.querySelector('article h1')?.textContent).toBe("Code preview");
     expect(document.querySelector('article strong')?.textContent).toBe("Keep this source");
@@ -93,6 +144,22 @@ describe("browser sandbox workflows", () => {
     expect(document.querySelector('article[aria-label="Markdown preview"]')).toBeNull();
     expect((editor as HTMLTextAreaElement).value).toBe("# Code preview\n\n**Keep this source**");
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  });
+  it("formats selected Code lines with the shared Markdown toolbar and autosaves the edit", async () => {
+    await enterCode();
+    await click('.file-tree [title="/welcome/README.md"]');
+    await type('[aria-label="Edit README.md"]', "Alpha\nBeta");
+    const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="Edit README.md"]')!;
+    editor.setSelectionRange(0, editor.value.length);
+    await click('[aria-label="Markdown preview"]');
+    await click('[aria-label="Bullet list"]');
+    expect(editor.value).toBe("- Alpha\n- Beta");
+    await waitFor(() => document.querySelector('.editor-status-save')?.textContent?.includes("Autosaved"));
+    const preview = Array.from(document.querySelectorAll<HTMLButtonElement>('[aria-label="Markdown formatting"] button')).find((button) => button.textContent === "Preview")!;
+    await act(async () => preview.click());
+    await waitFor(() => document.querySelector('article li'));
+    expect(Array.from(document.querySelectorAll('article li'), (item) => item.textContent)).toEqual(["Alpha", "Beta"]);
+    expect(document.querySelector('[aria-label="Edit README.md"]')).toBe(editor);
   });
   it("Cmd+1 always selects Files from Git, Search and another section", async () => {
     await enterCode();

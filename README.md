@@ -4,7 +4,7 @@ A calmer place to build. A local desktop workspace for Code, Servers, Database, 
 
 ## Working build
 
-Octode combines a code review workspace with saved API requests, SSH/SFTP connections, and database tools. It runs in one native window. The header uses one breadcrumb: Projects / project name / tool. Projects returns to the project list and the project name opens its launcher. Code/Git, SSH/SFTP, database browsing/editing, and API requests are implemented. Semantic navigation, advanced Git operations, database dump/restore, and release hardening remain upcoming.
+Octode combines a code review workspace with saved API requests, SSH/SFTP connections, and database tools. It runs in one native window. The header uses one breadcrumb: Projects / project name / tool. Projects returns to the project list and the project name opens its launcher. Code/Git, SSH/SFTP, database browsing/editing, and API requests are implemented. Semantic navigation, advanced Git operations, database dump/restore, and release hardening remain upcomi
 
 Autocomplete is out of scope across the whole app: no suggestion popups, inline completions, parameter hints, word completions, snippets, or SQL completion. Syntax highlighting, search, and file navigation remain core features. Cmd/Ctrl-click and F12 find project declarations and relative file references without completion providers.
 

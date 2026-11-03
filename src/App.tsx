@@ -255,6 +255,7 @@ function WorkspaceApp({
     [updateUnsaved],
   );
   const [query, setQuery] = useState("");
+  const visibleProjects = filterProjects(projects, query);
   const [creating, setCreating] = useState(false);
   const [editingProject, setEditingProject] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
@@ -444,6 +445,23 @@ function WorkspaceApp({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!active) return;
+      if (!project && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (
+          event.defaultPrevented || event.repeat || event.isComposing ||
+          notes.visible || terminal.value.visible ||
+          document.querySelector('[aria-modal="true"]') ||
+          target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]') ||
+          !/^[1-9]$/.test(event.key)
+        ) return;
+        const destination = visibleProjects[Number(event.key) - 1];
+        if (destination) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          void openProject(destination);
+        }
+        return;
+      }
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.key.toLowerCase() === "p" && event.shiftKey) {
         event.preventDefault();
@@ -481,7 +499,7 @@ function WorkspaceApp({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [project, active, updateSession, terminal.value.toggle]);
+  }, [project, active, projects, query, notes.visible, terminal.value.visible, onOpenProject, updateSession, terminal.value.toggle]);
 
   useEffect(() => {
     if (tool === "api" || tool === "servers" || tool === "database")
@@ -805,7 +823,7 @@ function WorkspaceApp({
                   </div>
                 </div>
                 <div className="projects-grid">
-                  {filterProjects(projects, query).map((item) => (
+                  {visibleProjects.map((item, index) => (
                     <div className="project-card-wrapper" key={item.id}>
                       <button
                         className="project-card"
@@ -815,9 +833,11 @@ function WorkspaceApp({
                           } as React.CSSProperties
                         }
                         onClick={() => void openProject(item)}
+                        aria-keyshortcuts={index < 9 ? String(index + 1) : undefined}
                       >
-                        <span className="project-icon">
-                          <FolderOpen size={24} />
+                        <span className="project-icon" aria-hidden="true">
+                          <FolderOpen size={48} absoluteStrokeWidth />
+                          <span className="project-shortcut">{index < 9 ? index + 1 : ""}</span>
                         </span>
                         <ArrowRight className="card-arrow" size={18} />
                         <div className="project-title-row"><h3>{item.name}</h3>{parkedProjectIds.includes(item.id) && <span className="project-parked">Open · workspace parked</span>}</div>
@@ -848,7 +868,7 @@ function WorkspaceApp({
                     </div>
                   ))}
                 </div>
-                {query && !filterProjects(projects, query).length && (
+                {query && !visibleProjects.length && (
                   <div className="empty-search">
                     No projects match “{query}”.
                   </div>

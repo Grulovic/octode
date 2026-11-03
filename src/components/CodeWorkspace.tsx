@@ -1,3 +1,5 @@
+import MarkdownToolbar from "./MarkdownToolbar";
+import type { MarkdownCommand } from "../lib/markdownEditing";
 import FileIcon from "./FileIcon";
 import { useRootBranches } from "../hooks/useRootBranches";
 import CustomSelect from "./CustomSelect";
@@ -167,7 +169,11 @@ export default function CodeWorkspace({
   const [active, setActive] = useState("");
   const [formatter, setFormatter] = useState(false);
   const [markdownPath, setMarkdownPath] = useState<string | null>(null);
-  const markdownPreview = !!active && markdownPath === active;
+  const markdownEnabled = !!active && markdownPath === active;
+  const [markdownView, setMarkdownView] = useState(false);
+  const markdownPreview = markdownEnabled && markdownView;
+  const [markdownCommand, setMarkdownCommand] = useState<{ path: string; command: MarkdownCommand } | null>(null);
+  useEffect(() => setMarkdownCommand(null), [active, markdownPath]);
   const [root, setRoot] = useState(initial.activeRoot);
   useEffect(() => {
     const owner = rootForPath(project.roots, active);
@@ -1301,12 +1307,12 @@ export default function CodeWorkspace({
             <WandSparkles size={15} />
           </button>
           <button
-            className={`icon-button${markdownPreview ? " active" : ""}`}
-            title="Toggle Markdown preview"
+            className={`icon-button${markdownEnabled ? " active" : ""}`}
+            title="Toggle Markdown mode"
             aria-label="Markdown preview"
-            aria-pressed={markdownPreview}
+            aria-pressed={markdownEnabled}
             disabled={!document}
-            onClick={() => setMarkdownPath(markdownPreview ? null : active)}
+            onClick={() => { setMarkdownView(false); setMarkdownPath(markdownEnabled ? null : active); }}
           >
             MD
           </button>
@@ -1345,6 +1351,7 @@ export default function CodeWorkspace({
                     </button>
                   </div>
                 )}
+                {markdownEnabled && <MarkdownToolbar key={document.path} disabled={fileBusy || gitBusy} preview={markdownView} onPreview={setMarkdownView} onCommand={(command) => setMarkdownCommand({ path: document.path, command })} />}
                 <div className="editor-surface" style={markdownPreview ? { display: "none" } : undefined}>
                   <Suspense
                     fallback={<div className="loading">Loading editor…</div>}
@@ -1353,6 +1360,9 @@ export default function CodeWorkspace({
                       key={document.path}
                       document={document}
                       modelPath={codeModelPath(project.id, document.path)}
+                      languageId={markdownEnabled ? "markdown" : undefined}
+                      markdownCommand={markdownCommand?.path === document.path ? markdownCommand.command : null}
+                      onMarkdownHandled={() => setMarkdownCommand(null)}
                       findToken={findToken}
                       onFindHandled={() => setFindToken(0)}
                       selection={selection}
@@ -1423,7 +1433,7 @@ export default function CodeWorkspace({
             )}
           </span>
           <span className="editor-status-file">
-            {document ? language(document.path).toUpperCase() : "UTF-8"}{" "}
+            {document ? markdownEnabled ? "MARKDOWN" : language(document.path).toUpperCase() : "UTF-8"}{" "}
             <span className="muted">·</span>{" "}
             {desktop ? "Local files" : "Preview sandbox"}
           </span>

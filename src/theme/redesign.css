@@ -44,12 +44,14 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .projects-grid { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--oc-border); border-radius: var(--oc-radius-dialog); overflow: hidden; background: var(--oc-bg); }
 .app-shell .project-card-wrapper { display: flex; align-items: center; gap: var(--oc-space-4); border-bottom: 1px solid var(--oc-border); padding-right: var(--oc-space-6); }
 .app-shell .project-card-wrapper:last-child { border-bottom: 0; }
-.app-shell .project-card { display: grid; grid-template-columns: 36px 1fr; column-gap: var(--oc-space-6); row-gap: var(--oc-space-3); padding: var(--oc-space-6) var(--oc-space-6) var(--oc-space-6) var(--oc-space-7); border: 0; border-left: 3px solid var(--project-color); border-radius: 0; background: transparent; min-height: 88px; flex: 1; min-width: 0; }
+.app-shell .project-card { display: grid; grid-template-columns: 48px 1fr; column-gap: var(--oc-space-6); row-gap: var(--oc-space-3); padding: var(--oc-space-6) var(--oc-space-6) var(--oc-space-6) var(--oc-space-7); border: 0; border-left: 3px solid var(--project-color); border-radius: 0; background: transparent; min-height: 88px; flex: 1; min-width: 0; }
+.app-shell .project-shortcut { position: absolute; left: 0; right: 0; top: 55%; transform: translateY(-50%); color: var(--project-color); font-size: 15px; line-height: 20px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.app-shell .project-card .project-title-row, .app-shell .project-card .project-folder-chips { grid-column: 2; }
 .app-shell .project-card:hover { transform: none; background: transparent; }
 .app-shell .project-card-wrapper:hover, .app-shell .project-card-wrapper:focus-within { background: var(--oc-panel); }
-.app-shell .project-card .project-icon { grid-row: 1 / 3; width: 36px; height: 36px; margin: 0; align-self: center; border-radius: var(--oc-radius-menu); color: var(--project-color); background: var(--oc-surface); }
-.app-shell .project-card .project-icon svg { width: 18px; height: 18px; }
-.app-shell .project-card h3 { font-size: 14px; font-weight: 600; color: var(--oc-text-strong); margin: 0; display: flex; align-items: center; gap: var(--oc-space-4); }
+.app-shell .project-card .project-icon { position: relative; grid-column: 1; grid-row: 1 / 3; width: 48px; height: 48px; margin: 0; align-self: center; border: 0; border-radius: 0; color: var(--project-color); background: transparent; }
+.app-shell .project-card .project-icon svg { width: 48px; height: 48px; }
+.app-shell .project-card h3 { font-size: 16px; font-weight: 600; color: var(--oc-text-strong); margin: 0; display: flex; align-items: center; gap: var(--oc-space-4); }
 .project-parked { font: var(--oc-text-label); padding: var(--oc-space-1) var(--oc-space-3); border-radius: var(--oc-radius-tag); color: var(--oc-accent); background: var(--oc-accent-tint); }
 .project-folder-chips { display: flex; flex-wrap: wrap; gap: var(--oc-space-3); }
 .project-folder-chips > span { display: inline-flex; align-items: center; gap: var(--oc-space-3); border: 1px solid var(--oc-border); border-radius: var(--oc-radius-tag); padding: var(--oc-space-1) var(--oc-space-3); background: var(--oc-surface); font: var(--oc-text-meta); }

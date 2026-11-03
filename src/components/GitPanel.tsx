@@ -52,6 +52,7 @@ export default function GitPanel({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [commit, setCommit] = useState("");
+  const commitInitialized = useRef(false);
   const [pushPrompt, setPushPrompt] = useState(false);
   const [branch, setBranch] = useState("");
   const [newBranch, setNewBranch] = useState("");
@@ -100,6 +101,10 @@ export default function GitPanel({
       });
       if (mounted.current && epoch.current === version) {
         setState(snapshot);
+        if (!commitInitialized.current) {
+          commitInitialized.current = true;
+          setCommit(snapshot.history[0]?.subject ?? "");
+        }
         setManagedBranch((previous) => snapshot.branches.includes(previous) ? previous : "");
         setError("");
         setRemote((previous) =>
@@ -125,6 +130,8 @@ export default function GitPanel({
   }, [root, readSnapshot]);
   useEffect(() => {
     setState(null);
+    commitInitialized.current = false;
+    setCommit("");
     setPushPrompt(false);
     setView(null);
     setMerge(null);
@@ -218,7 +225,6 @@ export default function GitPanel({
       });
       if (mounted.current) {
         setMessage(result || `${action} completed`);
-        if (action === "commit") setCommit("");
         if (action === "resolve") setMerge(null);
         if (action === "stage" || action === "unstage" || action === "rollback")
           setView(null);
@@ -270,7 +276,6 @@ export default function GitPanel({
           expectedStaged: state.stagedRevision,
         },
       });
-      setCommit("");
       setMessage("Committed locally. Pushing…");
       try {
         const committed = await invoke<GitSnapshot>("git_snapshot", {
@@ -568,7 +573,10 @@ export default function GitPanel({
             <textarea
               aria-label="Commit message"
               value={commit}
-              onChange={(e) => setCommit(e.target.value)}
+              onChange={(e) => {
+                commitInitialized.current = true;
+                setCommit(e.target.value);
+              }}
               placeholder="Describe these staged changes"
             />
           </label>

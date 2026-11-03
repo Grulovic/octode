@@ -10,6 +10,8 @@ import { exportText } from "../lib/export";
 import { pickNoteFiles, readNotePaths, readNoteFiles } from "../lib/noteFiles";
 import { installFilePathDrop } from "../lib/terminalDrop";
 import { confirmAction } from "./ToolLayout";
+import MarkdownToolbar from "./MarkdownToolbar";
+import type { MarkdownCommand } from "../lib/markdownEditing";
 import MarkdownPreview from "./MarkdownPreview";
 import FileIcon from "./FileIcon";
 import PanelResize, { usePanelSize } from "./PanelResize";
@@ -127,6 +129,11 @@ export function useNotes() {
 export default function NotesWorkspace() {
   const model = useNotes();
   const { note } = model;
+  const [markdownPreview, setMarkdownPreview] = useState(false);
+  const [markdownCommand, setMarkdownCommand] = useState<MarkdownCommand | null>(null);
+  useEffect(() => setMarkdownCommand(null), [note?.id, model.markdown]);
+  const showingPreview = model.markdown && markdownPreview;
+  const syntax = model.markdown ? "Markdown" : note && noteLanguage(note.title) !== "plaintext" ? noteLanguage(note.title).toUpperCase() : "Plain text";
   const section = useRef<HTMLElement>(null);
   const sidebar = useRef<HTMLElement>(null);
   const [savedWidth, setSidebarWidth] = usePanelSize("octode-layout:sidebar:notes", 340);
@@ -198,18 +205,19 @@ export default function NotesWorkspace() {
     <div className="notes-main">
       <header>{note ? <input aria-label="Note title" placeholder="Untitled note" value={note.title} readOnly={model.deleting} maxLength={200} onChange={(event) => model.update({ title: event.target.value })} /> : <strong>Notes</strong>}<span className="notes-save-state">{model.saving ? "Saving…" : note && model.isDirty(note) ? "Unsaved changes" : "Saved"}</span><button className="primary-button" disabled={!note || model.loading || model.saving || model.deleting || !model.isDirty(note)} onClick={() => void model.save()}><Save size={14} />Save</button><button className="secondary-button notes-save-as" disabled={!note || model.loading || exporting} onClick={() => void saveAs()}>{exporting ? "Saving file…" : "Save as…"}</button></header>
       <div className="notes-toolbar" role="toolbar" aria-label="Note tools">
-        <span>{note ? noteLanguage(note.title) === "plaintext" ? "Plain text" : noteLanguage(note.title).toUpperCase() : "Notes"}</span>
+        <span>{note ? syntax : "Notes"}</span>
         <div className="notes-toolbar-actions">
-          <button aria-label="Find in note" title="Find in note" disabled={!note || model.loading || model.markdown} onClick={() => setFindToken((value) => value + 1)}><Search size={15} /></button>
-          <button aria-label="Word wrap" title="Word wrap" aria-pressed={model.wrap} disabled={!note || model.loading || model.markdown} onClick={() => model.setWrap((value) => !value)}><WrapText size={16} /></button>
-          <button aria-label="Markdown preview" title="Toggle Markdown preview" aria-pressed={model.markdown} disabled={!note || model.loading} onClick={() => model.setMarkdown((value) => !value)}>MD</button>
+          <button aria-label="Find in note" title="Find in note" disabled={!note || model.loading || showingPreview} onClick={() => setFindToken((value) => value + 1)}><Search size={15} /></button>
+          <button aria-label="Word wrap" title="Word wrap" aria-pressed={model.wrap} disabled={!note || model.loading || showingPreview} onClick={() => model.setWrap((value) => !value)}><WrapText size={16} /></button>
+          <button aria-label="Markdown preview" title="Toggle Markdown mode" aria-pressed={model.markdown} disabled={!note || model.loading} onClick={() => model.setMarkdown((value) => !value)}>MD</button>
         </div>
       </div>
+      {note && model.markdown && <MarkdownToolbar key={note.id} disabled={model.loading || model.deleting} preview={markdownPreview} onPreview={setMarkdownPreview} onCommand={setMarkdownCommand} />}
       {importError && <div className="error-banner" role="alert">{importError}</div>}
       {exportError && <div className="error-banner" role="alert">{exportError}</div>}
       {model.error && <div className="error-banner" role="alert">{model.error}{!model.notes.length && <button onClick={model.retry}>Retry</button>}</div>}
-      {model.loading ? <div className="loading">Loading notes…</div> : note && model.markdown ? <MarkdownPreview text={note.text} /> : note ? <div className="notes-editor"><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} onChange={(text) => model.update({ text })} />}</Suspense></div> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={model.create}><Plus size={14} />New note</button></div>}
-      {note && <footer>{note.text.split("\n").length} lines · {note.text.length} characters<span>{noteLanguage(note.title) === "plaintext" ? "Plain text" : noteLanguage(note.title).toUpperCase()} · {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}S to save</span></footer>}
+      {model.loading ? <div className="loading">Loading notes…</div> : note ? <><div className="notes-editor" style={showingPreview ? { display: "none" } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingPreview && <MarkdownPreview text={note.text} />}</> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={model.create}><Plus size={14} />New note</button></div>}
+      {note && <footer>{note.text.split("\n").length} lines · {note.text.length} characters<span>{syntax} · {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}S to save</span></footer>}
     </div>
   </section>;
 }

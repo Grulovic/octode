@@ -1,3 +1,4 @@
+import { markdownEdit, type MarkdownCommand } from "../lib/markdownEditing";
 import { useEffect, useRef, useState } from "react";
 import type { Document, EditorSelection } from "../types";
 import "./preview.css";
@@ -11,7 +12,11 @@ export default function PreviewEditor({
   onNavigate,
   readOnly = false,
   wordWrap,
+  markdownCommand,
+  onMarkdownHandled,
 }: {
+  markdownCommand?: MarkdownCommand | null;
+  onMarkdownHandled?: () => void;
   document: Document;
   onChange: (value: string) => void;
   selection?: EditorSelection;
@@ -62,6 +67,17 @@ export default function PreviewEditor({
     input.current.setSelectionRange(offset, offset);
     input.current.scrollTop = Math.max(0, (selection.line - 4) * 24);
   }, [document.path, selection]);
+  useEffect(() => {
+    const field = input.current;
+    if (!markdownCommand || !field || readOnly) return;
+    const edit = markdownEdit(field.value, field.selectionStart, field.selectionEnd, markdownCommand);
+    onChange(field.value.slice(0, edit.start) + edit.text + field.value.slice(edit.end));
+    onMarkdownHandled?.();
+    requestAnimationFrame(() => {
+      field.focus();
+      field.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+    });
+  }, [markdownCommand, readOnly]);
   return (
     <div className="preview-editor">
       <div className="preview-notice">

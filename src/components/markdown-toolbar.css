@@ -1,0 +1,16 @@
+.notes-markdown-tools { flex: none; border-bottom: 1px solid var(--oc-border); background: var(--oc-bg); }
+.notes-format-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 12px; }
+.notes-markdown-views { display: flex; gap: 2px; padding-right: 8px; border-right: 1px solid var(--oc-border); }
+.notes-format-toolbar button { display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--oc-muted); font-size: 11px; }
+.notes-format-toolbar button:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-text); }
+.notes-format-toolbar button[aria-pressed="true"], .notes-format-toolbar button[aria-expanded="true"] { background: var(--oc-selection); color: var(--oc-accent); }
+.notes-format-buttons { display: flex; flex-wrap: wrap; gap: 2px; }
+.notes-format-buttons button { width: 28px; padding: 0; }
+.notes-format-toolbar .custom-select { width: 110px; }
+.notes-format-options { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 12px 10px; color: var(--oc-muted); font-size: 11px; }
+.notes-format-options label { display: flex; align-items: center; gap: 6px; }
+.notes-format-options input { height: 28px; padding: 0 8px; border: 1px solid var(--oc-border); border-radius: 4px; background: var(--oc-panel); color: var(--oc-text); }
+.notes-format-options input[type="number"] { width: 56px; }
+.notes-format-url { flex: 1; min-width: 200px; }
+.notes-format-url input { flex: 1; min-width: 0; }
+.notes-format-options > span { flex: 1; min-width: 200px; }

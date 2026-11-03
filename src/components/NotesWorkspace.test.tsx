@@ -164,6 +164,9 @@ it("toggles Markdown preview beside wrap without changing or saving the draft", 
     expect(toggle.previousElementSibling?.getAttribute("aria-label")).toBe("Word wrap");
     await act(async () => toggle.click());
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector('[aria-label="Markdown formatting"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Bold"]')).not.toBeNull();
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Preview")!.click());
     expect(host.querySelector("article h1")?.textContent).toBe("Preview");
     expect(host.querySelector("article strong")?.textContent).toBe("Hello");
     await act(async () => toggle.click());
