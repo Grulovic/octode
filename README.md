@@ -46,7 +46,7 @@ Implemented source:
 Requirements: Node **20.19+** (or a current supported LTS), Rust **1.90+**, and the [Tauri OS prerequisites](https://v2.tauri.app/start/prerequisites/). macOS needs Xcode Command Line Tools. Git status requires Git on PATH. The first build downloads Rust crates and may take several minutes.
 
 ```sh
-cd /Users/grula/PhpStormProjects/Octode
+cd /path/to/Octode
 npm install
 npm run desktop
 ```
@@ -73,7 +73,7 @@ Open the app from the matching path once. After changing source, rerun the same 
 
 To rebuild the existing **Octode Check** profile instead, use `npm run buildDev -- --check` (or `buildProd -- --check`). This creates `Octode Check.app` in the same bundle directory and keeps its separate profile. Add `--offline` to use already cached Rust crates; the first build needs network access if dependencies are missing. Builds use the checked-in Cargo lockfile without upgrading dependencies.
 
-Run `npm run setupSigning` once on this Mac to create the free `Octode Local Development` signing identity in your login Keychain. Setup trusts that certificate for code signing only. All bundle builds then use that same identity and verify the completed signature, allowing Keychain to recognize the app across rebuilds. Keep the certificate and its private key; replacing them changes the identity. Existing saved credentials may require Always Allow once after switching from ad-hoc signing. The setup is safe to rerun and reuses an existing valid identity; builds stop if it is missing rather than falling back to ad-hoc signing. Developer ID signing and notarization for distribution require a separate release setup. For live frontend refresh during development, use `npm run desktop` with a supported Node selected (for example `nvm use 20.20.2`). `npm run build` remains the frontend-only build.
+Run `npm run setupSigning` once on your Mac to create the free `Octode Local Development` signing identity in your login Keychain. Setup trusts that certificate for code signing only. All bundle builds then use that same identity and verify the completed signature, allowing Keychain to recognize the app across rebuilds. Keep the certificate and its private key; replacing them changes the identity. Existing saved credentials may require Always Allow once after switching from ad-hoc signing. The setup is safe to rerun and reuses an existing valid identity; builds stop if it is missing rather than falling back to ad-hoc signing. Developer ID signing and notarization for distribution require a separate release setup. For live frontend refresh during development, use `npm run desktop` with a supported Node selected (for example `nvm use 20.20.2`). `npm run build` remains the frontend-only build.
 
 Browser-only layout preview:
 
@@ -100,14 +100,14 @@ The Files dropdown shows only the selected folder’s contents and displays its 
 
 Verified with Rust/Cargo **1.99.1** and Node **20.20.2**: the production TypeScript/Vite build, all **199 Vitest tests** (including autosave timing/concurrency/failure checks and syntax-tokenization and PHP theme token tests), all **74 Rust tests**, and Clippy with warnings denied. The macOS development bundle built successfully. Native UI checks covered project creation, folder selection, Monaco editing/saving, PTY commands in the selected folder, Git status, quick-open, text search, session restore, external-save conflict protection, and the unsaved-close prompt. See [validation details](docs/VALIDATION.md) for the checks and remaining limits.
 
-Both dependency lockfiles are now present. Downloads and local server ports remain restricted inside the agent environment; the installed caches allow offline Rust checks and native app builds. After cloning, use `npm ci` and `cargo fetch --locked --manifest-path src-tauri/Cargo.toml` from a terminal with network access.
+Both dependency lockfiles are checked in. After cloning, use `npm ci` and `cargo fetch --locked --manifest-path src-tauri/Cargo.toml` from a terminal with network access. Once dependencies are cached locally, Rust checks and native app builds can run offline.
 
 `npm run test:native-core` tests the production filesystem, terminal-flow, and search modules using only Node and the installed Rust compiler; it downloads nothing and does not compile Tauri. `npm run test:search-core` runs just the search tests. The regular `npm test` suite includes workspace, terminal-input, and browser-sandbox tests and needs the declared npm dependencies installed. `npm run doctor` checks development prerequisites and returns a failing exit code when something is missing.
 
 To populate dependency caches from a normal terminal with network access:
 
 ```sh
-cd /Users/grula/PhpStormProjects/Octode
+cd /path/to/Octode
 npm ci
 cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 ```
