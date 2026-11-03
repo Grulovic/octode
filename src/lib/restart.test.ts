@@ -52,3 +52,12 @@ it("blocks restart if Code or an explicit settings Save fails", async () => {
   await expect(prepareRestart(config)).rejects.toThrow("settings save failed");
   expect(config.flushLayout).not.toHaveBeenCalled();
 });
+
+it("preserves a file-specific failure from a parked project without restarting", async () => {
+  const config = options();
+  config.saveCode.mockRejectedValue(new Error("Code could not be saved in Parked project: /app/a.php: Changed on disk"));
+  await expect(prepareRestart(config)).rejects.toThrow("Parked project: /app/a.php: Changed on disk");
+  expect(config.waitForSaves).not.toHaveBeenCalled();
+  expect(config.confirmDiscard).not.toHaveBeenCalled();
+  expect(config.flushLayout).not.toHaveBeenCalled();
+});

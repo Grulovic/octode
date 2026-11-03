@@ -14,7 +14,7 @@ export function createCodeAutosave(options: {
 }) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const jobs = new Map<string, Promise<boolean>>();
-  const failed = new Set<string>();
+  const failed = new Map<string, string>();
   const states: Record<string, SaveState> = {};
   let disposed = false;
   function status(path: string, value?: SaveState) {
@@ -54,7 +54,7 @@ export function createCodeAutosave(options: {
         }
         return true;
       } catch (reason) {
-        failed.add(path);
+        failed.set(path, String(reason));
         status(path, "error");
         if (!disposed) options.error(path, reason);
         return false;
@@ -114,9 +114,15 @@ export function createCodeAutosave(options: {
       );
     },
     flush,
-    pause(path: string) {
+    failureMessage() {
+      return options.read()
+        .filter((item) => item.text !== item.saved)
+        .map((item) => `${item.path}: ${failed.get(item.path) ?? "Save did not finish"}`)
+        .join("\n");
+    },
+    pause(path: string, reason = "File changed on disk. Compare or reload it before saving.") {
       cancelTimer(path);
-      failed.add(path);
+      failed.set(path, reason);
       status(path, "error");
     },
     forget(path: string) {

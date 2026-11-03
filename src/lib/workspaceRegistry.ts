@@ -5,7 +5,7 @@ export interface WorkspaceHandle {
 }
 export interface WorkspaceRuntime {
   register: (id: string, handle: WorkspaceHandle) => () => void;
-  saveAllCode: () => Promise<boolean>;
+  saveAllCode: (reportErrors?: boolean) => Promise<boolean>;
   flushAllLayouts: () => Promise<void>;
   hasUnsavedSettings: () => boolean;
 }
@@ -19,10 +19,16 @@ export function createWorkspaceRuntime(): WorkspaceRuntime {
         if (handles.get(id) === handle) handles.delete(id);
       };
     },
-    async saveAllCode() {
+    async saveAllCode(reportErrors = false) {
       const results = await Promise.allSettled(
         [...handles.values()].map((handle) => handle.saveCode()),
       );
+      if (reportErrors) {
+        const errors = results.flatMap((result) =>
+          result.status === "rejected" ? [String(result.reason)] : [],
+        );
+        if (errors.length) throw new Error(errors.join("\n"));
+      }
       return results.every(
         (result) => result.status === "fulfilled" && result.value,
       );

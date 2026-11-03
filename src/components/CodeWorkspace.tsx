@@ -360,10 +360,9 @@ export default function CodeWorkspace({
           project,
           recoverySnapshot(documentsRef.current, recoveryPending.current),
         );
-      return (
-        saved &&
-        !Object.values(externalRef.current).some((value) => !!value.error)
-      );
+      if (!saved)
+        throw new Error(`Code could not be saved in ${project.name}. Open Code in this project and review the file:\n${manager.failureMessage()}`);
+      return true;
     });
     const blur = () => {
       void manager.flush();
@@ -402,7 +401,7 @@ export default function CodeWorkspace({
           if (!before || !current || before.saved !== current.saved) continue;
           stamps.current.set(value.path, value.stamp);
           if (value.error) {
-            autosave.current?.pause(value.path);
+            autosave.current?.pause(value.path, value.error);
             setExternal((previous) => ({
               ...previous,
               [value.path]: { content: null, error: value.error },

@@ -527,7 +527,7 @@ function WorkspaceApp({
     setRestarting(true);
     try {
       const ready = await prepareRestart({
-        saveCode: runtime.saveAllCode,
+        saveCode: () => runtime.saveAllCode(true),
         waitForSaves: waitForPendingToolSaves,
         hasUnsavedSettings: runtime.hasUnsavedSettings,
         confirmDiscard: async () =>

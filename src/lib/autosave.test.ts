@@ -42,6 +42,19 @@ function fixture() {
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 describe("Code autosave", () => {
+  it("does not block a workspace flush for an unavailable file with no local edits", async () => {
+    const f = fixture();
+    f.manager.pause("/app/a.php", "File no longer exists");
+    expect(await f.manager.flush()).toBe(true);
+    expect(f.write).not.toHaveBeenCalled();
+    expect(f.manager.failureMessage()).toBe("");
+    f.edit("/app/a.php", "keep this draft");
+    expect(await f.manager.flush()).toBe(false);
+    expect(f.manager.failureMessage()).toBe("/app/a.php: File no longer exists");
+    expect(f.read()[0].text).toBe("keep this draft");
+    f.manager.dispose();
+  });
+
   it("pauses a pending write until the external change has been reviewed", async () => {
     const f = fixture();
     f.edit("/app/a.php", "local");
@@ -153,6 +166,7 @@ describe("Code autosave", () => {
     expect(f.disk.get("/app/a.php")).toBe("agent edit");
     expect(f.read()[0].text).toBe("more edits");
     expect(await f.manager.flush()).toBe(false);
+    expect(f.manager.failureMessage()).toContain("/app/a.php: Error: Changed on disk");
     f.manager.dispose();
   });
   it("flushes immediately before closing and cancels pending timers on disposal", async () => {

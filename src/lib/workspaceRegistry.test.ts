@@ -46,6 +46,7 @@ it("does not lose a replacement registration to stale cleanup and surfaces save 
   stop();
   expect(runtime.hasUnsavedSettings()).toBe(true);
   expect(await runtime.saveAllCode()).toBe(false);
+  await expect(runtime.saveAllCode(true)).rejects.toThrow("disk offline");
   await expect(runtime.flushAllLayouts()).rejects.toThrow("layout offline");
   close();
   expect(runtime.hasUnsavedSettings()).toBe(false);
