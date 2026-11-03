@@ -7,6 +7,12 @@
     "core:default",
     "core:window:allow-destroy",
     "core:window:allow-start-dragging",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-set-min-size",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-unmaximize",
+
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-confirm"

@@ -78,3 +78,9 @@ export const WandSparkles = icon("<path d=\"M4 20L15 9M14 4v2M18 8h2M17 5l1-1M19
 export const Sparkle = icon("<path d=\"M12 3l2 6 6 3-6 3-2 6-2-6-6-3 6-3z\"/>");
 export const FoldVertical = icon("<path d=\"M7 4l5 5 5-5M7 20l5-5 5 5\"/>");
 export const LocateFixed = icon("<path d=\"M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 3v3M12 18v3M3 12h3M18 12h3\"/>");
+
+// Window positioning: a screen outline with the target window area shaded.
+export const WindowLeft = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14"/><path d="M5 7h5v10H5z" fill="currentColor" stroke="none"/>');
+export const WindowRight = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14"/><path d="M14 7h5v10h-5z" fill="currentColor" stroke="none"/>');
+export const WindowCenter = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M16 5v14"/><path d="M10 7h4v10h-4z" fill="currentColor" stroke="none"/>');
+export const WindowFull = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 7h14v10H5z" fill="currentColor" stroke="none"/>');

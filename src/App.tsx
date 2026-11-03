@@ -1,3 +1,4 @@
+import WindowLayoutControls from "./components/WindowLayoutControls";
 import { homeTerminalProject } from "./lib/terminalHome";
 import NotesWorkspace, { NotesProvider, useNotes } from "./components/NotesWorkspace";
 import { FileText } from "lucide-react";
@@ -681,6 +682,7 @@ function WorkspaceApp({
           <button className="titlebar-search" aria-label="Search everywhere" disabled={!project} onClick={() => setEverywhere(true)}>
             <Search size={13} /><span>Search everywhere</span><kbd>⇧⇧</kbd>
           </button>
+          <WindowLayoutControls onError={setError} />
         </header>
         <div className="app-body">
           <nav className="rail" aria-label="Main navigation">

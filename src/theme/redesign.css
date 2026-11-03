@@ -571,3 +571,17 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .service-tool .database-filter-field .database-sql-filter > input::placeholder {
   color: var(--oc-muted); -webkit-text-fill-color: var(--oc-muted);
 }
+
+.window-layout-controls { display: flex; align-items: center; flex: none; gap: var(--oc-space-2); margin-left: calc(-1 * var(--oc-space-4)); }
+.window-layout-controls button { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border-radius: var(--oc-radius-control); color: var(--oc-muted); }
+.window-layout-controls button:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-text); }
+.window-layout-controls button:disabled { opacity: .4; cursor: default; }
+@media (max-width: 750px) {
+  .app-shell .titlebar { gap: var(--oc-space-4); }
+  .app-shell .brand > span:last-child, .titlebar-search > span { display: none; }
+  .app-shell .brand-navigation { flex: 1; overflow: hidden; }
+  .app-shell .project-breadcrumb { overflow: hidden; }
+  .app-shell .project-nav-name { min-width: 0; }
+  .titlebar-search { flex: 0 0 64px; min-width: 64px; }
+  .window-layout-controls { margin-left: 0; }
+}
