@@ -17,7 +17,7 @@ Octode is a local desktop development workspace: Code/Git, Servers/SSH/SFTP, Dat
 Run commands from the repository root. Typical local toolchain:
 
 ```sh
-export PATH=/Users/grula/.cargo/bin:/Users/grula/.nvm/versions/node/v20.20.2/bin:$PATH
+export PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.20.2/bin:$PATH"
 npx tsc -b
 npm test
 cargo test --manifest-path src-tauri/Cargo.toml --offline

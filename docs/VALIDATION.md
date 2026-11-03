@@ -185,7 +185,7 @@ touch icon, and Tauri icon configuration. Generated ICNS, ICO and PNG platform
 assets with the installed Tauri CLI. Production frontend build and both unsigned
 macOS debug bundles (`Octode.app`, `Octode Check.app`) completed successfully.
 The bundle Info.plist selects `icon.icns`. Windows/Linux artifacts were generated,
-but their native packaging was not run on this Mac. No app data was changed.
+but their native packaging was not tested. No app data was changed.
 
 ## Navigation, Git, services, and API response UI — 2026-10-27
 
