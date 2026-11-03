@@ -41,6 +41,7 @@ import {
   type ToolProps,
 } from "./ToolLayout";
 import { exportText, resultCsv } from "../lib/export";
+import { copyTextToClipboard } from "../lib/clipboard";
 import type { TableMetadata } from "../lib/databaseRows";
 import { desktop } from "../lib/bridge";
 const DatabaseCsvImport = lazy(() => import("./DatabaseCsvImport"));
@@ -146,6 +147,7 @@ export default function DatabaseWorkspace({
   const [descending, setDescending] = useState(false);
   const [page, setPage] = useState(0);
   const [result, setResult] = useState<DbResult | null>(null);
+  const [copiedResult, setCopiedResult] = useState<DbResult | null>(null);
   useEffect(() => {
     if (metadata)
       setResult((previous) =>
@@ -1233,6 +1235,21 @@ export default function DatabaseWorkspace({
                     >
                       Export CSV
                     </button>{" "}
+                    <button
+                      disabled={busy}
+                      title="Copy all loaded result rows as CSV with column headers"
+                      onClick={() => {
+                        void copyTextToClipboard(resultCsv(result))
+                          .then(() => setCopiedResult(result))
+                          .catch((reason) => onError(String(reason)));
+                      }}
+                    >
+                      <Copy size={13} />
+                      Copy all as CSV
+                    </button>{" "}
+                    {copiedResult === result && (
+                      <span role="status">Copied </span>
+                    )}
                     · {result.elapsedMs} ms
                     {result.truncated
                       ? " · More rows available / display limit reached"
