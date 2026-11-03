@@ -585,3 +585,12 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
   .titlebar-search { flex: 0 0 64px; min-width: 64px; }
   .window-layout-controls { margin-left: 0; }
 }
+
+/* Keep API navigation and creation controls outside the scrolling lists. */
+.app-shell .service-api .service-sidebar { display: flex; flex-direction: column; overflow: hidden; }
+.app-shell .api-sidebar-tabs, .app-shell .api-sidebar-tools { flex-shrink: 0; }
+.app-shell .api-sidebar-panel:not([hidden]) { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.app-shell .api-request-list, .app-shell .api-history-list { flex: 1; min-height: 0; overflow: auto; }
+.app-shell .api-sidebar-tools .api-add-menu.custom-select { width: 28px; min-height: 28px; height: 28px; padding: 0; border: 0; background: transparent; }
+.app-shell .api-add-menu .custom-select-label { display: flex; justify-content: center; }
+.app-shell .service-api .folder-heading.selected { background: var(--oc-selection); border-radius: var(--oc-radius-control); }

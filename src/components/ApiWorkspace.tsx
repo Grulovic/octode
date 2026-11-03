@@ -10,7 +10,7 @@ import { useToolView } from "../hooks/useToolView";
 import JsonResponse from "./JsonResponse";
 import VariableInput from "./VariableInput";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Copy, Search, X, ChevronDown, ChevronRight, FolderPlus, Plus, Send, Trash2, Pencil, ArrowLeft, Lock } from "./DesignIcons";
+import { Copy, Search, X, ChevronDown, ChevronRight, FolderPlus, FoldVertical, Plus, Send, Trash2, Pencil, ArrowLeft, Lock } from "./DesignIcons";
 import { useToolDocument } from "../hooks/useToolDocument";
 import { apiDocument, apiRequest, id, secret } from "../lib/toolDefaults";
 import { nativeTool } from "../lib/toolsBridge";
@@ -105,6 +105,18 @@ export default function ApiWorkspace({
     "ApiWorkspace:collapsedFolders",
     [],
   );
+  const [highlightedFolder, setHighlightedFolder] = useToolView(
+    project.id, "ApiWorkspace:highlightedFolder", "",
+  );
+  const creationFolder = doc.folders.some((folder) => folder.id === highlightedFolder) ? highlightedFolder : "";
+  const requestList = useRef<HTMLDivElement>(null);
+  const revealNewItem = () => {
+    setRequestSearch("");
+    requestAnimationFrame(() => {
+      const target = requestList.current?.querySelector<HTMLElement>(".folder-heading input") ?? requestList.current?.querySelector<HTMLElement>(".api-request-row.selected");
+      target?.scrollIntoView?.({ block: "nearest" });
+    });
+  };
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
   const [folderDraft, setFolderDraft] = useState("");
   const cancelFolderRename = useRef(false);
@@ -120,9 +132,10 @@ export default function ApiWorkspace({
   } : previous);
   const createFolder = (parentId = "") => {
     const folder = { id: id(), name: "New folder", parentId };
-    set((previous) => ({ ...previous, folders: [...previous.folders, folder] }));
-    setCollapsedFolders((previous) => previous.filter((item) => item !== parentId));
+    set((previous) => ({ ...previous, folders: [folder, ...previous.folders] }));
+    setCollapsedFolders((previous) => previous.filter((item) => item !== parentId && !folderAncestors(doc.folders, parentId).includes(item)));
     editFolder(folder);
+    revealNewItem();
   };
   const pointerDrag = useRef<{
     id: string;
@@ -300,12 +313,14 @@ export default function ApiWorkspace({
       ),
     }));
   const add = () => {
-    const request = apiRequest();
+    const request = { ...apiRequest(), folderId: creationFolder };
     set((previous) => ({
       ...previous,
-      requests: [...previous.requests, request],
+      requests: [request, ...previous.requests],
     }));
     select(request.id);
+    setCollapsedFolders((previous) => previous.filter((id) => id !== creationFolder && !folderAncestors(doc.folders, creationFolder).includes(id)));
+    revealNewItem();
   };
   const [requestError, setRequestError] = useState("");
   const send = async () => {
@@ -469,17 +484,39 @@ export default function ApiWorkspace({
           }}
         >
           <span className="api-request-actions-spacer" />
-          <button
-            title="New folder"
-            onClick={() => createFolder()}
+          <CustomSelect
+            aria-label="Add request or folder"
+            title={creationFolder ? `Add inside ${doc.folders.find((folder) => folder.id === creationFolder)?.name}` : "Add at top level"}
+            className="api-add-menu"
+            value=""
+            triggerContent={<Plus size={15} />}
+            onChange={(event) => {
+              if (event.target.value === "request") add();
+              if (event.target.value === "folder") createFolder(creationFolder);
+            }}
           >
-            <FolderPlus size={15} />
-          </button>
-          <button title="New request" onClick={add}>
-            <Plus size={15} />
+            <option value="" disabled>Add…</option>
+            <option value="request">Add request</option>
+            <option value="folder">Add folder</option>
+          </CustomSelect>
+          <button
+            title="Collapse all folders"
+            aria-label="Collapse all folders"
+            disabled={!doc.folders.length}
+            onClick={() => {
+              setRequestSearch("");
+              setCollapsedFolders(doc.folders.map((folder) => folder.id));
+            }}
+          >
+            <FoldVertical size={14} />
           </button>
         </div>
         </div>
+        <div className="api-request-list" ref={requestList}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setHighlightedFolder("");
+          }}
+        >
         {[{ folder: { id: "", name: "Unfiled", parentId: "" }, depth: 0 }, ...orderedFolders(doc.folders)]
           .filter(({ folder }) => {
             const ancestors = folderAncestors(doc.folders, folder.id);
@@ -538,7 +575,8 @@ export default function ApiWorkspace({
               }}
             >
               {folder.id ? (
-                <div className="folder-heading" draggable={false}
+                <div className={`folder-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false}
+                  onClick={() => { if (!suppressRequestClick.current) setHighlightedFolder(folder.id); }}
                   onMouseDown={(event) => {
                     if (event.button !== 0 || editingFolder === folder.id || (event.target as Element).closest(".folder-edit,.folder-delete,input")) return;
                     event.preventDefault();
@@ -711,7 +749,7 @@ export default function ApiWorkspace({
                         setDropFolder(target?.dataset.requestFolder ?? null);
                         const sidebar =
                           event.currentTarget.closest<HTMLElement>(
-                            ".service-sidebar",
+                            ".api-request-list",
                           );
                         if (sidebar) {
                           const bounds = sidebar.getBoundingClientRect();
@@ -766,7 +804,7 @@ export default function ApiWorkspace({
                         className="service-list-item"
                         title={request.name}
                         onClick={() => {
-                          if (!suppressRequestClick.current) select(request.id);
+                          if (!suppressRequestClick.current) { select(request.id); setHighlightedFolder(request.folderId); }
                         }}
                       >
                         <span
@@ -809,6 +847,7 @@ export default function ApiWorkspace({
         {requestQuery && !visibleRequests.length && (
           <div className="api-request-search-empty">No matching requests.<button className="search-empty-clear" onClick={() => setRequestSearch("")}>Clear search</button></div>
         )}
+        </div>
       </div>
       <div
         id="api-history-panel"
@@ -832,6 +871,7 @@ export default function ApiWorkspace({
             No requests sent this session.
           </p>
         )}
+        <div className="api-history-list">
         {history.map((item) => (
           <button
             key={item.id}
@@ -857,6 +897,7 @@ export default function ApiWorkspace({
             </span>
           </button>
         ))}
+        </div>
       </div>
     </>
   );

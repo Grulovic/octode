@@ -37,6 +37,10 @@ const click = async (selector: string) => {
     element.click();
   });
 };
+const addApiItem = async (kind: "request" | "folder") => {
+  await click('[aria-label="Add request or folder"][role="combobox"]');
+  await click(`[role="option"][data-index="${kind === "request" ? 1 : 2}"]`);
+};
 const type = async (selector: string, value: string) => {
   const input = await waitFor(() =>
     document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector),
@@ -252,7 +256,7 @@ describe("browser sandbox workflows", () => {
       ...document.querySelectorAll(".local-terminal-session"),
     ];
     await click('[aria-label="API"]');
-    await click('[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "Alpha request draft");
     await type('[aria-label="Request URL"]', "https://alpha.test/status");
     await click(".request-bar .primary-button");
@@ -271,7 +275,7 @@ describe("browser sandbox workflows", () => {
     await waitFor(() => document.querySelector(".preview-terminal"));
     const betaSession = document.querySelector(".local-terminal-session");
     await click('[aria-label="API"]');
-    await click('[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "Beta request draft");
     const betaRequest = document.querySelector('[aria-label="Request name"]');
     await click('[aria-label="Back to projects"]');
@@ -314,7 +318,7 @@ describe("browser sandbox workflows", () => {
   it("cycles selected API field text globally and keeps the React document synchronized without saving", async () => {
     await enterCode();
     await click('[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "room_name");
     const input = document.querySelector<HTMLInputElement>(
       '[aria-label="Request name"]',
@@ -827,7 +831,7 @@ describe("browser sandbox workflows", () => {
     const save = vi.spyOn(toolsBridge, "saveTool");
     await enterCode();
     await click('[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "History tab QA");
     await type('[aria-label="Request URL"]', "https://example.test/history");
     await click(".request-bar .primary-button");
@@ -902,7 +906,7 @@ describe("browser sandbox workflows", () => {
     const send = vi.spyOn(toolsBridge, "nativeTool").mockResolvedValue({ status: 200, statusText: "OK", headers: [], body: "ok", bytes: 2, elapsedMs: 1, truncated: false, contentType: "text/plain", binary: false });
     await enterCode();
     await click('[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request URL"]', "https://example.test");
     await click('[aria-label="New environment"]');
     const headers = [...document.querySelectorAll<HTMLElement>(".value-rows")].find((section) => section.querySelector("strong")?.textContent === "Headers")!;
@@ -934,7 +938,7 @@ describe("browser sandbox workflows", () => {
     const send = vi.spyOn(toolsBridge, "nativeTool").mockResolvedValue({ status: 200, statusText: "OK", headers: [], body: "ok", bytes: 2, elapsedMs: 1, truncated: false, contentType: "text/plain", binary: false });
     const save = vi.spyOn(toolsBridge, "saveTool").mockImplementation(async (_project, _tool, value) => structuredClone(value));
     await enterCode(); await click('[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request URL"]', "https://example.test");
     await click('[aria-label="New environment"]');
     const selectField = async (caption: string, value: string) => {
@@ -1473,7 +1477,7 @@ describe("browser sandbox workflows", () => {
   it("keeps API drafts when parking a project without saving and restores explicitly saved requests", async () => {
     await click('[aria-label="New project"]');
     await click('.rail-button[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request URL"]', "https://example.test/users");
     const apiSave = () =>
       document.querySelector<HTMLButtonElement>(
@@ -1540,7 +1544,7 @@ describe("browser sandbox workflows", () => {
     const send = vi.spyOn(toolsBridge, "nativeTool");
     await click('[aria-label="New project"]');
     await click('.rail-button[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "Sidebar request QA");
     await type('[aria-label="Request URL"]', "https://example.test/duplicate");
     const before = document.querySelectorAll(".api-request-row").length;
@@ -1718,17 +1722,47 @@ describe("browser sandbox workflows", () => {
       document.querySelector('[aria-label="Unsaved request List rooms"]'),
     ).toBeNull();
   });
+  it("adds API items into the highlighted folder and collapses every nested folder", async () => {
+    const save = vi.spyOn(toolsBridge, "saveTool");
+    await enterCode();
+    await click('[aria-label="API"]');
+    const nameFolder = async (name: string) => {
+      await type('[aria-label="Folder name"]', name);
+      await act(async () => document.querySelector<HTMLInputElement>('[aria-label="Folder name"]')!.blur());
+    };
+    await addApiItem("folder");
+    await nameFolder("Parent QA");
+    await click('[aria-label="Request folder Parent QA"] .folder-name-button');
+    await addApiItem("folder");
+    await nameFolder("Child QA");
+    await click('[aria-label="Request folder Child QA"] .folder-name-button');
+    await addApiItem("request");
+    await type('[aria-label="Request name"]', "Nested QA");
+    expect(document.querySelector('[aria-label="Request folder Child QA"]')?.textContent).toContain("Nested QA");
+    await click('[aria-label="API workspace"] [aria-label="Collapse all folders"]');
+    expect(document.querySelector('[aria-label="Request folder Child QA"]')).toBeNull();
+    await click('[aria-label="Expand folder Parent QA"]');
+    expect(document.querySelector('[aria-label="Expand folder Child QA"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Request folder Child QA"] .api-request-row')).toBeNull();
+    await click('[aria-label="Expand folder Child QA"]');
+    expect(document.querySelector('[aria-label="Request folder Child QA"]')?.textContent).toContain("Nested QA");
+    await act(async () => document.querySelector<HTMLElement>(".api-request-list")!.click());
+    await addApiItem("request");
+    await type('[aria-label="Request name"]', "Root QA");
+    expect(document.querySelector('[aria-label="Request folder Unfiled"] .api-request-row')?.textContent).toContain("Root QA");
+    expect(save).not.toHaveBeenCalled();
+  });
   it("collapses API folders, hides the Unfiled heading, and keeps collapsed folders as drop targets", async () => {
     await enterCode();
     await click('[aria-label="API"]');
-    await click('[aria-label="API workspace"] [title="New folder"]');
+    await addApiItem("folder");
     await type('[aria-label="Folder name"]', "Backend");
     await act(async () =>
       document
         .querySelector<HTMLInputElement>('[aria-label="Folder name"]')!
         .blur(),
     );
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "List rooms");
     const folder = () =>
       document.querySelector('[aria-label="Request folder Backend"]')!;
@@ -1777,10 +1811,10 @@ describe("browser sandbox workflows", () => {
     const save = vi.spyOn(toolsBridge, "saveTool");
     await click('[aria-label="New project"]');
     await click('.rail-button[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "Drag request QA");
     await type('[aria-label="Request URL"]', "https://example.test/drag");
-    await click('[aria-label="API workspace"] button[title="New folder"]');
+    await addApiItem("folder");
     await type('[aria-label="Folder name"]', "Endpoints");
     await act(async () =>
       document
@@ -1852,7 +1886,7 @@ describe("browser sandbox workflows", () => {
   it("moves API rows with pointer dragging and colors URL variables without losing editable text", async () => {
     await click('[aria-label="New project"]');
     await click('.rail-button[aria-label="API"]');
-    await click('[aria-label="API workspace"] button[title="New request"]');
+    await addApiItem("request");
     await type('[aria-label="Request name"]', "Pointer QA");
     await type('[aria-label="Request URL"]', "{{url}}/users/{{id}}?plain=yes");
     expect(
@@ -1860,7 +1894,7 @@ describe("browser sandbox workflows", () => {
         (item) => item.textContent,
       ),
     ).toEqual(["{{url}}", "{{id}}"]);
-    await click('[aria-label="API workspace"] button[title="New folder"]');
+    await addApiItem("folder");
     await type('[aria-label="Folder name"]', "Pointer destination");
     await act(async () =>
       document
