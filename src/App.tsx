@@ -684,25 +684,6 @@ function WorkspaceApp({
         </header>
         <div className="app-body">
           <nav className="rail" aria-label="Main navigation">
-            <button
-              className={
-                (!project || tool === "home") && !notes.visible
-                  ? "rail-button active"
-                  : "rail-button"
-              }
-              title="Workspace home"
-              aria-label="Workspace home"
-              onClick={() => {
-                notes.setVisible(false);
-                if (project)
-                  void leaveProject().catch((reason) =>
-                    setError(String(reason)),
-                  );
-              }}
-            >
-              <Grid2X2 size={20} />
-            </button>
-            <div className="rail-divider" />
             {tools.map((item) => (
               <Fragment key={item.id}>
                 <button
@@ -763,6 +744,24 @@ function WorkspaceApp({
                 onClick={() => setShortcuts(true)}
               >
                 <Keyboard size={19} />
+              </button>
+              <button
+                className={
+                  (!project || tool === "home") && !notes.visible
+                    ? "rail-button active"
+                    : "rail-button"
+                }
+                title="Workspace home"
+                aria-label="Workspace home"
+                onClick={() => {
+                  notes.setVisible(false);
+                  if (project)
+                    void leaveProject().catch((reason) =>
+                      setError(String(reason)),
+                    );
+                }}
+              >
+                <Grid2X2 size={20} />
               </button>
             </div>
           </nav>
