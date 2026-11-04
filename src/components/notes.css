@@ -66,3 +66,27 @@
 .notes-search > input { flex: 1; width: 0; min-width: 0; background: transparent; border: 0; padding: 4px 0; color: var(--oc-text); font-size: 12px; }
 .app-shell .notes-workspace .notes-search > input:is(:focus,:focus-visible) { outline: none; outline-offset: 0; box-shadow: none; border: 0; background: transparent; }
 .notes-search:focus-within { background: var(--oc-panel); }
+
+.notes-folder-toolbar { flex: none; border-bottom: 1px solid var(--oc-border); }
+.notes-folder-toolbar .notes-root { width: auto; padding: 0 5px; font-size: 11px; color: var(--oc-muted); }
+.notes-folder-toolbar .notes-root[aria-pressed="true"] { color: var(--oc-text); }
+.notes-folder .folder-heading { min-width: 0; border-radius: 4px; }
+.notes-folder .folder-heading.selected { background: var(--oc-selection); }
+.notes-folder .folder-heading > input { min-width: 0; width: 0; flex: 1; }
+.notes-folder > .notes-list-row { margin-left: 10px; width: calc(100% - 10px); }
+.notes-folder[data-note-folder=""] > .notes-list-row { margin-left: 0; width: 100%; }
+.notes-folder-drop { background: var(--oc-selection); outline: 1px solid var(--oc-accent); outline-offset: -1px; border-radius: 4px; }
+.notes-list-row[draggable="false"] { user-select: none; -webkit-user-drag: none; }
+.notes-list-row .notes-move { flex: none; width: 24px; }
+.app-shell .notes-workspace .notes-move.custom-select { width: 24px; min-width: 24px; min-height: 24px; height: 24px; padding: 3px; border: 0; background: transparent; }
+.notes-move .custom-select-label { display: flex; justify-content: center; }
+.notes-list-row .notes-move { opacity: 0; }
+.notes-list-row:hover .notes-move, .notes-list-row:focus-within .notes-move { opacity: 1; }
+.notes-search-empty { padding: 14px 8px; color: var(--oc-muted); font-size: 12px; }
+
+.app-shell .notes-workspace .notes-folder-toolbar { margin: 0; padding: 0 10px; }
+.app-shell .notes-folder-toolbar .api-add-menu.custom-select { width: 28px; min-height: 28px; height: 28px; padding: 0; border: 0; background: transparent; }
+
+.app-shell .notes-folder .folder-heading > .folder-count { margin-left: auto; padding: 0 6px; flex: none; text-align: right; }
+.app-shell .notes-folder .folder-heading > :is(.folder-edit,.folder-delete) { display: none; opacity: 1; pointer-events: auto; }
+.app-shell .notes-folder .folder-heading:is(:hover,:focus-within) > :is(.folder-edit,.folder-delete) { display: inline-flex; }

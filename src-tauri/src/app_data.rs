@@ -23,6 +23,8 @@ pub struct AppData {
     projects: Vec<ProjectData>,
     #[serde(default)]
     notes: Vec<crate::notes::Note>,
+    #[serde(default)]
+    note_folders: Vec<crate::notes::NoteFolder>,
 }
 #[cfg(test)]
 fn reveal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), String> {
@@ -143,7 +145,7 @@ impl Store {
         let read_notes = |table: &str| -> Result<Vec<crate::notes::Note>, String> {
             let mut statement = tx
                 .prepare(&format!(
-                    "SELECT id,title,text FROM {table} ORDER BY rowid DESC"
+                    "SELECT n.id,n.title,n.text,COALESCE(l.folder_id,'') FROM {table} n LEFT JOIN global_note_locations l ON l.note_id=n.id ORDER BY n.rowid DESC"
                 ))
                 .map_err(|e| e.to_string())?;
             let rows = statement
@@ -152,6 +154,7 @@ impl Store {
                         id: row.get(0)?,
                         title: row.get(1)?,
                         text: row.get(2)?,
+                        folder_id: row.get(3)?,
                     })
                 })
                 .map_err(|e| e.to_string())?;
@@ -159,6 +162,7 @@ impl Store {
         };
         Ok(AppData {
             notes: read_notes("global_notes")?,
+            note_folders: crate::notes::read_folders(&tx)?,
             format: "octode-app-data".into(),
             version: 1,
             projects: out,
@@ -188,6 +192,16 @@ impl Store {
                 .any(|note| note.title.chars().count() > 200 || note.text.len() > 2 * 1024 * 1024)
         {
             return Err("Invalid notes in app data".into());
+        }
+        crate::notes::validate_folders(&data.note_folders)?;
+        if data.notes.iter().any(|note| {
+            !note.folder_id.is_empty()
+                && !data
+                    .note_folders
+                    .iter()
+                    .any(|folder| folder.id == note.folder_id)
+        }) {
+            return Err("Missing note folder in app data".into());
         }
         let mut ids = BTreeMap::new();
         let mut seen = HashSet::new();
@@ -273,14 +287,44 @@ impl Store {
         if mode == ImportMode::Replace {
             tx.execute("DELETE FROM projects", [])
                 .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM global_note_folders", [])
+                .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM global_notes", [])
                 .map_err(|e| e.to_string())?;
         }
+        let folder_ids: BTreeMap<_, _> = data
+            .note_folders
+            .iter()
+            .map(|folder| (folder.id.clone(), uuid::Uuid::new_v4().to_string()))
+            .collect();
+        for folder in data.note_folders {
+            tx.execute(
+                "INSERT INTO global_note_folders(id,name,parent_id) VALUES (?1,?2,?3)",
+                params![
+                    folder_ids[&folder.id],
+                    folder.name,
+                    folder_ids
+                        .get(&folder.parent_id)
+                        .cloned()
+                        .unwrap_or_default()
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
         // New IDs keep imported credentials isolated from previous references.
         for note in data.notes.into_iter().rev() {
+            let id = uuid::Uuid::new_v4().to_string();
             tx.execute(
                 "INSERT INTO global_notes(id,title,text) VALUES (?1,?2,?3)",
-                params![uuid::Uuid::new_v4().to_string(), note.title, note.text],
+                params![id, note.title, note.text],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT INTO global_note_locations(note_id,folder_id) VALUES (?1,?2)",
+                params![
+                    id,
+                    folder_ids.get(&note.folder_id).cloned().unwrap_or_default()
+                ],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -385,6 +429,7 @@ mod tests {
             version: 1,
             projects: vec![],
             notes: vec![],
+            note_folders: vec![],
         };
         assert!(target
             .import_app_mode(invalid, &vault, ImportMode::Replace)
@@ -585,6 +630,7 @@ mod tests {
         let store = Store::open(std::path::Path::new(":memory:")).unwrap();
         let data = AppData {
             notes: vec![],
+            note_folders: vec![],
             format: "wrong".into(),
             version: 1,
             projects: vec![],
@@ -606,8 +652,10 @@ mod tests {
             )
             .unwrap();
         }
+        source.0.lock().unwrap().execute_batch("INSERT INTO global_note_folders VALUES ('work','Work',''),('sql','SQL','work'); INSERT INTO global_note_locations VALUES ('note','sql');").unwrap();
         let backup = source.export_app(&vault, true).unwrap();
         assert_eq!(backup.notes[0].text, "select 1;");
+        assert_eq!(backup.note_folders.len(), 2);
         let target = Store::open(std::path::Path::new(":memory:")).unwrap();
         {
             target
@@ -626,6 +674,23 @@ mod tests {
         assert!(notes
             .iter()
             .any(|note| note.id != "note" && note.text == "select 1;"));
+        {
+            let db = target.0.lock().unwrap();
+            let folders = crate::notes::read_folders(&db).unwrap();
+            assert_eq!(folders.len(), 2);
+            let sql = folders.iter().find(|folder| folder.name == "SQL").unwrap();
+            let work = folders.iter().find(|folder| folder.name == "Work").unwrap();
+            assert_ne!(sql.id, "sql");
+            assert_eq!(sql.parent_id, work.id);
+            assert_eq!(
+                notes
+                    .iter()
+                    .find(|note| note.title == "scratch.sql")
+                    .unwrap()
+                    .folder_id,
+                sql.id
+            );
+        }
         let legacy: AppData = serde_json::from_value(
             serde_json::json!({"format":"octode-app-data","version":1,"projects":[]}),
         )

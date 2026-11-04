@@ -553,6 +553,8 @@ pub fn run() {
             save_workspace_state,
             list_projects,
             notes::load_notes,
+            notes::load_note_folders,
+            notes::save_notes_workspace,
             notes::save_note,
             notes::delete_note,
             create_project,

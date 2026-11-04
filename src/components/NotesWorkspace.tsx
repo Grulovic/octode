@@ -1,9 +1,9 @@
 import { useSaveShortcut } from "../lib/saveShortcut";
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { FileText, WrapText } from "lucide-react";
-import { Plus, Save, Search, FolderOpen, Trash2, X } from "./DesignIcons";
+import { Plus, Save, Search } from "./DesignIcons";
 import { desktop } from "../lib/bridge";
-import { loadNotes, registerNotesBackup, saveNote, deleteNote, noteLanguage, noteFilename, type Note } from "../lib/notes";
+import { loadNotes, loadNoteFolders, registerNotesBackup, saveNotesWorkspace, deleteNote, noteLanguage, noteFilename, type Note, type NoteFolder } from "../lib/notes";
 import { disposeRetainedEditorModel } from "../lib/retainedEditorModels";
 import { registerPendingToolSave } from "../lib/toolSaves";
 import type { WorkspaceRuntime } from "../lib/workspaceRegistry";
@@ -14,14 +14,21 @@ import { confirmAction } from "./ToolLayout";
 import MarkdownToolbar from "./MarkdownToolbar";
 import type { MarkdownCommand } from "../lib/markdownEditing";
 import MarkdownPreview from "./MarkdownPreview";
-import FileIcon from "./FileIcon";
+import NotesSidebar from "./NotesSidebar";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import "./notes.css";
 const EditorPane = lazy(() => desktop ? import("./EditorPane") : import("./PreviewEditor"));
-const same = (a: Note, b?: Note) => !!b && a.title === b.title && a.text === b.text;
+const same = (a: Note, b?: Note) => !!b && a.title === b.title && a.text === b.text && (a.folderId ?? "") === (b.folderId ?? "");
 function useNotesModel(runtime: WorkspaceRuntime) {
   const [notes, render] = useState<Note[]>([]);
   const [search, setSearch] = useState("");
+  const [creationFolder, setCreationFolder] = useState("");
+  const [folders, renderFolders] = useState<NoteFolder[]>([]);
+  const currentFolders = useRef(folders);
+  const savedFolders = useRef<NoteFolder[]>([]);
+  const setFolders = (items: NoteFolder[]) => { currentFolders.current = items; renderFolders(items); };
+  const layoutDirty = () => JSON.stringify(currentFolders.current) !== JSON.stringify(savedFolders.current)
+    || current.current.some((note) => saved.current.has(note.id) && (note.folderId ?? "") !== (saved.current.get(note.id)?.folderId ?? ""));
 
   const current = useRef(notes);
   const saved = useRef(new Map<string, Note>());
@@ -37,28 +44,33 @@ function useNotesModel(runtime: WorkspaceRuntime) {
   const [markdown, setMarkdown] = useState(false);
   const setNotes = (items: Note[]) => { current.current = items; render(items); };
   useEffect(() => () => { for (const note of current.current) disposeRetainedEditorModel(`notes://${note.id}.txt`); }, []);
-  useEffect(() => registerNotesBackup(() => loading ? null : { notes: current.current }), [loading]);
-  const dirty = () => current.current.some((note) => !same(note, saved.current.get(note.id)));
+  useEffect(() => registerNotesBackup(() => loading ? null : { notes: current.current, noteFolders: currentFolders.current }), [loading]);
+  const dirty = () => layoutDirty() || current.current.some((note) => !same(note, saved.current.get(note.id)));
   useEffect(() => runtime.register("global-notes", { saveCode: async () => true, flushLayout: async () => {}, hasUnsavedSettings: dirty }), [runtime]);
   useEffect(() => registerPendingToolSave("global-notes", () => pending.current ?? Promise.resolve(true)), []);
   useEffect(() => {
     let gone = false;
     setLoading(true); setError("");
-    void loadNotes().then((items) => {
+    void Promise.all([loadNotes(), loadNoteFolders()]).then(([items, loadedFolders]) => {
       if (gone) return;
+      setFolders(loadedFolders); savedFolders.current = loadedFolders;
       saved.current = new Map(items.map((note) => [note.id, note]));
       setNotes(items); setActive(items[0]?.id ?? ""); setLoading(false);
     }).catch((reason) => { if (!gone) { setError(String(reason)); setLoading(false); } });
     return () => { gone = true; };
   }, [revision]);
   useEffect(() => {
-    const imported = (event: Event) => { void loadNotes().then((items) => {
+    const imported = (event: Event) => { void Promise.all([loadNotes(), loadNoteFolders()]).then(([items, loadedFolders]) => {
       if ((event as CustomEvent).detail?.mode === "replace") {
+        setFolders(loadedFolders); savedFolders.current = loadedFolders;
         for (const note of current.current) disposeRetainedEditorModel(`notes://${note.id}.txt`);
         saved.current = new Map(items.map((note) => [note.id, note]));
         setNotes(items); setActive(items[0]?.id ?? ""); setSearch("");
         return;
       }
+      const addedFolders = loadedFolders.filter((folder) => !savedFolders.current.some((item) => item.id === folder.id));
+      setFolders([...currentFolders.current, ...addedFolders]);
+      savedFolders.current = [...savedFolders.current, ...addedFolders];
       const additions = items.filter((item) => !current.current.some((note) => note.id === item.id));
       for (const item of additions) saved.current.set(item.id, item);
       setNotes([...additions, ...current.current]);
@@ -70,17 +82,27 @@ function useNotesModel(runtime: WorkspaceRuntime) {
     if (!copies.length) return;
     setNotes([...copies, ...current.current]); setActive(copies[0].id); setSearch("");
   };
-  const create = () => addCopies([{ id: crypto.randomUUID(), title: "", text: "" }]);
-  const update = (patch: Partial<Pick<Note, "title" | "text">>) => setNotes(current.current.map((note) => note.id === active ? { ...note, ...patch } : note));
+  const create = (folderId = currentFolders.current.some((folder) => folder.id === creationFolder) ? creationFolder : "") => addCopies([{ id: crypto.randomUUID(), title: "", text: "", folderId }]);
+  const update = (patch: Partial<Pick<Note, "title" | "text" | "folderId">>) => setNotes(current.current.map((note) => note.id === active ? { ...note, ...patch } : note));
   const save = (): Promise<boolean> => {
     if (pending.current) return pending.current;
     const snapshot = current.current.find((note) => note.id === active);
-    if (!snapshot || same(snapshot, saved.current.get(snapshot.id))) return Promise.resolve(true);
+    const noteToSave = snapshot && !same(snapshot, saved.current.get(snapshot.id)) ? snapshot : undefined;
+    if (!noteToSave && !layoutDirty()) return Promise.resolve(true);
+    const folderSnapshot = currentFolders.current;
+    const noteSnapshot = current.current;
     setSaving(true); setError("");
-    const job = saveNote(snapshot).then((result) => {
-      saved.current.set(snapshot.id, result);
-      // Keep edits made while this save was in flight.
-      setNotes(current.current.map((note) => note === snapshot ? result : note));
+    const job = saveNotesWorkspace(folderSnapshot, noteSnapshot, noteToSave).then((result) => {
+      savedFolders.current = folderSnapshot;
+      for (const item of noteSnapshot) {
+        const previous = saved.current.get(item.id);
+        if (previous) saved.current.set(item.id, { ...previous, folderId: item.folderId });
+      }
+      if (noteToSave && result) {
+        saved.current.set(noteToSave.id, result);
+        // Keep edits made while this save was in flight.
+        setNotes(current.current.map((note) => note === noteToSave ? result : note));
+      } else setNotes([...current.current]);
       return true;
     }).catch((reason) => { setError(`Could not save note: ${String(reason)}. Your draft is still open.`); return false; }).finally(() => { pending.current = null; setSaving(false); });
     pending.current = job;
@@ -107,7 +129,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
     return job;
   };
   const note = notes.find((item) => item.id === active);
-  return { notes, note, active, setActive, loading, error, saving, deleting, save, remove, create, addCopies, update, dirty: dirty(), isDirty: (item: Note) => !same(item, saved.current.get(item.id)), retry: () => reload((value) => value + 1), visible, setVisible, wrap, setWrap, markdown, setMarkdown, search, setSearch };
+  return { notes, creationFolder, setCreationFolder, folders, setFolders, setNotes, layoutDirty: layoutDirty(), note, active, setActive, loading, error, saving, deleting, save, remove, create, addCopies, update, dirty: dirty(), isFolderDirty: (folder: NoteFolder) => JSON.stringify(folder) !== JSON.stringify(savedFolders.current.find((item) => item.id === folder.id)), isDirty: (item: Note) => !same(item, saved.current.get(item.id)), retry: () => reload((value) => value + 1), visible, setVisible, wrap, setWrap, markdown, setMarkdown, search, setSearch };
 }
 const NotesContext = createContext<ReturnType<typeof useNotesModel> | null>(null);
 export function NotesProvider({ runtime, children }: { runtime: WorkspaceRuntime; children: ReactNode }) {
@@ -155,7 +177,7 @@ export default function NotesWorkspace() {
     setImporting(true); setImportError("");
     try {
       const result = await read();
-      model.addCopies(result.notes);
+      model.addCopies(result.notes.map((item) => ({ ...item, folderId: model.folders.some((folder) => folder.id === model.creationFolder) ? model.creationFolder : "" })));
       setImportError(result.errors.join(" · "));
     } catch (reason) { setImportError(String(reason)); }
     finally { importBusy.current = false; setImporting(false); }
@@ -203,13 +225,11 @@ export default function NotesWorkspace() {
     }} />
     {dragging && <div className="notes-drop-overlay">Drop files to create notes</div>}
     <aside ref={sidebar} className="notes-sidebar" style={{ width: sidebarWidth }}>
-      <header><strong>Notes <span>{model.notes.length}</span></strong><div className="notes-file-actions"><button className="secondary-button" disabled={model.loading || importing || (!model.notes.length && !!model.error)} onClick={model.create}><Plus size={14} />New note</button><button className="secondary-button" disabled={model.loading || importing || (!model.notes.length && !!model.error)} onClick={open}><FolderOpen size={14} />{importing ? "Opening…" : "Open"}</button></div></header>
-      <div className="notes-search"><Search size={14} /><input aria-label="Search notes" placeholder="Search notes…" value={model.search} onChange={(event) => model.setSearch(event.target.value)} />{model.search && <button aria-label="Clear notes search" onClick={() => model.setSearch("")}><X size={13} /></button>}</div>
-      <div className="notes-list" aria-label="Notes list">{model.notes.filter((item) => `${item.title}\n${item.text}`.toLocaleLowerCase().includes(model.search.toLocaleLowerCase())).map((item) => <div key={item.id} className={`notes-list-row ${model.active === item.id ? "selected" : ""}`}><button className="notes-select" onClick={() => model.setActive(item.id)}>{/\.[^.\s/\\]+$/.test(item.title.trim()) ? <FileIcon path={item.title.trim()} size={16} /> : <FileText size={16} />}<span>{item.title || "Untitled note"}<small>{item.text.split("\n").find((line) => line.trim()) || "Empty note"}</small></span>{model.isDirty(item) && <span className="tool-unsaved-dot" aria-label="Unsaved note" />}</button>{<button className="notes-delete" aria-label={`Delete note ${item.title || "Untitled note"}`} title="Delete note" disabled={model.saving || model.deleting} onClick={() => void model.remove(item.id)}><Trash2 size={15} /></button>}</div>)}</div>
+      <NotesSidebar model={model} importing={importing} onOpen={open} />
     </aside>
     <PanelResize target={sidebar} size={sidebarWidth} onResize={setSidebarWidth} minSize={320} label="Resize Notes sidebar" />
     <div className="notes-main">
-      <header>{note ? <input aria-label="Note title" placeholder="Untitled note" value={note.title} readOnly={model.deleting} maxLength={200} onChange={(event) => model.update({ title: event.target.value })} /> : <strong>Notes</strong>}<span className="notes-save-state">{model.saving ? "Saving…" : note && model.isDirty(note) ? "Unsaved changes" : "Saved"}</span><button className="primary-button" disabled={!note || model.loading || model.saving || model.deleting || !model.isDirty(note)} onClick={() => void model.save()}><Save size={14} />Save</button><button className="secondary-button notes-save-as" disabled={!note || model.loading || exporting} onClick={() => void saveAs()}>{exporting ? "Saving file…" : "Save as…"}</button></header>
+      <header>{note ? <input aria-label="Note title" placeholder="Untitled note" value={note.title} readOnly={model.deleting} maxLength={200} onChange={(event) => model.update({ title: event.target.value })} /> : <strong>Notes</strong>}<span className="notes-save-state">{model.saving ? "Saving…" : model.layoutDirty || (note && model.isDirty(note)) ? "Unsaved changes" : "Saved"}</span><button className="primary-button" disabled={model.loading || model.saving || model.deleting || (!model.layoutDirty && (!note || !model.isDirty(note)))} onClick={() => void model.save()}><Save size={14} />Save</button><button className="secondary-button notes-save-as" disabled={!note || model.loading || exporting} onClick={() => void saveAs()}>{exporting ? "Saving file…" : "Save as…"}</button></header>
       <div className="notes-toolbar" role="toolbar" aria-label="Note tools">
         <span>{note ? syntax : "Notes"}</span>
         <div className="notes-toolbar-actions">
@@ -222,7 +242,7 @@ export default function NotesWorkspace() {
       {importError && <div className="error-banner" role="alert">{importError}</div>}
       {exportError && <div className="error-banner" role="alert">{exportError}</div>}
       {model.error && <div className="error-banner" role="alert">{model.error}{!model.notes.length && <button onClick={model.retry}>Retry</button>}</div>}
-      {model.loading ? <div className="loading">Loading notes…</div> : note ? <><div className="notes-editor" style={showingPreview ? { display: "none" } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingPreview && <MarkdownPreview text={note.text} />}</> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={model.create}><Plus size={14} />New note</button></div>}
+      {model.loading ? <div className="loading">Loading notes…</div> : note ? <><div className="notes-editor" style={showingPreview ? { display: "none" } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingPreview && <MarkdownPreview text={note.text} />}</> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={() => model.create()}><Plus size={14} />New note</button></div>}
       {note && <footer>{note.text.split("\n").length} lines · {note.text.length} characters<span>{syntax} · {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}S to save</span></footer>}
     </div>
   </section>;

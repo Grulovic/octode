@@ -9,7 +9,8 @@ export function noteFilename(title: string): string {
   if (!name || name === "." || name === "..") return "Untitled note.txt";
   return /\.[a-z0-9]+$/i.test(name) ? name : `${name}.txt`;
 }
-export interface Note { id: string; title: string; text: string }
+export interface Note { id: string; title: string; text: string; folderId?: string }
+export interface NoteFolder { id: string; name: string; parentId?: string }
 const key = "octode-global-notes";
 export async function loadNotes(): Promise<Note[]> {
   if (desktop) return invoke("load_notes");
@@ -29,8 +30,29 @@ export async function deleteNote(id: string): Promise<void> {
   localStorage.setItem(key, JSON.stringify(previous.filter((note) => note.id !== id)));
 }
 
-let backupReader: (() => { notes: Note[] } | null) | undefined;
-export function registerNotesBackup(read: () => { notes: Note[] } | null) {
+const foldersKey = "octode-global-note-folders";
+export async function loadNoteFolders(): Promise<NoteFolder[]> {
+  if (desktop) return invoke("load_note_folders");
+  const folders: unknown = JSON.parse(localStorage.getItem(foldersKey) ?? "[]");
+  if (!Array.isArray(folders) || !folders.every((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string" && (!folder.parentId || typeof folder.parentId === "string"))) throw new Error("Could not read saved note folders");
+  return folders;
+}
+export async function saveNotesWorkspace(folders: NoteFolder[], notes: Note[], note?: Note): Promise<Note | undefined> {
+  const locations = notes.map(({ id, folderId }) => ({ id, folderId: folderId ?? "" }));
+  if (desktop) return invoke("save_notes_workspace", { folders, locations, note: note ?? null });
+  const previous = await loadNotes();
+  const next: Note[] = previous.map((item) => ({ ...item, folderId: locations.find((location) => location.id === item.id)?.folderId ?? item.folderId }));
+  if (note) {
+    const index = next.findIndex((item) => item.id === note.id);
+    if (index < 0) next.unshift(note); else next[index] = note;
+  }
+  localStorage.setItem(key, JSON.stringify(next));
+  localStorage.setItem(foldersKey, JSON.stringify(folders));
+  return note ? { ...note } : undefined;
+}
+
+let backupReader: (() => { notes: Note[]; noteFolders?: NoteFolder[] } | null) | undefined;
+export function registerNotesBackup(read: () => { notes: Note[]; noteFolders?: NoteFolder[] } | null) {
   backupReader = read;
   return () => { if (backupReader === read) backupReader = undefined; };
 }

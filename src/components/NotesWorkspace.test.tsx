@@ -9,7 +9,7 @@ import type { Note } from "../lib/notes";
 const storage = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), delete: vi.fn(), export: vi.fn(), readPaths: vi.fn(), readFiles: vi.fn() }));
 vi.mock("../lib/noteFiles", () => ({ pickNoteFiles: vi.fn(), readNotePaths: storage.readPaths, readNoteFiles: storage.readFiles }));
 vi.mock("../lib/export", () => ({ exportText: storage.export }));
-vi.mock("../lib/notes", () => ({ loadNotes: storage.load, registerNotesBackup: () => () => {}, saveNote: storage.save, deleteNote: storage.delete, noteLanguage: () => "plaintext", noteFilename: (title: string) => title || "Untitled note.txt" }));
+vi.mock("../lib/notes", () => ({ loadNotes: storage.load, loadNoteFolders: async () => [], saveNotesWorkspace: async (_folders: unknown, _notes: unknown, note: Note) => note ? storage.save(note) : undefined, registerNotesBackup: () => () => {}, saveNote: storage.save, deleteNote: storage.delete, noteLanguage: () => "plaintext", noteFilename: (title: string) => title || "Untitled note.txt" }));
 vi.mock("./PreviewEditor", () => ({ default: () => <div>Plain text editor</div> }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 it("keeps all note drafts globally and only acknowledges the version explicitly saved", async () => {
@@ -205,14 +205,74 @@ it("reloads Notes after Replace while Merge preserves existing live drafts", asy
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(<NotesProvider runtime={runtime}><Harness /></NotesProvider>));
-    await act(async () => model.update({ text: "live draft" }));
+    await act(async () => { model.update({ text: "live draft" }); model.setFolders([{ id: "draft-folder", name: "Unsaved folder", parentId: "" }]); });
     storage.load.mockResolvedValue([{ id: "copy", title: "Imported", text: "copy" }, { id: "old", title: "Existing", text: "saved" }]);
     await act(async () => window.dispatchEvent(new CustomEvent("octode-app-data-imported", { detail: { mode: "merge" } })));
     expect(model.notes.find((note) => note.id === "old")?.text).toBe("live draft");
+    expect(model.folders).toEqual([{ id: "draft-folder", name: "Unsaved folder", parentId: "" }]);
     storage.load.mockResolvedValue([{ id: "replacement", title: "Restored", text: "backup" }]);
     await act(async () => window.dispatchEvent(new CustomEvent("octode-app-data-imported", { detail: { mode: "replace" } })));
     expect(model.notes).toEqual([{ id: "replacement", title: "Restored", text: "backup" }]);
     expect(model.active).toBe("replacement");
+    expect(model.folders).toEqual([]);
     expect(runtime.hasUnsavedSettings()).toBe(false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("keeps folder changes pending, preserves other note drafts on Save, and exposes collapsed search matches", async () => {
+  const one = { id: "one", title: "First", text: "saved" };
+  const two = { id: "two", title: "Second", text: "saved too" };
+  storage.load.mockResolvedValue([one, two]); storage.save.mockReset().mockImplementation(async (note) => note);
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const runtime = createWorkspaceRuntime();
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={runtime}><Harness /></NotesProvider>));
+    await act(async () => {
+      model.setFolders([{ id: "work", name: "Work", parentId: "" }, { id: "sql", name: "SQL", parentId: "work" }]);
+      model.update({ folderId: "sql", text: "unsaved SQL draft" });
+    });
+    await act(async () => model.setActive("two"));
+    expect(runtime.hasUnsavedSettings()).toBe(true);
+    expect(storage.save).not.toHaveBeenCalled();
+    await act(async () => { expect(await model.save()).toBe(true); });
+    expect(model.layoutDirty).toBe(false);
+    expect(model.notes.find((note) => note.id === "one")?.text).toBe("unsaved SQL draft");
+    expect(model.isDirty(model.notes.find((note) => note.id === "one")!)).toBe(true);
+    // Saving the tree must not save the other note's body.
+    expect(storage.save).not.toHaveBeenCalled();
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Collapse all folders"]')!.click());
+    expect(host.querySelector('[aria-label="Collapse folder SQL"]')).toBeNull();
+    expect(host.querySelector('.notes-list')?.textContent).not.toContain("First");
+    await act(async () => model.setSearch("SQL"));
+    expect(host.querySelector('.notes-list')?.textContent).toContain("First");
+    await act(async () => model.setSearch(""));
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand folder Work"]')!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Remove folder Work"]')!.click());
+    expect(model.folders).toEqual([{ id: "sql", name: "SQL", parentId: "" }]);
+    expect(model.notes).toHaveLength(2);
+    expect(model.layoutDirty).toBe(true);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("creates nested folders from the API-style toolbar and can save an empty folder tree", async () => {
+  storage.load.mockResolvedValue([]); storage.save.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Add note or folder"]')!;
+    await act(async () => { select.value = "folder"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    const first = model.folders[0].id;
+    await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Folder name"]')!.blur());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="New subfolder in New folder"]')!.click());
+    expect(model.folders[0].parentId).toBe(first);
+    expect(model.creationFolder).toBe(model.folders[0].id);
+    await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Folder name"]')!.blur());
+    expect(model.dirty).toBe(true);
+    await act(async () => { expect(await model.save()).toBe(true); });
+    expect(model.dirty).toBe(false);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
