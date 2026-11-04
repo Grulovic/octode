@@ -920,3 +920,23 @@
 .git-stash-row { display: flex; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--oc-border); }
 .git-stash-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
 .git-stash-row > button { padding: 4px 6px; border: 1px solid var(--oc-border-strong); border-radius: 4px; font-size: 11px; }
+
+.git-blame-gutter {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 200px;
+  overflow: hidden;
+  border-right: 1px solid var(--oc-border);
+  color: var(--oc-muted);
+  background: var(--oc-panel);
+  font-size: 11px;
+}
+.git-blame-line {
+  position: absolute;
+  width: 100%;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.monaco-host.with-git-blame { left: 200px; }

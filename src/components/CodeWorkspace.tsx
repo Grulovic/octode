@@ -174,6 +174,7 @@ export default function CodeWorkspace({
   );
   const [active, setActive] = useState("");
   const [formatter, setFormatter] = useState(false);
+  const [blameEnabled, setBlameEnabled] = useState(false);
   const [markdownPath, setMarkdownPath] = useState<string | null>(null);
   const markdownEnabled = !!active && markdownPath === active;
   const [markdownView, setMarkdownView] = useState(false);
@@ -1315,6 +1316,16 @@ export default function CodeWorkspace({
           >
             MD
           </button>
+          <button
+            className={`icon-button${blameEnabled ? " active" : ""}`}
+            title={desktop ? "Toggle Git blame" : "Git blame is available in the desktop app"}
+            aria-label="Git blame"
+            aria-pressed={blameEnabled}
+            disabled={!document || !desktop}
+            onClick={() => setBlameEnabled((value) => !value)}
+          >
+            <GitBranch size={15} />
+          </button>
         </div>
         <div className="split-editor-layout">
           <div className="editor-main">
@@ -1359,6 +1370,7 @@ export default function CodeWorkspace({
                       key={document.path}
                       document={document}
                       modelPath={codeModelPath(project.id, document.path)}
+                      blameProjectId={blameEnabled ? project.id : undefined}
                       languageId={markdownEnabled ? "markdown" : undefined}
                       markdownCommand={markdownCommand?.path === document.path ? markdownCommand.command : null}
                       onMarkdownHandled={() => setMarkdownCommand(null)}

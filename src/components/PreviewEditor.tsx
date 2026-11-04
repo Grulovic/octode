@@ -15,6 +15,7 @@ export default function PreviewEditor({
   markdownCommand,
   onMarkdownHandled,
 }: {
+  blameProjectId?: string;
   markdownCommand?: MarkdownCommand | null;
   onMarkdownHandled?: () => void;
   document: Document;

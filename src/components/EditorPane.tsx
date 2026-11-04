@@ -1,3 +1,4 @@
+import { mountGitBlame } from "../editor/gitBlame";
 import { markdownEdit, type MarkdownCommand } from "../lib/markdownEditing";
 import { monoFont } from "../theme/palette";
 import { nextTextCase, registerCaseEditor } from "../lib/textCase";
@@ -34,9 +35,11 @@ export default function EditorPane({
   wordWrap,
   onReady,
   retainModel = false,
+  blameProjectId,
   markdownCommand,
   onMarkdownHandled,
 }: {
+  blameProjectId?: string;
   markdownCommand?: MarkdownCommand | null;
   onMarkdownHandled?: () => void;
   document: Document;
@@ -53,6 +56,7 @@ export default function EditorPane({
   retainModel?: boolean;
   onReady?: (editor: monaco.editor.IStandaloneCodeEditor) => void | (() => void);
 }) {
+  const blameGutter = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const latest = useRef({
@@ -367,5 +371,12 @@ export default function EditorPane({
     instance.revealRange(instance.getSelection()!);
     onMarkdownHandled?.();
   }, [markdownCommand, onMarkdownHandled, readOnly]);
-  return <div className="monaco-host" ref={host} />;
+  useEffect(() => {
+    if (!blameProjectId || !blameGutter.current || !editor.current) return;
+    return mountGitBlame(editor.current, blameGutter.current, blameProjectId, document.path, document.text);
+  }, [blameProjectId, document.path, document.text, uri]);
+  return <>
+    {blameProjectId && <div className="git-blame-gutter" aria-label="Git blame annotations" ref={blameGutter} />}
+    <div className={`monaco-host${blameProjectId ? " with-git-blame" : ""}`} ref={host} />
+  </>;
 }

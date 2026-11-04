@@ -529,6 +529,7 @@ pub fn run() {
             git_file_status,
             git_branch_name,
             git_diff,
+            git_blame,
             git_action,
             load_format_options,
             save_format_options,

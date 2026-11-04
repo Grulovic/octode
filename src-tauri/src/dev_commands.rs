@@ -213,6 +213,22 @@ pub async fn git_snapshot(
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+pub async fn git_blame(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    project_id: String,
+    path: String,
+    content: String,
+) -> Result<Vec<git_tools::BlameLine>, String> {
+    crate::require_project(&window, &project_id)?;
+    let roots = store.get(&project_id)?.roots;
+    let file = file_core::authorize_path(&roots, &path)?;
+    tauri::async_runtime::spawn_blocking(move || git_tools::blame(&file, &content))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn git_diff(
     window: WebviewWindow,
     store: State<'_, Store>,

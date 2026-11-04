@@ -381,6 +381,54 @@ fn path_argument(path: &str) -> Result<(), String> {
     }
     Ok(())
 }
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlameLine {
+    pub commit: String,
+    pub author: String,
+    pub time: i64,
+    pub summary: String,
+}
+
+pub fn blame(file: &Path, content: &str) -> Result<Vec<BlameLine>, String> {
+    if content.len() > 4 * 1024 * 1024 {
+        return Err("Git blame is limited to files under 4 MB".into());
+    }
+    let parent = file.parent().ok_or("Choose a file in a Git repository")?;
+    let name = file.file_name().and_then(|name| name.to_str()).ok_or("Invalid filename")?;
+    let result = output_input(
+        parent,
+        &["blame", "--line-porcelain", "--encoding=UTF-8", "--contents", "-", "--", name],
+        Some(content.as_bytes().to_vec()),
+    )?;
+    if !result.ok {
+        return Err("Git blame is unavailable: this file must be committed in a Git repository".into());
+    }
+    let text = String::from_utf8(result.stdout).map_err(|_| "Invalid Git blame output")?;
+    let mut lines = Vec::new();
+    let mut current = BlameLine { commit: String::new(), author: String::new(), time: 0, summary: String::new() };
+    for line in text.lines() {
+        if line.starts_with('\t') {
+            if current.commit.bytes().all(|byte| byte == b'0') {
+                current.author = "Uncommitted".into();
+                current.time = 0;
+            }
+            lines.push(current.clone());
+        } else if let Some(author) = line.strip_prefix("author ") {
+            current.author = author.into();
+        } else if let Some(time) = line.strip_prefix("author-time ") {
+            current.time = time.parse().unwrap_or(0);
+        } else if let Some(summary) = line.strip_prefix("summary ") {
+            current.summary = summary.into();
+        } else if let Some(hash) = line.split_whitespace().next().filter(|hash| {
+            [40, 64].contains(&hash.len()) && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+        }) {
+            current = BlameLine { commit: hash.into(), author: String::new(), time: 0, summary: String::new() };
+        }
+    }
+    Ok(lines)
+}
+
 pub fn diff(root: &Path, path: &str, staged: bool) -> Result<String, String> {
     path_argument(path)?;
     if snapshot(root)?
@@ -968,6 +1016,27 @@ mod tests {
             },
         )
     }
+    #[test]
+    fn blame_uses_buffer_without_changing_disk_or_index() {
+        let repo = Repo::new();
+        let file = repo.0.join("file with spaces.txt");
+        std::fs::write(&file, "first\nsecond\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "Initial lines"]).unwrap();
+        let before = snapshot(&repo.0).unwrap();
+        let lines = blame(&file, "first\nchanged\nnew\n").unwrap();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].author, "Octode Test");
+        assert_eq!(lines[0].summary, "Initial lines");
+        assert!(lines[0].time > 0);
+        assert_eq!(lines[1].author, "Uncommitted");
+        assert_eq!(lines[2].author, "Uncommitted");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "first\nsecond\n");
+        assert_eq!(snapshot(&repo.0).unwrap().staged_revision, before.staged_revision);
+        assert!(blame(&repo.0.join("untracked.txt"), "new").is_err());
+        assert!(blame(&file, &"x".repeat(4 * 1024 * 1024 + 1)).is_err());
+    }
+
     #[test]
     fn batches_literal_paths_and_unstages_without_changing_worktree() {
         let repo = Repo::new();
