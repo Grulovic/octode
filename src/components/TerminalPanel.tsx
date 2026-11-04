@@ -3,13 +3,14 @@ import "./code-tools.css";
 import "./terminal.css";
 import { registerTabCloser } from "../lib/closeTab";
 import { lazy, Suspense, useState, useRef, useEffect } from "react";
-import { Plus, RotateCcw, X, TerminalSquare, Folder, ChevronDown, Sparkle } from "./DesignIcons";
+import { Plus, RotateCcw, X, TerminalSquare, Folder, ChevronDown, Sparkle, Play } from "./DesignIcons";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import { middleClose } from "../lib/middleClose";
 import { desktop } from "../lib/bridge";
 import { filename } from "../lib/workspace";
 import { loadSettings } from "../lib/settings";
 import { confirmAction } from "./ToolLayout";
+import type { TerminalHandle } from "./LocalTerminal";
 import type { Project } from "../types";
 const LocalTerminal = lazy(() =>
   desktop ? import("./LocalTerminal") : import("./PreviewTerminal"),
@@ -38,6 +39,13 @@ export default function TerminalPanel({
   onHide: () => void;
   onActivityChange?: (active: boolean) => void;
 }) {
+  const terminals = useRef(new Map<string, TerminalHandle>());
+  const [settings, setSettings] = useState(loadSettings);
+  useEffect(() => {
+    const update = () => setSettings(loadSettings());
+    window.addEventListener("octode-editor-settings", update);
+    return () => window.removeEventListener("octode-editor-settings", update);
+  }, []);
   const panelRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = usePanelSize(
     "octode-layout:terminal-height",
@@ -203,6 +211,24 @@ export default function TerminalPanel({
         >
           {project.roots.map((root) => <option key={root} value={root}>{filename(root)}</option>)}
         </CustomSelect>)}
+        <CustomSelect
+          className="terminal-add terminal-folder-menu terminal-command-menu"
+          aria-label="Run saved command"
+          title={!settings.terminalCommands.length ? "Add commands in Settings → Terminal" : "Run a saved command in the current terminal"}
+          disabled={!current || (desktop && statuses[active] !== "Connected")}
+          value=""
+          triggerContent={<Play size={14} />}
+          onChange={(event) => {
+            const command = settings.terminalCommands.find((item) => item.id === event.target.value);
+            if (command && current) terminals.current.get(current.id)?.runCommand(command.command);
+          }}
+          renderLabel={(id, label) => {
+            const command = settings.terminalCommands.find((item) => item.id === id);
+            return <span className="terminal-command-label"><span>{label}</span>{command?.name && <small>{command.command}</small>}</span>;
+          }}
+        >
+          {settings.terminalCommands.length ? settings.terminalCommands.map((command) => <option key={command.id} value={command.id}>{command.name || command.command}</option>) : <option disabled value="">Add commands in Settings → Terminal</option>}
+        </CustomSelect>
         <div className="terminal-toolbar-actions">
           <button
             title="Restart current terminal"
@@ -241,6 +267,7 @@ export default function TerminalPanel({
             fallback={<div className="loading">Preparing terminal…</div>}
           >
             <LocalTerminal
+              ref={(handle) => { if (handle) terminals.current.set(tab.id, handle); else terminals.current.delete(tab.id); }}
               project={project}
               root={tab.root}
               startupCommand={tab.startupCommand}

@@ -57,3 +57,52 @@ it("requires replacement checks and retains the review when unsaved work blocks 
   await click("Import and replace");
   expect(backup.import).toHaveBeenCalledWith(raw, "replace");
 });
+
+it("keeps command edits local until Save and supports adding, editing, and deleting", async () => {
+  const { loadSettings } = await import("../lib/settings");
+  const type = async (label: string, value: string) => {
+    const input = document.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  await click("Add command");
+  await type("Command 1 name", "Dev");
+  await type("Command 1 text", "npm run dev");
+  expect(loadSettings().terminalCommands).toEqual([]);
+  await click("Save settings");
+  expect(loadSettings().terminalCommands).toMatchObject([{ name: "Dev", command: "npm run dev" }]);
+  await type("Command 1 text", "npm run test");
+  expect(loadSettings().terminalCommands[0].command).toBe("npm run dev");
+  await click("Save settings");
+  expect(loadSettings().terminalCommands[0].command).toBe("npm run test");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Delete command 1"]')!.click());
+  expect(loadSettings().terminalCommands).toHaveLength(1);
+  await click("Save settings");
+  expect(loadSettings().terminalCommands).toEqual([]);
+});
+
+it("reorders and sorts commands locally, then saves their dropdown order", async () => {
+  const { loadSettings, saveSettings } = await import("../lib/settings");
+  saveSettings({ ...loadSettings(), terminalCommands: [
+    { id: "z", name: "Zebra", command: "echo z" },
+    { id: "a", name: null, command: "echo a" },
+    { id: "b", name: "Beta", command: "echo b" },
+  ] });
+  await act(async () => root.render(<SettingsModal key="ordered" onClose={() => {}} beforeReplace={beforeReplace} />));
+  const action = (label: string) => document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
+  const order = () => [...document.querySelectorAll<HTMLInputElement>('.settings-command-list input[aria-label$=" text"]')].map((input) => input.value);
+  expect(action("Move command 1 up").disabled).toBe(true);
+  expect(action("Move command 3 down").disabled).toBe(true);
+  await act(async () => action("Move command 1 down").click());
+  expect(order()).toEqual(["echo a", "echo z", "echo b"]);
+  expect(loadSettings().terminalCommands.map((item) => item.id)).toEqual(["z", "a", "b"]);
+  await act(async () => action("Move command 3 up").click());
+  await click("Save settings");
+  expect(loadSettings().terminalCommands.map((item) => item.id)).toEqual(["a", "b", "z"]);
+  await act(async () => action("Sort commands alphabetically").click());
+  expect(order()).toEqual(["echo b", "echo a", "echo z"]);
+  await click("Save settings");
+  expect(loadSettings().terminalCommands.map((item) => item.id)).toEqual(["b", "a", "z"]);
+});

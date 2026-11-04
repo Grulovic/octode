@@ -9,7 +9,7 @@ import {
 } from "../lib/terminalDrop";
 import { validateTerminalCommand } from "../lib/terminalCommand";
 import { terminalTheme } from "../editor/deepOcean";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -19,7 +19,10 @@ import { createTerminalInputQueue } from "../lib/terminal";
 import "@xterm/xterm/css/xterm.css";
 import { Search, ChevronDown } from "./DesignIcons";
 
+export interface TerminalHandle { runCommand: (command: string) => void }
+
 export default function LocalTerminal({
+  ref,
   project,
   root,
   startupCommand,
@@ -28,6 +31,7 @@ export default function LocalTerminal({
   onStatusChange,
   onActivityChange,
 }: {
+  ref?: Ref<TerminalHandle>;
   project: Project;
   root: string;
   startupCommand?: string;
@@ -36,6 +40,8 @@ export default function LocalTerminal({
   onStatusChange?: (status: string) => void;
   onActivityChange?: (active: boolean) => void;
 }) {
+  const runCommand = useRef<(command: string) => void>(() => onError("Wait for a connected terminal before running a command."));
+  useImperativeHandle(ref, () => ({ runCommand: (command) => runCommand.current(command) }), []);
   const activity = useTerminalActivity(visible, onActivityChange);
   const container = useRef<HTMLDivElement>(null);
   const visibleRef = useRef(visible);
@@ -94,6 +100,17 @@ export default function LocalTerminal({
       },
       (reason) => errorRef.current(String(reason)),
     );
+    runCommand.current = (command) => {
+      if (!session || disposed || exited) {
+        errorRef.current("Wait for a connected terminal before running a command.");
+        return;
+      }
+      try {
+        // Clear any unfinished shell input before submitting the selected command.
+        inputQueue.send("\x15" + validateTerminalCommand(command) + "\r");
+        requestAnimationFrame(() => { if (!disposed) term.focus(); });
+      } catch (reason) { errorRef.current(String(reason)); }
+    };
     const input = term.onData((data) => {
       if (session && !exited) inputQueue.send(data);
     });

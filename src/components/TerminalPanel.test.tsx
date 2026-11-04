@@ -366,3 +366,21 @@ it("plus launches in the chosen folder and Cmd+T always follows the active Code 
     expect(tabs()[0].querySelector("button")?.title).toBe("/api");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+it("uses command text as the dropdown title when its optional name is blank", async () => {
+  const { saveSettings, loadSettings } = await import("../lib/settings");
+  localStorage.clear();
+  saveSettings({ ...loadSettings(), terminalCommands: [{ id: "pwd", name: null, command: "pwd" }, { id: "dev", name: "Dev server", command: "npm run dev" }] });
+  const host = document.createElement("div"), root = createRoot(host);
+  document.body.append(host);
+  try {
+    await act(async () => root.render(<TerminalPanel project={{ id: "p", name: "P", roots: ["/project"], updatedAt: 0 }} initialRoot="/project" visible onError={() => {}} onHide={() => {}} />));
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Run saved command"]')!.click());
+    const options = [...document.querySelectorAll('[role="option"]')];
+    expect(options.map((option) => option.textContent)).toEqual(["pwd", "Dev servernpm run dev"]);
+    expect(options[0].querySelector("small")).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove(); localStorage.clear();
+  }
+});

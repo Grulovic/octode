@@ -1,7 +1,7 @@
 import { exportAppData, importAppData, parseAppData, type ImportMode } from "../lib/appData";
 import CustomSelect from "./CustomSelect";
 import { useRef, useState } from "react";
-import { X } from "./DesignIcons";
+import { Plus, Trash2, X, ChevronDown, ArrowDownUp } from "./DesignIcons";
 import { defaultSettings, loadSettings, saveSettings } from "../lib/settings";
 export default function SettingsModal({ onClose, beforeReplace }: { onClose: () => void; beforeReplace: () => Promise<void> }) {
   const [value, setValue] = useState(loadSettings);
@@ -12,6 +12,15 @@ export default function SettingsModal({ onClose, beforeReplace }: { onClose: () 
   const [importMode, setImportMode] = useState<ImportMode>("merge");
   const [message, setMessage] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
+  const moveCommand = (index: number, direction: -1 | 1) => {
+    setValue((previous) => {
+      const next = index + direction;
+      if (next < 0 || next >= previous.terminalCommands.length) return previous;
+      const terminalCommands = [...previous.terminalCommands];
+      [terminalCommands[index], terminalCommands[next]] = [terminalCommands[next], terminalCommands[index]];
+      return { ...previous, terminalCommands };
+    });
+  };
   return (
     <div className="modal-backdrop">
       <form
@@ -99,6 +108,26 @@ export default function SettingsModal({ onClose, beforeReplace }: { onClose: () 
             }
           />
         </label>
+        <div className="settings-saved-commands" role="group" aria-label="Saved terminal commands">
+          <div className="settings-command-heading"><strong>Saved commands</strong><div className="settings-command-actions">
+            <button type="button" aria-label="Sort commands alphabetically" title="Sort by name or command (A–Z)" disabled={value.terminalCommands.length < 2} onClick={() => setValue((previous) => ({ ...previous, terminalCommands: [...previous.terminalCommands].sort((a, b) => (a.name?.trim() || a.command).localeCompare(b.name?.trim() || b.command, undefined, { numeric: true, sensitivity: "base" })) }))}><ArrowDownUp size={14} /></button>
+            <button type="button" disabled={value.terminalCommands.length >= 100} onClick={() => setValue({ ...value, terminalCommands: [...value.terminalCommands, { id: crypto.randomUUID(), name: "", command: "" }] })}><Plus size={14} />Add command</button>
+          </div></div>
+          <p className="settings-note">Run in the current terminal tab. Save settings to keep edits and order.</p>
+          {!value.terminalCommands.length && <p className="settings-note">No saved commands yet.</p>}
+          {!!value.terminalCommands.length && <div className="settings-command-columns" aria-hidden="true"><span>Name (optional)</span><span>Command</span></div>}
+          <div className="settings-command-list">
+          {value.terminalCommands.map((command, index) => <div className="settings-saved-command" key={command.id}>
+            <input aria-label={`Command ${index + 1} name`} title="Name (optional)" type="text" maxLength={100} placeholder="Optional name" value={command.name ?? ""} onChange={(event) => setValue({ ...value, terminalCommands: value.terminalCommands.map((item) => item.id === command.id ? { ...item, name: event.target.value } : item) })} />
+            <input aria-label={`Command ${index + 1} text`} title={command.command || "Command"} type="text" maxLength={4096} placeholder="npm run dev" spellCheck={false} autoCorrect="off" autoCapitalize="off" value={command.command} onChange={(event) => setValue({ ...value, terminalCommands: value.terminalCommands.map((item) => item.id === command.id ? { ...item, command: event.target.value } : item) })} />
+            <div className="settings-command-row-actions">
+              <button type="button" aria-label={`Move command ${index + 1} up`} title="Move up" disabled={index === 0} onClick={() => moveCommand(index, -1)}><ChevronDown className="settings-command-up" size={12} /></button>
+              <button type="button" aria-label={`Move command ${index + 1} down`} title="Move down" disabled={index === value.terminalCommands.length - 1} onClick={() => moveCommand(index, 1)}><ChevronDown size={12} /></button>
+              <button type="button" className="settings-command-delete" aria-label={`Delete command ${index + 1}`} title="Delete command" onClick={() => setValue({ ...value, terminalCommands: value.terminalCommands.filter((item) => item.id !== command.id) })}><Trash2 size={13} /></button>
+            </div>
+          </div>)}
+          </div>
+        </div>
         <h3 className="settings-section">App data</h3>
         <p className="settings-note">Back up global Notes (including open drafts), projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Source files and running sessions are not included. Save tool changes before exporting.</p>
         <label className="settings-check"><input type="checkbox" checked={includeCredentials} disabled={busy || !!pendingImport} onChange={(event) => setIncludeCredentials(event.target.checked)} /> Include saved passwords and secrets</label>

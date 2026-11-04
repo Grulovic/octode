@@ -201,3 +201,27 @@ it("starts a home terminal without a project ID while keeping project requests s
     await act(async () => resolveSession("home-session"));
   } finally { await act(async () => root.unmount()); }
 });
+
+it("runs saved commands in the existing session, rejects commands before connection and after exit", async () => {
+  const host = document.createElement("div"), root = createRoot(host), error = vi.fn();
+  const ref = { current: null as import("./LocalTerminal").TerminalHandle | null };
+  try {
+    await act(async () => root.render(<LocalTerminal ref={ref} project={{ id: "p", name: "P", roots: ["/api"], updatedAt: 0 }} root="/api" visible onError={error} />));
+    await act(async () => ref.current!.runCommand("pwd"));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("connected terminal"));
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "terminal_write")).toHaveLength(0);
+    await act(async () => resolveSession("existing-shell"));
+    await act(async () => { ref.current!.runCommand("pwd"); ref.current!.runCommand("echo done"); });
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "terminal_create")).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "terminal_write").map(([, args]) => args)).toEqual([
+      { id: "existing-shell", data: "\x15pwd\r" }, { id: "existing-shell", data: "\x15echo done\r" },
+    ]);
+    await act(async () => ref.current!.runCommand("pwd\nexit"));
+    expect(error).toHaveBeenLastCalledWith(expect.stringContaining("single-line"));
+    const create = mocks.invoke.mock.calls.find(([name]) => name === "terminal_create")!;
+    await act(async () => create[1].output.onmessage({ event: "exit", data: "exited" }));
+    await act(async () => ref.current!.runCommand("pwd"));
+    expect(error).toHaveBeenLastCalledWith(expect.stringContaining("connected terminal"));
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "terminal_write")).toHaveLength(2);
+  } finally { await act(async () => root.unmount()); }
+});

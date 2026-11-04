@@ -596,3 +596,20 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .app-shell .service-api .folder-heading.selected { background: var(--oc-selection); border-radius: var(--oc-radius-control); }
 
 .app-shell .settings-body .settings-import-mode { width: 100%; margin-top: var(--oc-space-4); }
+
+.app-shell .settings-saved-commands { margin-top: 16px; }
+.settings-command-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.settings-command-heading button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--oc-border-strong); border-radius: var(--oc-radius-control); }
+.settings-command-actions, .settings-command-row-actions { display: flex; align-items: center; gap: 2px; }
+.app-shell .settings-saved-commands > .settings-note { margin-top: 6px; }
+.settings-command-columns, .app-shell .settings-saved-command { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 72px; gap: 6px; align-items: center; }
+.settings-command-columns { margin-top: 10px; padding: 0 0 4px; font-size: 10.5px; color: var(--oc-muted); }
+.settings-command-list { max-height: 228px; overflow-y: auto; overscroll-behavior: contain; }
+.app-shell .settings-saved-command { padding: 3px 0; }
+.app-shell .settings-body .settings-saved-command input[type='text'] { width: 100%; min-width: 0; min-height: 28px; height: 28px; padding: 4px 6px; font-size: 11px; }
+.settings-command-row-actions > button { display: flex; align-items: center; justify-content: center; width: 22px; height: 26px; padding: 0; border-radius: var(--oc-radius-control); }
+.settings-command-row-actions > button:hover:not(:disabled) { background: var(--oc-surface); }
+.settings-command-row-actions > .settings-command-delete:hover { color: var(--oc-danger); }
+.settings-command-up { transform: rotate(180deg); }
+.terminal-command-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.terminal-command-label small { color: var(--oc-muted); font-family: var(--oc-font-mono); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

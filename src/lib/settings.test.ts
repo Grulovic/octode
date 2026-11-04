@@ -30,3 +30,34 @@ it("migrates older preferences to codex and persists a custom launch command", (
   }
   localStorage.clear();
 });
+
+it("persists and validates named terminal commands without changing saved data on failure", () => {
+  localStorage.clear();
+  expect(loadSettings().terminalCommands).toEqual([]);
+  saveSettings({ ...loadSettings(), terminalCommands: [{ id: "dev", name: " Dev server ", command: " npm run dev " }] });
+  expect(loadSettings().terminalCommands).toEqual([{ id: "dev", name: "Dev server", command: "npm run dev" }]);
+  const saved = localStorage.getItem("octode-editor-settings");
+  for (const terminalCommands of [
+    [{ id: "dev", name: "Bad\nname", command: "npm run dev" }],
+    [{ id: "dev", name: "Dev", command: "echo hi\nexit" }],
+    [{ id: "dev", name: "Dev", command: "npm run dev" }, { id: "dev", name: "Other", command: "pwd" }],
+  ]) {
+    expect(() => saveSettings({ ...loadSettings(), terminalCommands })).toThrow();
+    expect(localStorage.getItem("octode-editor-settings")).toBe(saved);
+  }
+  saveSettings({ ...loadSettings(), terminalCommands: [] });
+  expect(loadSettings().terminalCommands).toEqual([]);
+  localStorage.clear();
+});
+
+
+it("accepts blank, null, and omitted names and stores them as null", () => {
+  localStorage.clear();
+  for (const name of ["", "   ", null]) {
+    saveSettings({ ...loadSettings(), terminalCommands: [{ id: "dev", name, command: "npm run dev" }] });
+    expect(loadSettings().terminalCommands).toEqual([{ id: "dev", name: null, command: "npm run dev" }]);
+  }
+  localStorage.setItem("octode-editor-settings", JSON.stringify({ version: 1, terminalCommands: [{ id: "pwd", command: "pwd" }] }));
+  expect(loadSettings().terminalCommands).toEqual([{ id: "pwd", name: null, command: "pwd" }]);
+  localStorage.clear();
+});
