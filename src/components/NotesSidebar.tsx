@@ -3,6 +3,7 @@ import { FileText } from "lucide-react";
 import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FoldVertical, Pencil, Plus, Search, Trash2, X } from "./DesignIcons";
 import CustomSelect from "./CustomSelect";
 import FileIcon from "./FileIcon";
+import { desktop } from "../lib/bridge";
 import { canMoveFolder, folderAncestors, orderedFolders } from "../lib/apiFolders";
 import type { Note, NoteFolder } from "../lib/notes";
 import type { useNotes } from "./NotesWorkspace";
@@ -31,6 +32,30 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
     requestAnimationFrame(() => list.current?.querySelector("input")?.scrollIntoView?.({ block: "nearest" }));
   };
   const addNote = () => { reveal(creationFolder); model.create(creationFolder); };
+  const newNoteTarget = useRef({ addNote, busy, visible: model.visible });
+  newNoteTarget.current = { addNote, busy, visible: model.visible };
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const create = () => {
+      const target = newNoteTarget.current;
+      if (!target.visible || target.busy || document.querySelector('[aria-modal="true"]')) return;
+      window.dispatchEvent(new Event("octode-dismiss-popovers"));
+      target.addNote();
+      requestAnimationFrame(() => { if (!disposed) document.querySelector<HTMLInputElement>('.notes-main input[aria-label="Note title"]')?.focus(); });
+    };
+    const key = (event: KeyboardEvent) => {
+      if (!newNoteTarget.current.visible || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.isComposing || event.key.toLowerCase() !== "n") return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!event.repeat) create();
+    };
+    window.addEventListener("keydown", key, true);
+    if (desktop) void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      const stop = await listen("octode-new-note", create);
+      if (disposed) stop(); else unlisten = stop;
+    });
+    return () => { disposed = true; unlisten?.(); window.removeEventListener("keydown", key, true); };
+  }, []);
   const move = (item: Pick<Drag, "id" | "kind">, parentId: string) => {
     if (busy) return;
     if (item.kind === "folder") {
@@ -81,7 +106,7 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
     <button className="notes-delete" aria-label={`Delete note ${note.title || "Untitled note"}`} title="Delete note" disabled={model.saving || model.deleting} onClick={() => void model.remove(note.id)}><Trash2 size={15} /></button>
   </div>;
   return <>
-    <header><strong>Notes <span>{model.notes.length}</span></strong><div className="notes-file-actions"><button className="secondary-button" disabled={busy} onClick={addNote}><Plus size={14} />New note</button><button className="secondary-button" disabled={busy} onClick={onOpen}><FolderOpen size={14} />{importing ? "Opening…" : "Open"}</button></div></header>
+    <header><strong>Notes <span>{model.notes.length}</span></strong><div className="notes-file-actions"><button className="secondary-button" disabled={busy} title="New note (Cmd/Ctrl+N)" onClick={addNote}><Plus size={14} />New note</button><button className="secondary-button" disabled={busy} onClick={onOpen}><FolderOpen size={14} />{importing ? "Opening…" : "Open"}</button></div></header>
     <div className="notes-search"><Search size={14} /><input spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" aria-label="Search notes" placeholder="Search notes…" value={model.search} onChange={(event) => model.setSearch(event.target.value)} />{model.search && <button aria-label="Clear notes search" onClick={() => model.setSearch("")}><X size={13} /></button>}</div>
     <div className={`service-subheading api-request-heading notes-folder-toolbar ${drop === "" ? "notes-folder-drop" : ""}`} role="toolbar" aria-label="Notes folders" data-note-folder="" onClick={(event) => { if (event.target === event.currentTarget) model.setCreationFolder(""); }}>
       <button className="notes-root" aria-pressed={!creationFolder} title="Select top level; drop here to move out of a folder" onClick={() => model.setCreationFolder("")}>All notes</button><span className="api-request-actions-spacer" />

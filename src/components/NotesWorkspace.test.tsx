@@ -276,3 +276,36 @@ it("creates nested folders from the API-style toolbar and can save an empty fold
     expect(model.dirty).toBe(false);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+it("Cmd/Ctrl+N creates a draft in the selected folder only while Notes is active", async () => {
+  storage.load.mockResolvedValue([{ id: "saved", title: "Existing", text: "saved text", folderId: "" }]);
+  storage.save.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const press = (options: KeyboardEventInit = {}) => window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true, cancelable: true, ...options }));
+  try {
+    await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
+    await act(async () => press());
+    expect(model.notes).toHaveLength(1);
+    await act(async () => {
+      model.setVisible(true);
+      model.setFolders([{ id: "work", name: "Work", parentId: "" }]);
+      model.setCreationFolder("work");
+      model.update({ text: "keep this draft" });
+    });
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Collapse all folders"]')!.click());
+    await act(async () => press());
+    expect(model.note).toMatchObject({ title: "", text: "", folderId: "work" });
+    expect(model.notes.find((note) => note.id === "saved")?.text).toBe("keep this draft");
+    expect(host.querySelector('[aria-label="Collapse folder Work"]')).not.toBeNull();
+    expect(storage.save).not.toHaveBeenCalled();
+    await act(async () => { press({ repeat: true }); press({ shiftKey: true }); press({ isComposing: true }); });
+    expect(model.notes).toHaveLength(2);
+    const modal = document.createElement("div"); modal.setAttribute("aria-modal", "true"); host.append(modal);
+    await act(async () => press());
+    expect(model.notes).toHaveLength(2); modal.remove();
+    await act(async () => press({ metaKey: false, ctrlKey: true }));
+    expect(model.notes).toHaveLength(3);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

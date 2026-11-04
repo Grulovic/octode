@@ -1253,7 +1253,7 @@ function WorkspaceApp({
               <div className="shortcut-columns">
                 {[
                   {title: "Sections", items: [["Projects", "0"], ["Code", "1"], ["Local terminal", "2"], ["Servers", "3"], ["Database", "4"], ["API", "5"], ["Notes", "6"]]},
-                  {title: "Edit & search", items: [["Save current section", "S"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
+                  {title: "Edit & search", items: [["Save current section", "S"], ["New note in Notes", "N"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
                 ].map((group) => <section className="shortcut-group" key={group.title}><h3>{group.title}</h3>{group.items.map(([title, key]) => (
                   <div className="shortcut-row" key={title}><span>{title}</span><kbd>{key === "Shift Shift" ? "⇧ ⇧" : key === "Option Shift U" ? navigator.platform.toLowerCase().includes("mac") ? "⌥ ⇧ U" : "Alt Shift U" : `${modifier} ${key.replace("Shift", "⇧")}`}</kbd></div>
                 ))}</section>)}
