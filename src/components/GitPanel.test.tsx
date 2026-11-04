@@ -98,6 +98,36 @@ it("switches the selected folder's branch directly and refreshes its displayed b
     "Switched",
   );
 });
+it("offers remote tracking checkout without treating remote refs as local branches", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return {
+      ...await original(command, args),
+      branches: harness.branch === "master" ? ["main", "feature", "master"] : ["main", "feature"],
+      remoteBranches: [
+        { name: "origin/master", localName: "master" },
+        { name: "origin/main", localName: "main" },
+      ],
+    };
+    if (command === "git_action") {
+      harness.branch = "master";
+      return "Tracking origin/master";
+    }
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Switch branch in api"]')!;
+  await act(async () => trigger.click());
+  const options = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+  expect(options.find((option) => option.textContent?.includes("origin/main"))?.disabled).toBe(true);
+  await act(async () => options.find((option) => option.textContent?.includes("origin/master"))!.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({
+    root: "/project/api",
+    request: expect.objectContaining({ action: "track-branch", value: "origin/master", expectedHead: "abc" }),
+  }));
+  expect(trigger.textContent).toContain("master");
+});
+
 it("keeps the old branch and shows the reason if Git refuses the switch", async () => {
   harness.failure = "Your local changes would be overwritten";
   await act(async () => root.render(<GitPanel {...props} />));

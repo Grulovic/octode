@@ -183,6 +183,7 @@ export default function GitPanel({
         "abort-merge",
         "commit",
         "create-branch",
+        "track-branch",
         "merge",
         "pull",
         "push",
@@ -201,6 +202,7 @@ export default function GitPanel({
                 ? `Commit the reviewed staged changes?\n\n${value}`
                 : action === "merge"
                   ? `Merge ${value} into ${state.branch}? The merge will stop before committing so you can review the result.`
+                  : action === "track-branch" ? `Create local branch “${state.remoteBranches?.find((branch) => branch.name === value)?.localName}” tracking “${value}” and switch to it?`
                   : action === "delete-branch" ? `Delete local branch “${path}”? Unmerged branches will be refused.`
                   : action === "rename-branch" ? `Rename local branch “${path}” to “${value}”?`
                   : action === "revert" ? `Apply the inverse of commit ${value.slice(0, 8)}? Changes will be staged for review; no commit is created automatically.`
@@ -397,10 +399,13 @@ export default function GitPanel({
             aria-label={`Switch branch in ${root.split("/").pop()}`}
             title={`Switch branch in ${root}`}
             value={state.branch}
-            disabled={busy || state.merging}
+            disabled={busy || state.merging || state.reverting}
             onChange={(event) => {
-              if (event.target.value !== state.branch)
-                void act("switch", "", event.target.value);
+              const value = event.target.value;
+              if (value.startsWith("remote:"))
+                void act("track-branch", "", value.slice("remote:".length));
+              else if (value !== state.branch)
+                void act("switch", "", value);
             }}
           >
             {!state.branches.includes(state.branch) && (
@@ -411,6 +416,11 @@ export default function GitPanel({
             {state.branches.map((name) => (
               <option key={name} value={name}>
                 {folderBranchLabel(root, name)}
+              </option>
+            ))}
+            {(state.remoteBranches ?? []).map(({ name, localName }) => (
+              <option key={`remote:${name}`} value={`remote:${name}`} disabled={state.branches.includes(localName)}>
+                {name} — {state.branches.includes(localName) ? `local ${localName} exists` : `track as ${localName}`}
               </option>
             ))}
           </CustomSelect>

@@ -198,12 +198,19 @@ pub struct Snapshot {
     pub head: String,
     pub entries: Vec<Entry>,
     pub branches: Vec<String>,
+    pub remote_branches: Vec<RemoteBranch>,
     pub remotes: Vec<String>,
     pub staged_revision: String,
     pub merging: bool,
     pub history: Vec<Commit>,
     pub stashes: Vec<Stash>,
     pub reverting: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteBranch {
+    pub name: String,
+    pub local_name: String,
 }
 #[derive(Serialize)]
 pub struct Stash {
@@ -296,10 +303,35 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
     .lines()
     .map(String::from)
     .collect();
-    let remotes = string(root, &["remote"])?
+    let remotes: Vec<String> = string(root, &["remote"])?
         .lines()
         .map(String::from)
         .collect();
+    let remote_branches = string(
+        root,
+        &[
+            "for-each-ref",
+            "--format=%(refname)%09%(symref)",
+            "refs/remotes/",
+        ],
+    )?
+    .lines()
+    .filter_map(|line| {
+        let (reference, symbolic) = line.split_once('\t')?;
+        if !symbolic.is_empty() {
+            return None;
+        }
+        let name = reference.strip_prefix("refs/remotes/")?;
+        let remote = remotes
+            .iter()
+            .filter(|remote| name.starts_with(&format!("{remote}/")))
+            .max_by_key(|remote| remote.len())?;
+        Some(RemoteBranch {
+            name: name.into(),
+            local_name: name[remote.len() + 1..].into(),
+        })
+    })
+    .collect();
     let staged_revision = string(
         root,
         &[
@@ -332,6 +364,7 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
         head,
         entries,
         branches,
+        remote_branches,
         remotes,
         staged_revision,
         merging,
@@ -791,7 +824,7 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
             }
             run(root, &["commit", "-m", &request.value])?
         }
-        "switch" | "create-branch" | "merge" => {
+        "switch" | "track-branch" | "create-branch" | "merge" => {
             if before.merging
                 || before.reverting
                 || (request.action != "switch" && !before.entries.is_empty())
@@ -808,6 +841,29 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
                         return Err("Choose a local branch".into());
                     }
                     run(root, &["switch", "--", &request.value])?
+                }
+                "track-branch" => {
+                    let branch = before.remote_branches.iter()
+                        .find(|branch| branch.name == request.value)
+                        .ok_or("Remote branch no longer exists. Fetch and refresh Git before retrying.")?;
+                    branch_name(root, &branch.local_name)?;
+                    if before.branches.contains(&branch.local_name) {
+                        return Err(format!(
+                            "Local branch “{}” already exists. Select it from the branch list.",
+                            branch.local_name
+                        ));
+                    }
+                    run(
+                        root,
+                        &[
+                            "switch",
+                            "--track=direct",
+                            "-c",
+                            &branch.local_name,
+                            "--",
+                            &format!("refs/remotes/{}", branch.name),
+                        ],
+                    )?
                 }
                 "create-branch" => run(root, &["switch", "-c", &request.value])?,
                 _ => {
@@ -1016,6 +1072,69 @@ mod tests {
             },
         )
     }
+    #[test]
+    fn remote_checkout_tracks_exact_remote_and_preserves_existing_work() {
+        let repo = Repo::new();
+        std::fs::write(repo.0.join("file.txt"), "remote version\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "Remote version"]).unwrap();
+        let remote_head = snapshot(&repo.0).unwrap().head;
+        run(&repo.0, &["remote", "add", "origin", "."]).unwrap();
+        for name in ["master", "feature/nested", "main"] {
+            run(
+                &repo.0,
+                &[
+                    "update-ref",
+                    &format!("refs/remotes/origin/{name}"),
+                    &remote_head,
+                ],
+            )
+            .unwrap();
+        }
+        run(
+            &repo.0,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        )
+        .unwrap();
+        std::fs::write(repo.0.join("file.txt"), "local version\n").unwrap();
+        run(&repo.0, &["commit", "-am", "Local version"]).unwrap();
+        let local_head = snapshot(&repo.0).unwrap().head;
+        let before = snapshot(&repo.0).unwrap();
+        assert_eq!(before.remote_branches.len(), 3);
+        assert!(before
+            .remote_branches
+            .iter()
+            .any(|b| b.name == "origin/feature/nested" && b.local_name == "feature/nested"));
+        assert!(act(&repo.0, "track-branch", "", "origin/main")
+            .unwrap_err()
+            .contains("already exists"));
+        assert_eq!(snapshot(&repo.0).unwrap().head, local_head);
+        assert!(act(&repo.0, "track-branch", "", "origin/missing").is_err());
+        std::fs::write(repo.0.join("file.txt"), "unsaved work\n").unwrap();
+        assert!(act(&repo.0, "track-branch", "", "origin/master").is_err());
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+            "unsaved work\n"
+        );
+        run(&repo.0, &["restore", "file.txt"]).unwrap();
+        act(&repo.0, "track-branch", "", "origin/master").unwrap();
+        let after = snapshot(&repo.0).unwrap();
+        assert_eq!(after.branch, "master");
+        assert_eq!(after.head, remote_head);
+        assert_eq!(
+            string(&repo.0, &["rev-parse", "--abbrev-ref", "@{upstream}"])
+                .unwrap()
+                .trim(),
+            "origin/master"
+        );
+        act(&repo.0, "track-branch", "", "origin/feature/nested").unwrap();
+        assert_eq!(snapshot(&repo.0).unwrap().branch, "feature/nested");
+    }
+
     #[test]
     fn blame_uses_buffer_without_changing_disk_or_index() {
         let repo = Repo::new();

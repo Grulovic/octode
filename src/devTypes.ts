@@ -26,6 +26,7 @@ export interface GitSnapshot {
   head: string;
   entries: GitEntry[];
   branches: string[];
+  remoteBranches?: { name: string; localName: string }[];
   remotes: string[];
   stagedRevision: string;
   merging: boolean;
