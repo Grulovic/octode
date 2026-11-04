@@ -924,7 +924,7 @@
 .git-blame-gutter {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 200px;
+  width: var(--git-blame-width, 140px);
   overflow: hidden;
   border-right: 1px solid var(--oc-border);
   color: var(--oc-muted);
@@ -939,4 +939,4 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.monaco-host.with-git-blame { left: 200px; }
+.monaco-host.with-git-blame { left: var(--git-blame-width, 140px); }

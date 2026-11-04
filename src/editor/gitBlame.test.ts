@@ -6,7 +6,7 @@ vi.mock("../lib/bridge", () => native);
 vi.mock("./runtime", () => ({ monaco: { editor: { EditorOption: { lineHeight: 67 } } } }));
 import { mountGitBlame } from "./gitBlame";
 
-afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 function fixture() {
   const events: Record<string, () => void> = {};
   let scrollTop = 0;
@@ -15,6 +15,7 @@ function fixture() {
     return { dispose: () => { delete events[name]; } };
   };
   const instance = {
+    layout: vi.fn(),
     getOption: () => 21,
     getVisibleRanges: () => [{ startLineNumber: 1, endLineNumber: 2 }],
     getTopForLineNumber: (line: number) => 22 + (line - 1) * 21,
@@ -32,9 +33,13 @@ it("shows buffer attribution as inert text, follows scroll, and disposes listene
     { author: "Uncommitted", commit: "00000000", time: 0, summary: "Changed" },
   ]);
   const { instance, events, gutter, scroll } = fixture();
+  const surface = document.createElement("div");
+  surface.append(gutter);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 119 } as DOMRect);
   const dispose = mountGitBlame(instance, gutter, "project", "/repo/file", "unsaved");
   await vi.advanceTimersByTimeAsync(450);
   expect(native.invoke).toHaveBeenCalledWith("git_blame", { projectId: "project", path: "/repo/file", content: "unsaved" });
+  expect(surface.style.getPropertyValue("--git-blame-width")).toBe("141px");
   expect(gutter.children).toHaveLength(2);
   expect(gutter.querySelector("img")).toBeNull();
   expect(gutter.children[0].textContent).toContain("<img src=x>");
