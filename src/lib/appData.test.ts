@@ -2,7 +2,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("./bridge", () => ({ desktop: true, invoke: native.invoke }));
-vi.mock("./export", () => ({ exportText: vi.fn() }));
+vi.mock("./export", () => ({ exportText: vi.fn(async (content) => { if (typeof content === "function") await content(); return "/tmp/backup.json"; }) }));
 import { appPreferences, exportAppData, importAppData, parseAppData } from "./appData";
 beforeEach(() => { localStorage.clear(); native.invoke.mockReset(); });
 it("exports only app preferences and validates the backup before native import", async () => {
@@ -27,10 +27,28 @@ it("remaps restored project views without overwriting the existing project view"
   } finally { window.removeEventListener("octode-app-data-imported", refreshed); }
 });
 
-it("exports without credential access by default and passes explicit opt-in", async () => {
+it("exports passwords by default and supports explicitly excluding credentials", async () => {
   native.invoke.mockResolvedValue({ format: "octode-app-data", version: 1, projects: [], notes: [] });
   await exportAppData();
-  expect(native.invoke).toHaveBeenLastCalledWith("export_app_data", { includeCredentials: false });
-  await exportAppData(true);
   expect(native.invoke).toHaveBeenLastCalledWith("export_app_data", { includeCredentials: true });
+  await exportAppData(false);
+  expect(native.invoke).toHaveBeenLastCalledWith("export_app_data", { includeCredentials: false });
+});
+
+it("Merge retains preferences and Replace removes only Octode preferences after native success", async () => {
+  localStorage.setItem("octode-editor-settings", "existing");
+  localStorage.setItem("octode-layout:old", "old");
+  localStorage.setItem("other-app-token", "keep");
+  const raw = JSON.stringify({ format: "octode-app-data", version: 1, projects: [], preferences: { "octode-editor-settings": "restored" } });
+  native.invoke.mockResolvedValue({});
+  await importAppData(raw, "merge");
+  expect(localStorage.getItem("octode-editor-settings")).toBe("existing");
+  native.invoke.mockRejectedValueOnce(new Error("invalid backup"));
+  await expect(importAppData(raw, "replace")).rejects.toThrow();
+  expect(localStorage.getItem("octode-layout:old")).toBe("old");
+  await importAppData(raw, "replace");
+  expect(native.invoke).toHaveBeenLastCalledWith("import_app_data", { data: JSON.parse(raw), mode: "replace" });
+  expect(localStorage.getItem("octode-editor-settings")).toBe("restored");
+  expect(localStorage.getItem("octode-layout:old")).toBeNull();
+  expect(localStorage.getItem("other-app-token")).toBe("keep");
 });

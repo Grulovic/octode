@@ -1,3 +1,4 @@
+import { useSaveShortcut } from "../lib/saveShortcut";
 import { folderAncestors, orderedFolders, canMoveFolder } from "../lib/apiFolders";
 import { environmentCredential, requestWithEnvironment } from "../lib/apiAuthorization";
 import { inheritHeaders } from "../lib/apiHeaders";
@@ -36,6 +37,7 @@ import {
 const RequestBodyEditor = lazy(() => import("./EditorPane"));
 export default function ApiWorkspace({
   project,
+  visible,
   onError,
   onDirty,
   searchTarget,
@@ -51,6 +53,7 @@ export default function ApiWorkspace({
     dirty,
     save,
   } = useToolDocument(project, "api", apiDocument, onError, onDirty);
+  useSaveShortcut(visible && !loading && !saving, save);
   const dirtyRequests = changedIds(doc.requests, savedDocument.requests);
   const dirtyFolders = changedIds(doc.folders, savedDocument.folders);
   for (const request of [...doc.requests, ...savedDocument.requests]) {

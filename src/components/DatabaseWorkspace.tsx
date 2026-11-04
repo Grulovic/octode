@@ -1,3 +1,4 @@
+import { useSaveShortcut } from "../lib/saveShortcut";
 import SqlFilterInput from "./SqlFilterInput";
 import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
@@ -88,6 +89,7 @@ export default function DatabaseWorkspace({
     onError,
     documentDirty,
   );
+  useSaveShortcut(visible && !loading && !saving, save);
   const [selected, select] = useToolView(
     project.id,
     "DatabaseWorkspace:selected",

@@ -7,6 +7,7 @@ import {
   type WorkspaceRuntime,
 } from "./lib/workspaceRegistry";
 import { installTerminalShortcut } from "./lib/terminalShortcut";
+import { installSaveShortcut } from "./lib/saveShortcut";
 import { installSelectAllShortcut } from "./lib/selectAll";
 import { installCloseTabShortcut } from "./lib/closeTab";
 import { installDoubleShift } from "./lib/doubleShift";
@@ -101,6 +102,7 @@ export default function App() {
   useEffect(installCaseShortcut, []);
   useEffect(installCloseTabShortcut, []);
   useEffect(installSelectAllShortcut, []);
+  useEffect(installSaveShortcut, []);
   const surface = useRef<HTMLDivElement>(null);
   const [slots, setSlots] = useState(() => [
     {
@@ -140,6 +142,15 @@ export default function App() {
     [],
   );
 
+  useEffect(() => {
+    const imported = (event: Event) => {
+      if ((event as CustomEvent).detail?.mode !== "replace") return;
+      setActiveKey("dashboard");
+      setSlots((previous) => previous.filter((slot) => slot.key === "dashboard"));
+    };
+    window.addEventListener("octode-app-data-imported", imported);
+    return () => window.removeEventListener("octode-app-data-imported", imported);
+  }, []);
   useLayoutEffect(() => {
     const host = slots.find((slot) => slot.key === activeKey)?.host;
     // Detaching a portal host preserves React instances, editor models and PTYs.
@@ -914,7 +925,7 @@ function WorkspaceApp({
                       <ApiWorkspace
                         searchTarget={searchTarget}
                         project={project}
-                        visible={active && tool === "api"}
+                        visible={active && tool === "api" && !notes.visible}
                         onError={apiError}
                         onDirty={apiDirty}
                       />
@@ -932,7 +943,7 @@ function WorkspaceApp({
                       <ServersWorkspace
                         searchTarget={searchTarget}
                         project={project}
-                        visible={active && tool === "servers"}
+                        visible={active && tool === "servers" && !notes.visible}
                         onError={serverError}
                         onDirty={serversDirty}
                       />
@@ -952,7 +963,7 @@ function WorkspaceApp({
                       <DatabaseWorkspace
                         searchTarget={searchTarget}
                         project={project}
-                        visible={active && tool === "database"}
+                        visible={active && tool === "database" && !notes.visible}
                         onError={databaseError}
                         onDirty={databaseDirty}
                       />
@@ -1002,7 +1013,11 @@ function WorkspaceApp({
         </footer>
         {settings && (
           <Suspense fallback={null}>
-            <SettingsModal onClose={() => setSettings(false)} />
+            <SettingsModal onClose={() => setSettings(false)} beforeReplace={async () => {
+              if (!(await runtime.saveAllCode(true)) || !(await waitForPendingToolSaves())) throw new Error("A save failed. Resolve it before replacing app data.");
+              if (runtime.hasUnsavedSettings()) throw new Error("Save or discard unsaved Notes, Server, Database, and API settings and pending database row edits in every open project before replacing app data.");
+              await runtime.flushAllLayouts();
+            }} />
           </Suspense>
         )}
         {palette && (
@@ -1204,6 +1219,7 @@ function WorkspaceApp({
                   Cancel
                 </button>
                 <button
+                  data-save-shortcut
                   disabled={busy || !name.trim() || !roots.length}
                   className="primary-button"
                 >
@@ -1237,7 +1253,7 @@ function WorkspaceApp({
               <div className="shortcut-columns">
                 {[
                   {title: "Sections", items: [["Projects", "0"], ["Code", "1"], ["Local terminal", "2"], ["Servers", "3"], ["Database", "4"], ["API", "5"], ["Notes", "6"]]},
-                  {title: "Edit & search", items: [["Save Code immediately", "S"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
+                  {title: "Edit & search", items: [["Save current section", "S"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
                 ].map((group) => <section className="shortcut-group" key={group.title}><h3>{group.title}</h3>{group.items.map(([title, key]) => (
                   <div className="shortcut-row" key={title}><span>{title}</span><kbd>{key === "Shift Shift" ? "⇧ ⇧" : key === "Option Shift U" ? navigator.platform.toLowerCase().includes("mac") ? "⌥ ⇧ U" : "Alt Shift U" : `${modifier} ${key.replace("Shift", "⇧")}`}</kbd></div>
                 ))}</section>)}

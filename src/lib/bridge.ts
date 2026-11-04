@@ -1,3 +1,4 @@
+import type { GitEntry } from "../devTypes";
 import type {
   FileEntry,
   GitStatus,
@@ -91,6 +92,10 @@ export async function saveFile(
     });
   sampleFiles[path] = content;
 }
+export async function gitFileStatus(project: Project, root: string): Promise<GitEntry[]> {
+  return desktop ? invoke("git_file_status", { projectId: project.id, root }) : [];
+}
+
 export async function gitStatus(
   project: Project,
   root: string,

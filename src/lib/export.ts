@@ -1,6 +1,6 @@
 import type { DbResult } from "../toolTypes";
 export async function exportText(
-  content: string,
+  content: string | (() => Promise<string>),
   filename: string,
   title = "Export file",
 ) {
@@ -10,7 +10,8 @@ export async function exportText(
     await import("@tauri-apps/plugin-dialog")
   ).save({ title, defaultPath: filename });
   if (!path) return null;
-  await invoke("save_export_file", { path, content });
+  const text = typeof content === "function" ? await content() : content;
+  await invoke("save_export_file", { path, content: text });
   return path;
 }
 export function resultCsv(result: DbResult) {

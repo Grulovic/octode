@@ -212,3 +212,87 @@ it("reveals the active file by expanding only its root and ancestors and scrolli
     height.mockRestore();
   }
 });
+
+it("marks staged, unstaged, untracked and local edits, refreshes clean states, and isolates roots", async () => {
+  vi.useFakeTimers();
+  const files = vi.spyOn(bridge, "listDirectory").mockImplementation(async (_project, path) =>
+    ["modified.php", "staged.php", "new.php", "draft.php", "clean.php"].map((name) => ({ name, path: `${path}/${name}`, directory: false })),
+  );
+  const status = vi.spyOn(bridge, "gitFileStatus").mockResolvedValue([
+    { path: "modified.php", originalPath: null, index: " ", worktree: "M", conflict: false },
+    { path: "staged.php", originalPath: null, index: "M", worktree: " ", conflict: false },
+    { path: "new.php", originalPath: null, index: "A", worktree: "M", conflict: false },
+  ]);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const project = { id: "changes", name: "Changes", roots: ["/app", "/other"], updatedAt: 0 };
+  const render = (selectedRoot = "/app", localChanges = ["/app/draft.php", "/app/new.php"]) => (
+    <FileTree project={project} selectedRoot={selectedRoot} onOpen={() => {}} onError={() => {}} localChanges={localChanges} />
+  );
+  const row = (name: string) => host.querySelector(`[title="/app/${name}.php"]`)!;
+  try {
+    await act(async () => root.render(render()));
+    for (const name of ["modified", "staged", "draft"])
+      expect(row(name).querySelector(".tree-file-modified")).not.toBeNull();
+    expect(row("new").querySelector(".tree-file-added")).not.toBeNull();
+    expect(host.querySelectorAll(".tree-change-dot")).toHaveLength(4);
+    expect(row("clean").querySelector(".tree-change-dot")).toBeNull();
+    status.mockResolvedValue([{ path: "new.php", originalPath: null, index: "?", worktree: "?", conflict: false }]);
+    await act(async () => {
+      root.render(render("/app", []));
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(row("modified").querySelector(".tree-change-dot")).toBeNull();
+    expect(row("draft").querySelector(".tree-change-dot")).toBeNull();
+    expect(row("new").querySelector(".tree-file-added")).not.toBeNull();
+    status.mockRejectedValue(new Error("Not a repository"));
+    await act(async () => root.render(render("/other", ["/other/draft.php"])));
+    expect(host.querySelectorAll(".tree-file-added")).toHaveLength(0);
+    expect(host.querySelectorAll(".tree-file-modified")).toHaveLength(1);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    files.mockRestore();
+    status.mockRestore();
+    vi.useRealTimers();
+  }
+});
+
+it("shows changes on every collapsed ancestor and clears folders when their descendants are clean", async () => {
+  vi.useFakeTimers();
+  const files = vi.spyOn(bridge, "listDirectory").mockImplementation(async (_project, path) =>
+    path === "/app"
+      ? [{ name: "src", path: "/app/src", directory: true }]
+      : [{ name: "nested", path: "/app/src/nested", directory: true }],
+  );
+  const status = vi.spyOn(bridge, "gitFileStatus").mockResolvedValue([
+    { path: "src/nested/file.php", originalPath: null, index: " ", worktree: "M", conflict: false },
+  ]);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const project = { id: "folders", name: "Folders", roots: ["/app"], updatedAt: 0 };
+  const render = (localChanges: string[] = []) => <FileTree project={project} onOpen={() => {}} onError={() => {}} localChanges={localChanges} />;
+  const folder = (path = "/app/src") => host.querySelector<HTMLButtonElement>(`[title="${path}"]`)!;
+  try {
+    await act(async () => root.render(render()));
+    expect(folder().getAttribute("aria-expanded")).toBe("false");
+    expect(folder().querySelector('[aria-label="Contains changed files"]')).not.toBeNull();
+    expect(folder().querySelector(".tree-file-modified")).toBeNull();
+    await act(async () => folder().click());
+    expect(folder("/app/src/nested").getAttribute("aria-expanded")).toBe("false");
+    expect(folder("/app/src/nested").querySelector(".tree-change-dot")).not.toBeNull();
+    status.mockResolvedValue([]);
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(host.querySelectorAll(".tree-change-dot")).toHaveLength(0);
+    await act(async () => root.render(render(["/app/src/nested/draft.php"])));
+    expect(host.querySelectorAll(".tree-change-dot")).toHaveLength(2);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    files.mockRestore();
+    status.mockRestore();
+    vi.useRealTimers();
+  }
+});

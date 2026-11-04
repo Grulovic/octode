@@ -57,6 +57,12 @@ describe("workspace behavior", () => {
     expect(language("Controller.php")).toBe("php");
     expect(language("unknown.xyz")).toBe("plaintext");
   });
+  it.each([".env", ".env.local", ".env.production", ".env.example", "/app/.env", "C:\\app\\.env.local", "settings.env"])("recognizes environment files: %s", (path) => {
+    expect(language(path)).toBe("dotenv");
+  });
+  it("does not infer dotenv from a parent directory", () => {
+    expect(language("/app/.env.local/index.ts")).toBe("typescript");
+  });
   it("restores only known tools, roots, and deduplicated project files", () => {
     const project = {
       id: "1",

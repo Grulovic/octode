@@ -165,6 +165,7 @@ function ToolSaveControls({
               </button>
               <button
                 className="primary-button"
+                data-save-shortcut
                 disabled={!dirty || saving || loading}
                 onClick={() =>
                   void save().then((ok) => {

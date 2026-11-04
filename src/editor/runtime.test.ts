@@ -41,6 +41,39 @@ async function tokens(source: string, id: string) {
 }
 
 describe("syntax-only language runtime", () => {
+  it("highlights dotenv assignments and keeps quoted hashes inside strings", async () => {
+    const source = 'export APP_NAME="Octode # demo" # comment\nAPP_URL=${HOST}/api\nPLAIN=value\n# disabled';
+    const result = await tokens(source, "dotenv");
+    for (const type of ["keyword.dotenv", "attribute.name.dotenv", "operator.dotenv", "string.dotenv", "variable.dotenv", "comment.dotenv"]) {
+      expect(result.map((token) => token.type)).toContain(type);
+    }
+    const firstLine = monaco.editor.tokenize(source, "dotenv")[0];
+    expect(firstLine.find((token) => token.type === "comment.dotenv")?.offset).toBe(source.indexOf("# comment"));
+    expect(monaco.editor.tokenize(source, "dotenv")[2][0].type).toBe("attribute.name.dotenv");
+  });
+
+  it("toggles dotenv line comments using the editor's Cmd/Ctrl+/ action", async () => {
+    const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      measureText: () => ({ width: 8 }),
+    } as unknown as CanvasRenderingContext2D);
+    const model = monaco.editor.createModel("APP_NAME=Octode\nAPP_DEBUG=true", "dotenv");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const editor = monaco.editor.create(container, { model, automaticLayout: false, occurrencesHighlight: "off" });
+    try {
+      editor.setSelection(new monaco.Selection(1, 1, 2, 15));
+      await editor.getAction("editor.action.commentLine")!.run();
+      expect(model.getValue()).toBe("# APP_NAME=Octode\n# APP_DEBUG=true");
+      await editor.getAction("editor.action.commentLine")!.run();
+      expect(model.getValue()).toBe("APP_NAME=Octode\nAPP_DEBUG=true");
+    } finally {
+      editor.dispose();
+      model.dispose();
+      container.remove();
+      canvas.mockRestore();
+    }
+  });
+
   it("distinguishes PHP function and class tokens for the Deep Ocean scheme", async () => {
     const result = await tokens(
       "<?php class Customer { public function findCustomer() { return $id; } }",

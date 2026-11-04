@@ -59,6 +59,47 @@ import "monaco-editor/esm/vs/basic-languages/rust/rust.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js";
 
 monaco.languages.register({
+  id: "dotenv",
+  filenames: [".env"],
+  extensions: [".env"],
+  aliases: ["Dotenv", "dotenv"],
+});
+monaco.languages.setLanguageConfiguration("dotenv", {
+  comments: { lineComment: "#" },
+});
+monaco.languages.setMonarchTokensProvider("dotenv", {
+  tokenPostfix: ".dotenv",
+  tokenizer: {
+    root: [
+      [/#.*$/, "comment"],
+      [/^(\s*)(export)(\s+)/, ["", "keyword", ""]],
+      [/([\w.-]+)(\s*)(=)/, ["attribute.name", "", { token: "operator", next: "@value" }]],
+    ],
+    value: [
+      [/^/, { token: "@rematch", next: "@pop" }],
+      [/#.*$/, "comment", "@pop"],
+      [/"/, "string", "@doubleQuoted"],
+      [/'/, "string", "@singleQuoted"],
+      [/\$\{[^}\r\n]+\}|\$[a-zA-Z_]\w*/, "variable"],
+      [/[^#"'$\r\n]+/, "string"],
+      [/\$/, "string"],
+      [/$/, "", "@pop"],
+    ],
+    doubleQuoted: [
+      [/\\./, "string.escape"],
+      [/\$\{[^}\r\n]+\}|\$[a-zA-Z_]\w*/, "variable"],
+      [/"/, "string", "@pop"],
+      [/[^"\\$]+/, "string"],
+      [/[$\\]/, "string"],
+    ],
+    singleQuoted: [
+      [/'/, "string", "@pop"],
+      [/[^']+/, "string"],
+    ],
+  },
+});
+
+monaco.languages.register({
   id: "json",
   extensions: [".json", ".jsonc"],
   aliases: ["JSON", "json"],

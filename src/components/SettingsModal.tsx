@@ -1,13 +1,15 @@
-import { exportAppData, importAppData } from "../lib/appData";
+import { exportAppData, importAppData, parseAppData, type ImportMode } from "../lib/appData";
 import CustomSelect from "./CustomSelect";
 import { useRef, useState } from "react";
 import { X } from "./DesignIcons";
 import { defaultSettings, loadSettings, saveSettings } from "../lib/settings";
-export default function SettingsModal({ onClose }: { onClose: () => void }) {
+export default function SettingsModal({ onClose, beforeReplace }: { onClose: () => void; beforeReplace: () => Promise<void> }) {
   const [value, setValue] = useState(loadSettings);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [includeCredentials, setIncludeCredentials] = useState(false);
+  const [includeCredentials, setIncludeCredentials] = useState(true);
+  const [pendingImport, setPendingImport] = useState<{ raw: string; name: string; projects: number; notes: number } | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("merge");
   const [message, setMessage] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
   return (
@@ -19,6 +21,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         aria-label="Settings"
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy || pendingImport) return;
           try {
             saveSettings(value);
             onClose();
@@ -29,11 +32,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       >
         <div className="modal-heading">
           <h2>Settings</h2>
-          <button type="button" aria-label="Close settings" onClick={onClose}>
+          <button type="button" aria-label="Close settings" disabled={busy} onClick={onClose}>
             <X size={17} />
           </button>
         </div>
-        <div className="settings-body"><h3 className="settings-section">Editor</h3>
+        <div className="settings-body">{!pendingImport && <><h3 className="settings-section">Editor</h3>
         <label>
           Font size
           <input
@@ -97,18 +100,21 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           />
         </label>
         <h3 className="settings-section">App data</h3>
-        <p className="settings-note">Back up global Notes (including open drafts), all projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Credentials are excluded by default, so exporting does not request Keychain access. Re-enter them after restoring. Source files and running sessions are not included. Save tool changes before exporting.</p>
-        <label><input type="checkbox" checked={includeCredentials} disabled={busy} onChange={(event) => setIncludeCredentials(event.target.checked)} /> Include saved passwords and secrets</label>
-        {includeCredentials && <p className="settings-note">Keychain may request access for each saved credential. Keep this export private. Canceling a Keychain prompt stops the export.</p>}
+        <p className="settings-note">Back up global Notes (including open drafts), projects, saved connections, API environments, workspace state, recovery drafts, and preferences. Source files and running sessions are not included. Save tool changes before exporting.</p>
+        <label className="settings-check"><input type="checkbox" checked={includeCredentials} disabled={busy || !!pendingImport} onChange={(event) => setIncludeCredentials(event.target.checked)} /> Include saved passwords and secrets</label>
+        {includeCredentials && <p className="settings-note">Passwords are included in this readable backup, so keep it private. Older passwords may require a one-time Keychain approval per item. After migration, Octode uses one unlock per app session. Canceling access stops the export.</p>}
         <div className="settings-data-actions">
-          <button type="button" disabled={busy} onClick={async () => {
-            setBusy(true); setError(""); setMessage("");
-            try { await exportAppData(includeCredentials); } catch (reason) { setError(String(reason)); }
+          <button type="button" disabled={busy || !!pendingImport} onClick={async () => {
+            setBusy(true); setError(""); setMessage("Choose where to save the backup. Passwords are gathered after you choose a file.");
+            try {
+              const path = await exportAppData(includeCredentials);
+              setMessage(path ? "App data exported." : "Export canceled.");
+            } catch (reason) { setMessage(""); setError(String(reason)); }
             finally { setBusy(false); }
-          }}>Export app data</button>
-          <button type="button" disabled={busy} onClick={() => importInput.current?.click()}>Import app data</button>
+          }}>{busy && !pendingImport ? "Exporting…" : "Export app data"}</button>
+          <button type="button" disabled={busy || !!pendingImport} onClick={() => importInput.current?.click()}>Import app data</button>
         </div>
-        <p className="settings-note">Import adds projects and Notes as new copies and restores preferences. Existing projects are kept. Project folders must be available at their saved paths or relinked through Edit project.</p>
+        <p className="settings-note">Choose Merge or Replace after selecting a backup. Project folders must be available at their saved paths or relinked through Edit project.</p>
         <input ref={importInput} type="file" accept=".json,application/json" aria-label="App data file" hidden onChange={async (event) => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (!file) return;
@@ -116,13 +122,35 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           try {
             if (file.size > 20 * 1024 * 1024) throw new Error("App data exceeds 20 MB.");
             const raw = await file.text();
-            const count = await importAppData(raw);
-            const backup = JSON.parse(raw);
-            const noteCount = (backup.notes?.length ?? 0);
-            setValue(loadSettings()); setMessage(`Imported ${count} project${count === 1 ? "" : "s"} and ${noteCount} note${noteCount === 1 ? "" : "s"}.`);
+            const backup = parseAppData(raw);
+            setImportMode("merge");
+            setPendingImport({ raw, name: file.name, projects: backup.projects.length, notes: backup.notes?.length ?? 0 });
           } catch (reason) { setError(String(reason)); }
           finally { setBusy(false); }
         }} />
+        </>}
+        {pendingImport && <div className="settings-note" role="group" aria-label="Review app data import">
+          <strong>{pendingImport.name}</strong>
+          <p>{pendingImport.projects} projects and {pendingImport.notes} notes in this backup.</p>
+          <CustomSelect className="settings-import-mode" aria-label="Import mode" value={importMode} disabled={busy} onChange={(event) => setImportMode(event.target.value as ImportMode)}>
+            <option value="merge">Merge with current data</option>
+            <option value="replace">Replace current data</option>
+          </CustomSelect>
+          <p>{importMode === "merge" ? "Adds projects and Notes as new copies. Keeps existing projects, Notes, live drafts, and preferences; adds missing preferences." : "Replaces all saved projects, Notes, workspace settings, recovery drafts, and preferences with this backup. Closes open project workspaces and their connections. Source files stay on disk. Save or discard unsaved tool changes first. This cannot be undone without another backup."}</p>
+          <div className="settings-data-actions">
+            <button type="button" disabled={busy} onClick={() => { setPendingImport(null); setError(""); }}>Cancel import</button>
+            <button type="button" className="primary-button" disabled={busy} onClick={async () => {
+              setBusy(true); setError(""); setMessage("");
+              try {
+                if (importMode === "replace") await beforeReplace();
+                const count = await importAppData(pendingImport.raw, importMode);
+                setValue(loadSettings()); setMessage(`Imported ${count} project${count === 1 ? "" : "s"} and ${pendingImport.notes} note${pendingImport.notes === 1 ? "" : "s"}.`);
+                setPendingImport(null);
+              } catch (reason) { setError(String(reason)); }
+              finally { setBusy(false); }
+            }}>{busy ? "Importing…" : importMode === "replace" ? "Import and replace" : "Import and merge"}</button>
+          </div>
+        </div>}
         {message && <p role="status">{message}</p>}
         <p className="settings-note">
           Code autosaves. Server, Database, and API settings require Save.
@@ -134,11 +162,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="modal-footer">
           <button
             type="button"
+            disabled={busy || !!pendingImport}
             onClick={() => setValue({ ...defaultSettings })}
           >
             Reset defaults
           </button>
-          <button className="primary-button" type="submit">
+          <button data-save-shortcut className="primary-button" disabled={busy || !!pendingImport} type="submit">
             Save settings
           </button>
         </div>

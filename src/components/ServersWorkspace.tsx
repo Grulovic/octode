@@ -1,3 +1,4 @@
+import { useSaveShortcut } from "../lib/saveShortcut";
 import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
 import type { SearchEntry } from "../lib/searchEverywhere";
@@ -38,6 +39,7 @@ export default function ServersWorkspace({
     dirty,
     save,
   } = useToolDocument(project, "servers", serverDocument, onError, onDirty);
+  useSaveShortcut(visible && !loading && !saving, save);
   const dirtyConnections = changedIds(doc.connections, savedDocument.connections);
   const [selected, select] = useToolView(
     project.id,

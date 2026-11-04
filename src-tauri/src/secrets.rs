@@ -27,16 +27,57 @@ impl Vault {
             .map_err(|_| "The system credential store is unavailable".into())
     }
 }
+static VAULT: std::sync::OnceLock<crate::credential_vault::CredentialVault<KeychainBackend>> =
+    std::sync::OnceLock::new();
+struct KeychainBackend {
+    service: String,
+}
+impl crate::credential_vault::KeyStore for KeychainBackend {
+    fn read_key(&self) -> Result<Option<Vec<u8>>, String> {
+        let entry = keyring::Entry::new(&self.service, "Octode credential vault")
+            .map_err(|_| "The system credential store is unavailable")?;
+        match entry.get_secret() {
+            Ok(key) => Ok(Some(key)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(storage_error("unlock vault", error)),
+        }
+    }
+    fn write_key(&self, key: &[u8]) -> Result<(), String> {
+        keyring::Entry::new(&self.service, "Octode credential vault")
+            .map_err(|_| "The system credential store is unavailable")?
+            .set_secret(key)
+            .map_err(|error| storage_error("save vault key", error))
+    }
+    fn read_legacy(&self, project: &str, id: &str) -> Result<String, String> {
+        Vault::entry(project, id)?
+            .get_password()
+            .map_err(|error| storage_error("migrate legacy", error))
+    }
+}
+impl Vault {
+    pub fn initialize(path: &std::path::Path, service: &str) -> Result<(), String> {
+        VAULT
+            .set(crate::credential_vault::CredentialVault::new(
+                path.join("credentials.sqlite"),
+                KeychainBackend {
+                    service: service.into(),
+                },
+            ))
+            .map_err(|_| "Credential vault is already initialized".into())
+    }
+    fn store() -> Result<&'static crate::credential_vault::CredentialVault<KeychainBackend>, String>
+    {
+        VAULT
+            .get()
+            .ok_or_else(|| "Credential vault is not initialized".into())
+    }
+}
 impl Secrets for Vault {
     fn set(&self, project: &str, id: &str, value: &str) -> Result<(), String> {
-        Self::entry(project, id)?
-            .set_password(value)
-            .map_err(|error| storage_error("save", error))
+        Self::store()?.set(project, id, value)
     }
     fn get(&self, project: &str, id: &str) -> Result<String, String> {
-        Self::entry(project, id)?
-            .get_password()
-            .map_err(|error| storage_error("read", error))
+        Self::store()?.get(project, id)
     }
 }
 fn storage_error(action: &str, error: keyring::Error) -> String {
@@ -201,8 +242,14 @@ pub mod tests {
         let project = uuid::Uuid::new_v4().to_string();
         let id = uuid::Uuid::new_v4().to_string();
         let result = (|| {
-            Vault.set(&project, &id, "octode-disposable-test")?;
-            if Vault.get(&project, &id)? != "octode-disposable-test" {
+            Vault::entry(&project, &id)?
+                .set_password("octode-disposable-test")
+                .map_err(|error| storage_error("save", error))?;
+            if Vault::entry(&project, &id)?
+                .get_password()
+                .map_err(|error| storage_error("read", error))?
+                != "octode-disposable-test"
+            {
                 return Err("Native credential did not round trip".to_string());
             }
             Ok::<_, String>(())

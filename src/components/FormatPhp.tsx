@@ -102,6 +102,7 @@ export default function FormatPhp({
         {message && <p role="status">{message}</p>}
         <div className="modal-footer">
           <button
+            data-save-shortcut
             disabled={busy || !desktop}
             onClick={async () => {
               setBusy(true);

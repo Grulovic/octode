@@ -18,6 +18,7 @@ mod database;
 mod http_client;
 mod operations;
 mod secrets;
+mod credential_vault;
 mod service_commands;
 mod ssh;
 mod tool_commands;
@@ -469,6 +470,8 @@ pub fn run() {
             tab_menu::install(app)?;
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
+            secrets::Vault::initialize(&data_dir, &app.config().identifier)
+                .map_err(std::io::Error::other)?;
             app.manage(
                 Store::open(&data_dir.join("octode.sqlite")).map_err(std::io::Error::other)?,
             );
@@ -523,6 +526,7 @@ pub fn run() {
             navigation_targets,
             search_everywhere_index,
             git_snapshot,
+            git_file_status,
             git_branch_name,
             git_diff,
             git_action,

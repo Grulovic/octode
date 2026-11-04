@@ -21,6 +21,10 @@ export function folderBranchLabel(root: string, branch?: string): string {
 }
 
 export function language(path: string): string {
+  const name = filename(path).toLowerCase();
+  if (name === ".env" || name.startsWith(".env.") || name.endsWith(".env")) {
+    return "dotenv";
+  }
   const ext = path.split(".").at(-1)?.toLowerCase();
   return (
     (

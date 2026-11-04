@@ -798,9 +798,10 @@ kbd {
   flex-direction: column;
 }
 .code-container {
-  flex: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   min-height: 0;
-  height: 100%;
+  overflow: hidden;
 }
 .code-workspace {
   display: flex;
@@ -912,6 +913,23 @@ kbd {
 .tree-row.selected {
   background: var(--oc-border);
   color: var(--oc-accent);
+}
+.tree-file-name {
+  min-width: 0;
+}
+.tree-row .tree-file-modified {
+  color: var(--oc-text-strong);
+}
+.tree-row .tree-file-added {
+  color: var(--oc-error);
+}
+.tree-row .tree-change-dot {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--oc-unsaved);
 }
 .tree-root {
   color: var(--oc-muted);
@@ -1537,12 +1555,16 @@ input[type="checkbox"]:focus-visible {
   overflow: hidden;
 }
 .workspace-terminal-dock {
+  min-width: 0;
+  overflow: hidden;
   flex-direction: column;
   flex-shrink: 0;
   min-height: 0;
   max-height: 75%;
 }
 .workspace-terminal-host {
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;

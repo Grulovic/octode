@@ -1,3 +1,4 @@
+import { useFileTreeChanges, type FileTreeChange } from "../hooks/useFileTreeChanges";
 import { terminalPathsType } from "../lib/terminalDrop";
 import { rootForPath, filename } from "../lib/workspace";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -5,6 +6,8 @@ import FileIcon from "./FileIcon";
 import { ChevronDown, ChevronRight, Folder, FolderOpen } from "./DesignIcons";
 import { listDirectory } from "../lib/bridge";
 import type { FileEntry, Project } from "../types";
+
+const noLocalChanges: readonly string[] = [];
 
 export default function FileTree({
   project,
@@ -20,6 +23,7 @@ export default function FileTree({
   refreshVersion = 0,
   collapseVersion = 0,
   visible = true,
+  localChanges = noLocalChanges,
 }: {
   project: Project;
   selectedRoot?: string;
@@ -34,6 +38,7 @@ export default function FileTree({
   refreshVersion?: number;
   collapseVersion?: number;
   visible?: boolean;
+  localChanges?: readonly string[];
 }) {
   const chosenRoot =
     (selectedRoot && project.roots.includes(selectedRoot)
@@ -43,6 +48,9 @@ export default function FileTree({
       ? rootForPath(project.roots, revealTarget.path)
       : undefined) ??
     project.roots[0];
+  const changes = useFileTreeChanges(
+    project, chosenRoot, visible, refreshVersion, localChanges,
+  );
   const roots = chosenRoot ? [chosenRoot] : [];
   const revealRoot = revealTarget
     ? rootForPath(roots, revealTarget.path)
@@ -53,6 +61,7 @@ export default function FileTree({
         <TreeNode
           key={root}
           contentsOnly
+          changes={changes}
           project={project}
           entry={{
             name: root.split(/[\\/]/).at(-1) ?? root,
@@ -78,6 +87,7 @@ export default function FileTree({
 }
 
 function TreeNode({
+  changes,
   project,
   entry,
   contentsOnly = false,
@@ -95,6 +105,7 @@ function TreeNode({
   visible = true,
 }: {
   project: Project;
+  changes: ReadonlyMap<string, FileTreeChange>;
   entry: FileEntry;
   contentsOnly?: boolean;
   depth: number;
@@ -196,6 +207,10 @@ function TreeNode({
       document.removeEventListener("visibilitychange", focus);
     };
   }, [refreshVersion, expanded, visible, project, entry.path, onError]);
+  const change = changes.get(entry.path.replaceAll("\\", "/"));
+  const changeLabel = entry.directory
+    ? "Contains changed files"
+    : change === "added" ? "New file" : "Modified file";
   const Icon = expanded ? FolderOpen : Folder;
   return (
     <div
@@ -263,7 +278,17 @@ function TreeNode({
             <span className="tree-indent" />
           )}
           {entry.directory ? <Icon size={15} /> : <FileIcon path={entry.path} size={15} />}
-          <span>{entry.name}</span>
+          <span className={`tree-file-name${change && !entry.directory ? ` tree-file-${change}` : ""}`}>
+            {entry.name}
+          </span>
+          {change && (
+            <span
+              className="tree-change-dot"
+              role="img"
+              aria-label={changeLabel}
+              title={changeLabel}
+            />
+          )}
           {loading && <span className="muted">…</span>}
         </button>
       )}
@@ -272,6 +297,7 @@ function TreeNode({
           <TreeNode
             key={child.path}
             project={project}
+            changes={changes}
             entry={child}
             depth={depth + 1}
             active={active}

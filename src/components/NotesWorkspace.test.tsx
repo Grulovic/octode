@@ -196,3 +196,23 @@ it("searches note titles and contents and deletes notes after confirmation", asy
     expect(host.querySelector('[aria-label="Restore note query.sql"]')).toBeNull();
   } finally { confirm.mockRestore(); await act(async () => root.unmount()); }
 });
+
+it("reloads Notes after Replace while Merge preserves existing live drafts", async () => {
+  storage.load.mockResolvedValue([{ id: "old", title: "Existing", text: "saved" }]);
+  const runtime = createWorkspaceRuntime();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={runtime}><Harness /></NotesProvider>));
+    await act(async () => model.update({ text: "live draft" }));
+    storage.load.mockResolvedValue([{ id: "copy", title: "Imported", text: "copy" }, { id: "old", title: "Existing", text: "saved" }]);
+    await act(async () => window.dispatchEvent(new CustomEvent("octode-app-data-imported", { detail: { mode: "merge" } })));
+    expect(model.notes.find((note) => note.id === "old")?.text).toBe("live draft");
+    storage.load.mockResolvedValue([{ id: "replacement", title: "Restored", text: "backup" }]);
+    await act(async () => window.dispatchEvent(new CustomEvent("octode-app-data-imported", { detail: { mode: "replace" } })));
+    expect(model.notes).toEqual([{ id: "replacement", title: "Restored", text: "backup" }]);
+    expect(model.active).toBe("replacement");
+    expect(runtime.hasUnsavedSettings()).toBe(false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

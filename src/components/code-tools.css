@@ -114,6 +114,9 @@
   flex: 0 0 auto;
   max-width: calc(100% - 32px);
 }
+.git-change-name.git-change-name-added {
+  color: var(--oc-error);
+}
 .git-change-path {
   flex: 1;
   min-width: 0;

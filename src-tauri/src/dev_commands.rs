@@ -182,6 +182,19 @@ pub async fn git_branch_name(
         .map_err(|error| error.to_string())?
 }
 #[tauri::command]
+pub async fn git_file_status(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    project_id: String,
+    root: String,
+) -> Result<Vec<git_tools::Entry>, String> {
+    let root = repo(&window, &store, &project_id, &root)?;
+    tauri::async_runtime::spawn_blocking(move || git_tools::file_status(&root))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn git_snapshot(
     window: WebviewWindow,
     store: State<'_, Store>,

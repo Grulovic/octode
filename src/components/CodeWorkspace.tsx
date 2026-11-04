@@ -1,3 +1,4 @@
+import { useSaveShortcut } from "../lib/saveShortcut";
 import MarkdownToolbar from "./MarkdownToolbar";
 import type { MarkdownCommand } from "../lib/markdownEditing";
 import FileIcon from "./FileIcon";
@@ -14,6 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -166,6 +168,10 @@ export default function CodeWorkspace({
   }, []);
 
   const [documents, setDocuments] = useState<Document[]>([]);
+  const localFileChanges = useMemo(
+    () => documents.filter((item) => item.text !== item.saved).map((item) => item.path),
+    [documents],
+  );
   const [active, setActive] = useState("");
   const [formatter, setFormatter] = useState(false);
   const [markdownPath, setMarkdownPath] = useState<string | null>(null);
@@ -506,6 +512,7 @@ export default function CodeWorkspace({
   const save = useCallback(async () => {
     if (active && (await autosave.current?.flush(active, true))) onError("");
   }, [active, onError]);
+  useSaveShortcut(visible, save);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -526,14 +533,6 @@ export default function CodeWorkspace({
         event.preventDefault();
         setTab("search");
         setSearchFocus((value) => value + 1);
-      }
-      if (
-        visible &&
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "s"
-      ) {
-        event.preventDefault();
-        void save();
       }
     };
     const unload = (event: BeforeUnloadEvent) => {
@@ -1138,6 +1137,7 @@ export default function CodeWorkspace({
         ) : tab === "files" ? (
           <FileTree
             selectedRoot={root}
+            localChanges={localFileChanges}
             refreshVersion={treeVersion}
             collapseVersion={collapseVersion}
             revealTarget={revealTarget}

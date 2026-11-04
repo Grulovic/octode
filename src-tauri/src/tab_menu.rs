@@ -16,6 +16,7 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
         true,
         Some("CmdOrCtrl+A"),
     )?;
+    let save = MenuItem::with_id(app, "octode.save", "Save", true, Some("CmdOrCtrl+S"))?;
     let close_tab = MenuItem::with_id(
         app,
         "octode.close-tab",
@@ -40,17 +41,20 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
             }
             if submenu.text()? == "File" {
                 submenu.insert(&close_tab, 0)?;
+                submenu.insert(&save, 0)?;
                 added = true;
             }
         }
     }
     if !added {
-        menu.insert(&Submenu::with_items(app, "File", true, &[&close_tab])?, 0)?;
+        menu.insert(&Submenu::with_items(app, "File", true, &[&save, &close_tab])?, 0)?;
     }
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
         if event.id().as_ref() == "octode.close-tab" {
             let _ = app.emit_to("main", "octode-close-tab", ());
+        } else if event.id().as_ref() == "octode.save" {
+            let _ = app.emit_to("main", "octode-save", ());
         } else if event.id().as_ref() == "octode.select-all" {
             let _ = app.emit_to("main", "octode-select-all", ());
         }

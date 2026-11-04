@@ -2661,3 +2661,71 @@ it("moves API folders using mouse dragging, including into collapsed parents, an
     expect(group("Child").style.marginLeft).toBe("14px");
   } finally { if (previous) Object.defineProperty(document, "elementFromPoint", previous); else Reflect.deleteProperty(document, "elementFromPoint"); }
 });
+
+it("Cmd+S saves only the active explicit-save section, including Notes over a dirty tool", async () => {
+  const save = vi.spyOn(toolsBridge, "saveTool");
+  const pressSave = async (ctrl = false) => act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: !ctrl, ctrlKey: ctrl, bubbles: true, cancelable: true }));
+  });
+  await enterCode();
+  await click('[aria-label="Servers"]');
+  await click('[aria-label="Servers workspace"] button[title="New server"]');
+  await type('input[aria-label="Host"]', "save-shortcut.invalid");
+  await click('[aria-label="API"]');
+  await addApiItem("request");
+  await pressSave();
+  expect(save.mock.calls.map((call) => call[1])).toEqual(["api"]);
+  await click('[aria-label="Database"]');
+  await click('[aria-label="Database workspace"] button[title="New database"]');
+  await pressSave(true);
+  expect(save.mock.calls.map((call) => call[1])).toEqual(["api", "database"]);
+  await click('[aria-label="Servers"]');
+  await click('[aria-label="Notes"]');
+  const newNote = [...document.querySelectorAll<HTMLButtonElement>(".notes-sidebar button")].find((button) => button.textContent?.includes("New note"))!;
+  await act(async () => newNote.click());
+  await type('[aria-label="Note title"]', "Shortcut QA");
+  await type(".notes-editor textarea", "saved only by shortcut");
+  await pressSave();
+  expect(JSON.parse(localStorage.getItem("octode-global-notes")!)[0].text).toBe("saved only by shortcut");
+  expect(save.mock.calls.map((call) => call[1])).toEqual(["api", "database"]);
+  await click('[aria-label="Servers"]');
+  await pressSave();
+  expect(save.mock.calls.map((call) => call[1])).toEqual(["api", "database", "servers"]);
+});
+
+
+it("Replace import refuses unsaved Notes and parked API drafts before applying the backup", async () => {
+  const appData = await import("./lib/appData");
+  const apply = vi.spyOn(appData, "importAppData").mockResolvedValue(0);
+  await enterCode();
+  await click('[aria-label="API"]');
+  await addApiItem("request");
+  await click('[aria-label="Notes"]');
+  const newNote = [...document.querySelectorAll<HTMLButtonElement>(".notes-sidebar button")].find((button) => button.textContent?.includes("New note"))!;
+  await act(async () => newNote.click());
+  await type('[aria-label="Note title"]', "Unsaved replacement guard");
+  await click('[aria-label="Settings"]');
+  const raw = JSON.stringify({ format: "octode-app-data", version: 1, projects: [], notes: [], preferences: {} });
+  const input = await waitFor(() => document.querySelector<HTMLInputElement>('[aria-label="App data file"]'));
+  Object.defineProperty(input, "files", { configurable: true, value: [{ name: "replacement.json", size: raw.length, text: async () => raw }] });
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  await click('[role="combobox"][aria-label="Import mode"]');
+  await click('[role="option"][data-index="1"]');
+  const replace = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Import and replace")!;
+  await act(async () => replace.click());
+  expect(apply).not.toHaveBeenCalled();
+  expect(document.querySelector('.settings-modal [role="alert"]')?.textContent).toContain("Save or discard unsaved Notes");
+  expect(document.querySelector<HTMLInputElement>('[aria-label="Note title"]')?.value).toBe("Unsaved replacement guard");
+  await click('[aria-label="Close settings"]');
+  await click('.notes-main .primary-button');
+  await click('[aria-label="Code"]');
+  await click('[aria-label="Settings"]');
+  const nextInput = document.querySelector<HTMLInputElement>('[aria-label="App data file"]')!;
+  Object.defineProperty(nextInput, "files", { configurable: true, value: [{ name: "replacement.json", size: raw.length, text: async () => raw }] });
+  await act(async () => nextInput.dispatchEvent(new Event("change", { bubbles: true })));
+  await click('[role="combobox"][aria-label="Import mode"]');
+  await click('[role="option"][data-index="1"]');
+  const nextReplace = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Import and replace")!;
+  await act(async () => nextReplace.click());
+  expect(apply).not.toHaveBeenCalled(); // API stays dirty even while Code is visible.
+});

@@ -1,3 +1,4 @@
+import { useSaveShortcut } from "../lib/saveShortcut";
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { FileText, WrapText } from "lucide-react";
 import { Plus, Save, Search, FolderOpen, Trash2, X } from "./DesignIcons";
@@ -51,7 +52,13 @@ function useNotesModel(runtime: WorkspaceRuntime) {
     return () => { gone = true; };
   }, [revision]);
   useEffect(() => {
-    const imported = () => { void loadNotes().then((items) => {
+    const imported = (event: Event) => { void loadNotes().then((items) => {
+      if ((event as CustomEvent).detail?.mode === "replace") {
+        for (const note of current.current) disposeRetainedEditorModel(`notes://${note.id}.txt`);
+        saved.current = new Map(items.map((note) => [note.id, note]));
+        setNotes(items); setActive(items[0]?.id ?? ""); setSearch("");
+        return;
+      }
       const additions = items.filter((item) => !current.current.some((note) => note.id === item.id));
       for (const item of additions) saved.current.set(item.id, item);
       setNotes([...additions, ...current.current]);
@@ -105,6 +112,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
 const NotesContext = createContext<ReturnType<typeof useNotesModel> | null>(null);
 export function NotesProvider({ runtime, children }: { runtime: WorkspaceRuntime; children: ReactNode }) {
   const model = useNotesModel(runtime);
+  useSaveShortcut(model.visible && !model.loading && !model.saving && !model.deleting, model.save);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.isComposing) return;
@@ -112,8 +120,6 @@ export function NotesProvider({ runtime, children }: { runtime: WorkspaceRuntime
         event.preventDefault(); event.stopImmediatePropagation();
         window.dispatchEvent(new Event("octode-dismiss-popovers"));
         model.setVisible(true);
-      } else if (event.key.toLowerCase() === "s" && model.visible && !document.querySelector('[aria-modal="true"]')) {
-        event.preventDefault(); event.stopImmediatePropagation(); void model.save();
       }
     };
     window.addEventListener("keydown", shortcut, true);

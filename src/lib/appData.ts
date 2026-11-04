@@ -3,6 +3,7 @@ import { desktop, invoke } from "./bridge";
 import { setTerminalHighlightEnabled } from "./terminalHighlight";
 import { exportText } from "./export";
 
+export type ImportMode = "merge" | "replace";
 type Preferences = Record<string, string>;
 interface Backup {
   format: "octode-app-data";
@@ -21,15 +22,18 @@ export function parseAppData(raw: string): Backup {
   if (value?.format !== "octode-app-data" || value.version !== 1 || !Array.isArray(value.projects) || !value.preferences || typeof value.preferences !== "object" || Array.isArray(value.preferences) || Object.entries(value.preferences).some(([key, content]) => !allowedPreference(key) || typeof content !== "string")) throw new Error("Choose a valid Octode app-data export.");
   return value;
 }
-export async function exportAppData(includeCredentials = false) {
+export async function exportAppData(includeCredentials = true) {
   if (!desktop) throw new Error("Open the desktop app to export app data.");
-  const data = await invoke<Omit<Backup, "preferences">>("export_app_data", { includeCredentials });
-  await exportText(JSON.stringify({ ...data, ...notesForBackup(), preferences: appPreferences() }, null, 2), `octode-app-data-${new Date().toISOString().slice(0, 10)}.json`, "Export app data");
+  return exportText(async () => {
+    const data = await invoke<Omit<Backup, "preferences">>("export_app_data", { includeCredentials });
+    return JSON.stringify({ ...data, ...notesForBackup(), preferences: appPreferences() }, null, 2);
+  }, `octode-app-data-${new Date().toISOString().slice(0, 10)}.json`, "Export app data");
 }
-export async function importAppData(raw: string) {
+export async function importAppData(raw: string, mode: ImportMode = "merge") {
   if (!desktop) throw new Error("Open the desktop app to import app data.");
   const data = parseAppData(raw);
-  const ids = await invoke<Record<string, string>>("import_app_data", { data });
+  const ids = await invoke<Record<string, string>>("import_app_data", { data, mode });
+  if (mode === "replace") for (const key of Object.keys(appPreferences())) localStorage.removeItem(key);
   for (const [key, value] of Object.entries(data.preferences)) {
     let target = key;
     if (key.startsWith("octode-view:")) {
@@ -37,10 +41,10 @@ export async function importAppData(raw: string) {
       if (!ids[oldId]) continue;
       target = key.replace(`octode-view:${oldId}:`, `octode-view:${ids[oldId]}:`);
     }
-    localStorage.setItem(target, value);
+    if (mode === "replace" || localStorage.getItem(target) === null) localStorage.setItem(target, value);
   }
   window.dispatchEvent(new Event("octode-editor-settings"));
-  if ("octode-terminal-highlighting" in data.preferences) setTerminalHighlightEnabled(data.preferences["octode-terminal-highlighting"] !== "off");
-  window.dispatchEvent(new Event("octode-app-data-imported"));
+  setTerminalHighlightEnabled(localStorage.getItem("octode-terminal-highlighting") !== "off");
+  window.dispatchEvent(new CustomEvent("octode-app-data-imported", { detail: { mode } }));
   return Object.keys(ids).length;
 }

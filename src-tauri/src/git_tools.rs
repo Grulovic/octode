@@ -248,6 +248,33 @@ pub fn current_branch(root: &Path) -> Result<String, String> {
     }
 }
 
+// A lightweight, filename-safe status for the file tree, including nested project roots.
+pub fn file_status(root: &Path) -> Result<Vec<Entry>, String> {
+    let prefix = string(root, &["rev-parse", "--show-prefix"])?;
+    let prefix = prefix.trim_end_matches('\n');
+    let status = run(
+        root,
+        &[
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            ".",
+        ],
+    )?;
+    Ok(parse_status(&status)?
+        .into_iter()
+        .filter_map(|mut entry| {
+            entry.path = entry.path.strip_prefix(prefix)?.to_string();
+            entry.original_path = entry
+                .original_path
+                .and_then(|path| path.strip_prefix(prefix).map(str::to_string));
+            Some(entry)
+        })
+        .collect())
+}
+
 pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
     let status = run(
         root,
@@ -1103,6 +1130,32 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "staged\n");
         assert!(!snapshot(&repo.0).unwrap().staged_revision.is_empty());
     }
+    #[test]
+    fn tree_status_includes_nested_untracked_files_and_scopes_subfolders() {
+        let repo = Repo::new();
+        let folder = repo.0.join("nested");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join("tracked.php"), "base\n").unwrap();
+        act(&repo.0, "stage", "nested/tracked.php", "").unwrap();
+        act(&repo.0, "commit", "", "Base").unwrap();
+        std::fs::write(folder.join("tracked.php"), "edited\n").unwrap();
+        std::fs::create_dir(folder.join("new folder")).unwrap();
+        std::fs::write(folder.join("new folder/ž line\nname.php"), "new\n").unwrap();
+        std::fs::write(repo.0.join("outside.php"), "outside\n").unwrap();
+        let entries = file_status(&folder).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "tracked.php" && entry.worktree == "M"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "new folder/ž line\nname.php" && entry.index == "?"));
+        assert!(file_status(&repo.0)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.path == "nested/tracked.php"));
+    }
+
     #[test]
     fn decodes_renames_and_conflicts() {
         let entries =

@@ -507,7 +507,7 @@ export default function GitPanel({
                         {entry.index}
                         {entry.worktree}
                       </code>
-                      <span className="git-change-name">
+                      <span className={`git-change-name${entry.index === "?" || entry.index === "A" || entry.worktree === "A" ? " git-change-name-added" : ""}`}>
                         {filename(entry.path)}
                       </span>
                       {/[\\/]/.test(entry.path) && (

@@ -70,6 +70,13 @@ fn export_credentials(
     }
     Ok(())
 }
+#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImportMode {
+    #[default]
+    Merge,
+    Replace,
+}
 impl Store {
     fn export_app(
         &self,
@@ -157,10 +164,19 @@ impl Store {
             projects: out,
         })
     }
+    #[cfg(test)]
     fn import_app(
+        &self,
+        data: AppData,
+        vault: &impl Secrets,
+    ) -> Result<BTreeMap<String, String>, String> {
+        self.import_app_mode(data, vault, ImportMode::Merge)
+    }
+    fn import_app_mode(
         &self,
         mut data: AppData,
         vault: &impl Secrets,
+        mode: ImportMode,
     ) -> Result<BTreeMap<String, String>, String> {
         if data.format != "octode-app-data" || data.version != 1 || data.projects.len() > 1000 {
             return Err("Unsupported Octode app data".into());
@@ -253,7 +269,14 @@ impl Store {
         }
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
-        // Import copies with new IDs; existing live notes/drafts are never overwritten.
+        // Replacement is atomic: validation and credential verification have already succeeded.
+        if mode == ImportMode::Replace {
+            tx.execute("DELETE FROM projects", [])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM global_notes", [])
+                .map_err(|e| e.to_string())?;
+        }
+        // New IDs keep imported credentials isolated from previous references.
         for note in data.notes.into_iter().rev() {
             tx.execute(
                 "INSERT INTO global_notes(id,title,text) VALUES (?1,?2,?3)",
@@ -324,6 +347,7 @@ pub async fn import_app_data(
     window: WebviewWindow,
     store: State<'_, Store>,
     data: AppData,
+    mode: Option<ImportMode>,
 ) -> Result<BTreeMap<String, String>, String> {
     if window.label() != "main" {
         return Err("Use the main window".into());
@@ -331,12 +355,99 @@ pub async fn import_app_data(
     if serde_json::to_vec(&data).map_err(|e| e.to_string())?.len() > 20 * 1024 * 1024 {
         return Err("App data exceeds 20 MB".into());
     }
-    store.import_app(data, &Vault)
+    store.import_app_mode(data, &Vault, mode.unwrap_or_default())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn replacement_validates_first_and_replaces_all_metadata_atomically() {
+        let vault = crate::secrets::tests::Memory::default();
+        let target = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let old = target
+            .create("Existing".into(), vec!["/tmp".into()])
+            .unwrap();
+        target
+            .save_tool(&old.id, "code-settings", &serde_json::json!({"version":1}))
+            .unwrap();
+        target
+            .0
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO global_notes VALUES ('old','Old','keep until success')",
+                [],
+            )
+            .unwrap();
+        let invalid = AppData {
+            format: "wrong".into(),
+            version: 1,
+            projects: vec![],
+            notes: vec![],
+        };
+        assert!(target
+            .import_app_mode(invalid, &vault, ImportMode::Replace)
+            .is_err());
+        assert_eq!(target.list().unwrap().len(), 1);
+        assert_eq!(crate::notes::load(&target).unwrap()[0].id, "old");
+        let source = Store::open(std::path::Path::new(":memory:")).unwrap();
+        source
+            .create("Restored".into(), vec!["/tmp".into()])
+            .unwrap();
+        source
+            .0
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO global_notes VALUES ('new','New','restored')",
+                [],
+            )
+            .unwrap();
+        target
+            .import_app_mode(
+                source.export_app(&vault, true).unwrap(),
+                &vault,
+                ImportMode::Replace,
+            )
+            .unwrap();
+        assert_eq!(target.list().unwrap().len(), 1);
+        assert_eq!(target.list().unwrap()[0].name, "Restored");
+        assert!(target.get(&old.id).is_err());
+        let db = target.0.lock().unwrap();
+        let old_tools: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM tool_documents WHERE project_id=?1",
+                [&old.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_tools, 0);
+        drop(db);
+        assert_eq!(crate::notes::load(&target).unwrap().len(), 1);
+        assert_eq!(crate::notes::load(&target).unwrap()[0].text, "restored");
+    }
+    #[test]
+    fn replacement_rolls_back_deletes_if_an_insert_fails() {
+        let vault = crate::secrets::tests::Memory::default();
+        let target = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let old = target
+            .create("Existing".into(), vec!["/tmp".into()])
+            .unwrap();
+        target.0.lock().unwrap().execute_batch("CREATE TRIGGER fail_restore BEFORE INSERT ON projects WHEN NEW.name='Restored' BEGIN SELECT RAISE(ABORT,'fixture failure'); END;").unwrap();
+        let source = Store::open(std::path::Path::new(":memory:")).unwrap();
+        source
+            .create("Restored".into(), vec!["/tmp".into()])
+            .unwrap();
+        assert!(target
+            .import_app_mode(
+                source.export_app(&vault, false).unwrap(),
+                &vault,
+                ImportMode::Replace
+            )
+            .is_err());
+        assert_eq!(target.list().unwrap()[0].id, old.id);
+    }
     #[test]
     fn restores_all_project_data_with_new_ids_and_portable_secrets() {
         let vault = crate::secrets::tests::Memory::default();
