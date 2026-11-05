@@ -26,6 +26,7 @@ export interface GitSnapshot {
   head: string;
   entries: GitEntry[];
   branches: string[];
+  tracking?: { name: string; ahead: number | null; behind: number | null; gone: boolean } | null;
   remoteBranches?: { name: string; localName: string }[];
   remotes: string[];
   stagedRevision: string;

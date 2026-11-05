@@ -199,12 +199,70 @@ pub struct Snapshot {
     pub entries: Vec<Entry>,
     pub branches: Vec<String>,
     pub remote_branches: Vec<RemoteBranch>,
+    pub tracking: Option<Tracking>,
     pub remotes: Vec<String>,
     pub staged_revision: String,
     pub merging: bool,
     pub history: Vec<Commit>,
     pub stashes: Vec<Stash>,
     pub reverting: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tracking {
+    pub name: String,
+    pub ahead: Option<u64>,
+    pub behind: Option<u64>,
+    pub gone: bool,
+}
+fn tracking(root: &Path, branch: &str) -> Result<Option<Tracking>, String> {
+    if branch == "Detached HEAD" {
+        return Ok(None);
+    }
+    let reference = format!("refs/heads/{branch}");
+    let refs = string(
+        root,
+        &[
+            "for-each-ref",
+            "--format=%(refname)%09%(upstream)%09%(upstream:short)",
+            &reference,
+        ],
+    )?;
+    let Some((upstream, name)) = refs.lines().find_map(|line| {
+        let mut fields = line.split('\t');
+        (fields.next()? == reference).then_some(())?;
+        let upstream = fields.next()?;
+        let name = fields.next()?;
+        (!upstream.is_empty()).then_some((upstream, name))
+    }) else {
+        return Ok(None);
+    };
+    let gone = !output(root, &["rev-parse", "--verify", "--quiet", upstream])?.ok;
+    let counts = if gone {
+        None
+    } else {
+        let comparison = format!("HEAD...{upstream}");
+        let result = output(
+            root,
+            &["rev-list", "--left-right", "--count", &comparison, "--"],
+        )?;
+        if result.ok {
+            let text = String::from_utf8_lossy(&result.stdout);
+            let mut counts = text.split_whitespace();
+            counts
+                .next()
+                .and_then(|ahead| ahead.parse().ok())
+                .zip(counts.next().and_then(|behind| behind.parse().ok()))
+        } else {
+            None
+        }
+    };
+    Ok(Some(Tracking {
+        name: name.into(),
+        ahead: counts.map(|(ahead, _)| ahead),
+        behind: counts.map(|(_, behind)| behind),
+        gone,
+    }))
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -288,7 +346,7 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
         &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
     )?;
     let entries = parse_status(&status)?;
-    let branch = string(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+    let branch: String = string(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
         .unwrap_or_else(|_| "Detached HEAD".into())
         .trim()
         .into();
@@ -360,6 +418,7 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
     Ok(Snapshot {
         stashes: stashes(root)?,
         reverting: output(root, &["rev-parse", "--verify", "REVERT_HEAD"])?.ok,
+        tracking: tracking(root, &branch)?,
         branch,
         head,
         entries,
@@ -1072,6 +1131,67 @@ mod tests {
             },
         )
     }
+    #[test]
+    fn tracking_counts_follow_configured_upstream_and_handle_missing_refs() {
+        let repo = Repo::new();
+        assert!(snapshot(&repo.0).unwrap().tracking.is_none());
+        std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "Base"]).unwrap();
+        assert!(snapshot(&repo.0).unwrap().tracking.is_none());
+        let base = snapshot(&repo.0).unwrap().head;
+        run(&repo.0, &["remote", "add", "origin", "."]).unwrap();
+        run(
+            &repo.0,
+            &["update-ref", "refs/remotes/origin/different-name", &base],
+        )
+        .unwrap();
+        run(
+            &repo.0,
+            &["branch", "--set-upstream-to=origin/different-name"],
+        )
+        .unwrap();
+        let check = |ahead, behind| {
+            let tracking = snapshot(&repo.0).unwrap().tracking.unwrap();
+            assert_eq!(tracking.name, "origin/different-name");
+            assert!(!tracking.gone);
+            assert_eq!(
+                (tracking.ahead, tracking.behind),
+                (Some(ahead), Some(behind))
+            );
+        };
+        check(0, 0);
+        run(&repo.0, &["commit", "--allow-empty", "-m", "Local"]).unwrap();
+        check(1, 0);
+        let local = snapshot(&repo.0).unwrap().head;
+        run(&repo.0, &["switch", "--detach", &base]).unwrap();
+        assert!(snapshot(&repo.0).unwrap().tracking.is_none());
+        run(&repo.0, &["commit", "--allow-empty", "-m", "Remote"]).unwrap();
+        let remote = snapshot(&repo.0).unwrap().head;
+        run(
+            &repo.0,
+            &["update-ref", "refs/remotes/origin/different-name", &remote],
+        )
+        .unwrap();
+        run(&repo.0, &["switch", "main"]).unwrap();
+        check(1, 1);
+        run(
+            &repo.0,
+            &["update-ref", "refs/remotes/origin/different-name", &local],
+        )
+        .unwrap();
+        run(&repo.0, &["reset", "--hard", &base]).unwrap();
+        check(0, 1);
+        run(
+            &repo.0,
+            &["update-ref", "-d", "refs/remotes/origin/different-name"],
+        )
+        .unwrap();
+        let missing = snapshot(&repo.0).unwrap().tracking.unwrap();
+        assert!(missing.gone);
+        assert_eq!((missing.ahead, missing.behind), (None, None));
+    }
+
     #[test]
     fn remote_checkout_tracks_exact_remote_and_preserves_existing_work() {
         let repo = Repo::new();

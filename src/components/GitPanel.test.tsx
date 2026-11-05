@@ -455,3 +455,23 @@ it("applies and drops individually selected stashes using immutable hashes", asy
   await act(async () => document.querySelectorAll('.git-stash-row')[0].querySelectorAll<HTMLButtonElement>('button')[1].click());
   expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action: "stash-drop", path: "stash@{0}", value: "a".repeat(40) }) }));
 });
+
+it.each([
+  [{ name: "origin/master", ahead: 2, behind: 3, gone: false }, "main", "abc", "origin/master · ↑2 ↓3"],
+  [{ name: "origin/master", ahead: 0, behind: 0, gone: false }, "main", "abc", "up to date"],
+  [{ name: "origin/master", ahead: null, behind: null, gone: true }, "main", "abc", "upstream missing"],
+  [{ name: "origin/master", ahead: null, behind: null, gone: false }, "main", "abc", "comparison unavailable"],
+  [null, "main", "abc", "No upstream configured"],
+  [null, "Detached HEAD", "abc", "Detached HEAD · no upstream comparison"],
+  [null, "main", "", "No commits yet · no upstream comparison"],
+])("shows branch tracking state %#", async (tracking, branch, head, expected) => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    const result = await original(command, args);
+    return command === "git_snapshot" ? { ...result, tracking, branch, head } : result;
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  const status = document.querySelector('[aria-label="Branch tracking status"]')!;
+  expect(status.textContent).toContain(expected);
+  expect(status.getAttribute("title")).toContain("Fetch to update");
+});

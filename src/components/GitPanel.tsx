@@ -439,6 +439,29 @@ export default function GitPanel({
             ? "Merge in progress. Resolve conflicts, review staged files, then commit."
             : `${state.head.slice(0, 8) || "No commits yet"} · ${state.entries.length} changed files`}
         </p>}
+        {state && <p
+          className="git-help git-repository-summary"
+          aria-label="Branch tracking status"
+          title="Compared with the locally fetched upstream. Fetch to update remote information."
+        >
+          {state.branch === "Detached HEAD"
+            ? "Detached HEAD · no upstream comparison"
+            : !state.head
+              ? "No commits yet · no upstream comparison"
+              : !state.tracking
+                ? "No upstream configured"
+                : state.tracking.gone
+                  ? `${state.tracking.name} · upstream missing`
+                  : state.tracking.ahead === null || state.tracking.behind === null
+                    ? `${state.tracking.name} · comparison unavailable`
+                    : <>
+                        <span>{state.tracking.name}</span>{" · "}
+                        <span aria-label={`${state.tracking.ahead} commits ahead, ${state.tracking.behind} commits behind`}>
+                          ↑{state.tracking.ahead} ↓{state.tracking.behind}
+                        </span>
+                        {state.tracking.ahead === 0 && state.tracking.behind === 0 ? " · up to date" : ""}
+                      </>}
+        </p>}
       </div>
       {error && <p className="git-help">{error}</p>}
       {busy && (
