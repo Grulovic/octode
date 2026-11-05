@@ -1,3 +1,4 @@
+import "./sidebar-tree.css";
 import { placeApiItem, type ApiDrop } from "../lib/apiOrdering";
 import { useSaveShortcut } from "../lib/saveShortcut";
 import { folderAncestors, orderedFolders } from "../lib/apiFolders";
@@ -448,7 +449,6 @@ export default function ApiWorkspace({
             value={requestSearch}
             onChange={(event) => setRequestSearch(event.target.value)}
           />
-          <span className="search-count">{visibleRequests.length}</span>
           {requestSearch && (
             <button
               type="button"
@@ -515,7 +515,7 @@ export default function ApiWorkspace({
           </button>
         </div>
         </div>
-        <div className="api-request-list" ref={requestList}
+        <div className="api-request-list sidebar-tree-list" ref={requestList}
           onClick={(event) => {
             if (event.target === event.currentTarget) setHighlightedFolder("");
           }}
@@ -529,7 +529,7 @@ export default function ApiWorkspace({
           })
           .map(({ folder, depth }) => (
             <div
-              className={`request-folder ${!folder.id ? "root-requests" : ""} ${dropFolder === folder.id ? "request-folder-drop" : ""}`}
+              className={`request-folder sidebar-tree-folder ${!folder.id ? "root-requests" : ""} ${dropFolder === folder.id ? "request-folder-drop" : ""}`}
               key={folder.id}
               style={{ marginLeft: depth * 14 }}
               role="group"
@@ -564,7 +564,7 @@ export default function ApiWorkspace({
               }}
             >
               {folder.id ? (
-                <div data-api-drop={sortDrop?.kind === "folder" && sortDrop.id === folder.id ? sortDrop.edge : undefined} className={`folder-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false}
+                <div data-api-drop={sortDrop?.kind === "folder" && sortDrop.id === folder.id ? sortDrop.edge : undefined} className={`folder-heading sidebar-tree-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false}
                   onClick={() => { if (!suppressRequestClick.current) setHighlightedFolder(folder.id); }}
                   onMouseDown={(event) => {
                     if (event.button !== 0 || editingFolder === folder.id || (event.target as Element).closest(".folder-edit,.folder-delete,input")) return;
@@ -596,9 +596,9 @@ export default function ApiWorkspace({
                     }}
                   >
                     {!requestQuery && collapsedFolders.includes(folder.id) ? (
-                      <ChevronRight size={18} />
+                      <ChevronRight size={14} />
                     ) : (
-                      <ChevronDown size={18} />
+                      <ChevronDown size={14} />
                     )}
                     {editingFolder !== folder.id && (
                       <span title={folder.name}>{folder.name}</span>
@@ -612,7 +612,7 @@ export default function ApiWorkspace({
                       />
                     )}
                   </button>
-                  <span className="folder-count">{doc.requests.filter((request) => (request.folderId === folder.id || folderAncestors(doc.folders, request.folderId).includes(folder.id)) && visibleRequestIds.has(request.id)).length}</span>
+
                   {editingFolder === folder.id && (
                     <input
                       aria-label="Folder name"
@@ -667,6 +667,7 @@ export default function ApiWorkspace({
                   >
                     <Trash2 size={12} />
                   </button>
+                  <span className="folder-count">{doc.requests.filter((request) => (request.folderId === folder.id || folderAncestors(doc.folders, request.folderId).includes(folder.id)) && visibleRequestIds.has(request.id)).length}</span>
                 </div>
               ) : null}
               {(!!requestQuery ||
@@ -681,7 +682,7 @@ export default function ApiWorkspace({
                   .map((request) => (
                     <div
                       key={request.id}
-                      className={`api-request-row api-route-row ${selected === request.id ? "selected" : ""}`}
+                      className={`api-request-row api-route-row sidebar-tree-row ${selected === request.id ? "selected" : ""}`}
                       data-request-id={request.id}
                       data-api-drop={sortDrop?.kind === "request" && sortDrop.id === request.id ? sortDrop.edge : undefined}
                       draggable={false}
@@ -745,7 +746,7 @@ export default function ApiWorkspace({
                       }}
                     >
                       <button
-                        className="service-list-item"
+                        className="service-list-item sidebar-tree-select"
                         title={request.name}
                         onClick={() => {
                           if (!suppressRequestClick.current) { select(request.id); setHighlightedFolder(request.folderId); }
@@ -757,7 +758,7 @@ export default function ApiWorkspace({
                         >
                           {request.method}
                         </span>
-                        <span className="api-request-name">{request.name}</span>
+                        <span className="api-request-name">{request.name}<small>{request.url || "No URL"}</small></span>
                         {dirtyRequests.has(request.id) && (
                           <span
                             className="tool-unsaved-dot"
@@ -768,21 +769,21 @@ export default function ApiWorkspace({
                         )}
                       </button>
                       <button
-                        className="api-request-action"
+                        className="api-request-action sidebar-tree-action sidebar-tree-duplicate"
                         aria-label={`Duplicate request ${request.name}`}
                         title="Duplicate request"
                         onClick={() => duplicate(request)}
                       >
-                        <Copy size={13} />
+                        <Copy size={14} />
                       </button>
                       <button
-                        className="api-request-action"
+                        className="api-request-action sidebar-tree-action sidebar-tree-delete"
                         aria-label={`Delete request ${request.name}`}
                         title="Delete request"
                         disabled={running}
                         onClick={() => void remove(request)}
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   ))}

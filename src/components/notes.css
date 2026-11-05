@@ -1,3 +1,4 @@
+@import "./sidebar-tree.css";
 .main-workspace.notes-open > :not(.notes-workspace):not(.workspace-terminal-dock):not(.error-banner) { display: none !important; }
 .notes-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--oc-bg); }
 .notes-sidebar { width: 340px; min-width: 320px; max-width: calc(100% - 320px); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--oc-border); }

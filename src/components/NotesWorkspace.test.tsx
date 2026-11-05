@@ -405,3 +405,40 @@ it("retains a failed automatic folder save and retries without saving note text"
     expect(storage.save).not.toHaveBeenCalled();
   } finally { storage.layout.mockReset(); await act(async () => root.unmount()); host.remove(); }
 });
+
+it("sorts Notes folders through group padding and list gaps with pointer dragging", async () => {
+  localStorage.removeItem("octode-layout:notes-collapsed");
+  storage.load.mockResolvedValue([]); storage.layout.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const original = document.elementFromPoint;
+  try {
+    await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
+    await act(async () => model.setFolders([{ id: "one", name: "One" }, { id: "two", name: "Two" }]));
+    const one = host.querySelector<HTMLElement>('[data-note-folder="one"] > .folder-heading')!;
+    const two = host.querySelector<HTMLElement>('[data-note-folder="two"] > .folder-heading')!;
+    vi.spyOn(one, "getBoundingClientRect").mockReturnValue({ top: 10, bottom: 42, height: 32 } as DOMRect);
+    vi.spyOn(two, "getBoundingClientRect").mockReturnValue({ top: 48, bottom: 80, height: 32 } as DOMRect);
+    const group = host.querySelector<HTMLElement>('[data-note-folder="two"]')!;
+    document.elementFromPoint = () => group;
+    await act(async () => {
+      one.querySelector("button")!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 30, clientY: 20 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { clientX: 40, clientY: 79 }));
+    });
+    expect(two.getAttribute("data-note-drop")).toBe("after");
+    await act(async () => window.dispatchEvent(new MouseEvent("pointerup", { clientX: 40, clientY: 79 })));
+    expect(model.folders.map((folder) => folder.id)).toEqual(["two", "one"]);
+    expect(model.folders.find((folder) => folder.id === "one")?.parentId ?? "").toBe("");
+    document.elementFromPoint = () => host.querySelector(".notes-list");
+    await act(async () => {
+      one.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 30, clientY: 20 }));
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 40, clientY: 46 }));
+    });
+    expect(two.getAttribute("data-note-drop")).toBe("before");
+    await act(async () => window.dispatchEvent(new MouseEvent("mouseup", { clientX: 40, clientY: 46 })));
+    expect(model.folders.map((folder) => folder.id)).toEqual(["one", "two"]);
+    await act(async () => { expect(await model.retryLayout()).toBe(true); });
+    expect(model.layoutDirty).toBe(false);
+  } finally { document.elementFromPoint = original; await act(async () => root.unmount()); host.remove(); }
+});

@@ -1,0 +1,36 @@
+/* Notes supplies the common sidebar row, folder and hover-action geometry. */
+.app-shell .sidebar-tree-list { padding: 8px; }
+.app-shell .sidebar-tree-list .sidebar-tree-folder { padding: 0; }
+.app-shell .sidebar-tree-list .sidebar-tree-heading { min-width: 0; border-radius: 4px; }
+.app-shell .sidebar-tree-list .sidebar-tree-heading.selected { background: var(--oc-selection); }
+.app-shell .sidebar-tree-heading > input { min-width: 0; width: 0; flex: 1; }
+.app-shell .sidebar-tree-heading > .folder-count { margin-left: auto; padding: 0 6px; flex: none; text-align: right; }
+.app-shell .sidebar-tree-list .sidebar-tree-heading > :is(.folder-edit,.folder-delete) { display: none; opacity: 1; pointer-events: auto; }
+.app-shell .sidebar-tree-list .sidebar-tree-heading:is(:hover,:focus-within) > :is(.folder-edit,.folder-delete) { display: inline-flex; }
+.app-shell .sidebar-tree-list .sidebar-tree-heading > :is(.folder-edit,.folder-delete) svg { width: 12px; height: 12px; }
+.app-shell .sidebar-tree-heading + .sidebar-tree-row { margin-top: 6px; }
+.app-shell .sidebar-tree-row { display: flex; align-items: center; padding: 0; margin-bottom: 3px; border-radius: 6px; color: var(--oc-text); }
+.app-shell .sidebar-tree-row:hover { background: var(--oc-surface); }
+.app-shell .sidebar-tree-row.selected { background: var(--oc-selection); color: var(--oc-text-strong); }
+.app-shell .sidebar-tree-list .sidebar-tree-row > .sidebar-tree-select { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; height: auto; min-height: 0; padding: 10px; margin: 0; color: inherit; background: transparent; text-align: left; }
+.app-shell .sidebar-tree-select > .api-request-name { font-size: 12px; }
+.app-shell .sidebar-tree-select small { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; color: var(--oc-muted); font-size: 11px; font-weight: 400; line-height: normal; }
+.app-shell .sidebar-tree-list .sidebar-tree-row > .sidebar-tree-action { display: flex; align-items: center; justify-content: center; flex: none; height: 28px; padding: 0; border-radius: 4px; color: var(--oc-muted); }
+.app-shell .sidebar-tree-row > .sidebar-tree-duplicate { width: 24px; opacity: 0; pointer-events: none; }
+.app-shell .sidebar-tree-row:is(:hover,:focus-within) > .sidebar-tree-duplicate { opacity: 1; pointer-events: auto; }
+.app-shell .sidebar-tree-row > .sidebar-tree-delete { width: 28px; margin-right: 6px; }
+.app-shell .sidebar-tree-list .sidebar-tree-duplicate:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-text); }
+.app-shell .sidebar-tree-list .sidebar-tree-delete:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-error); }
+.app-shell .service-api .request-folder > .sidebar-tree-row { margin-left: 10px; width: calc(100% - 10px); }
+.app-shell .service-api .root-requests > .sidebar-tree-row { margin-left: 0; width: 100%; }
+
+/* Match the Notes search bar and the separate folder action strip. */
+.app-shell .service-api .service-sidebar { padding: 0; }
+.app-shell .service-api .api-sidebar-tabs { margin: 0; }
+.app-shell .service-api .api-sidebar-tools { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin: 0; padding: 0; border: 0; }
+.app-shell .service-api .api-sidebar-tools .api-request-search { flex: none; height: auto; min-height: 0; padding: 8px 12px; gap: 6px; border: 0; border-bottom: 1px solid var(--oc-border); border-radius: 0; background: transparent; }
+.app-shell .service-api .api-request-search:focus-within { background: var(--oc-panel); outline: none; box-shadow: none; }
+.app-shell .service-api .api-sidebar-tools .api-request-search > input { flex: 1; width: 0; min-width: 0; height: auto; padding: 4px 0; border: 0; background: transparent; font-size: 12px; }
+.app-shell .service-api .api-sidebar-tools .api-request-search > input:is(:focus,:focus-visible) { outline: none; box-shadow: none; background: transparent; }
+.app-shell .service-api .api-sidebar-tools .api-request-heading { height: 34px; min-height: 34px; padding: 0 10px; border-bottom: 1px solid var(--oc-border); }
+.app-shell .service-api .api-sidebar-tools .api-request-actions-spacer { display: block; }

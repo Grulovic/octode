@@ -2750,7 +2750,7 @@ it("sorts API requests and folders by mouse drag and automatically persists the 
   };
   try {
     await drag(document.querySelector(`[data-request-id="${a.id}"]`)!, document.querySelector(`[data-request-id="${b.id}"]`)!);
-    expect([...document.querySelectorAll('[data-request-folder="one"] .api-request-name')].map((item) => item.textContent)).toEqual(["Second request", "First request"]);
+    expect([...document.querySelectorAll('[data-request-folder="one"] .api-request-name')].map((item) => item.firstChild?.textContent)).toEqual(["Second request", "First request"]);
     const lastSaved = () => writer.mock.calls.filter((call) => call[1] === "api").at(-1)?.[2] as ReturnType<typeof apiDocument>;
     expect(lastSaved().requests.map((item) => item.id)).toEqual([b.id, a.id]);
     const first = document.querySelector('[data-request-folder="one"] > .folder-heading')!;
