@@ -1739,3 +1739,16 @@ input[type="checkbox"]:focus-visible {
 
 .main-workspace.terminal-home-open { overflow: hidden; }
 .terminal-home-open > .dashboard { flex: 1; min-height: 0; overflow: auto; }
+
+.error-banner { min-width: 0; max-width: 100%; }
+.error-banner > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.error-banner > button { flex: none; align-self: flex-start; }
+[data-reorder-tab] { position: relative; user-select: none; -webkit-user-drag: none; }
+[data-reorder-tab][data-drop-edge]::after { content: ""; position: absolute; top: 3px; bottom: 3px; width: 2px; background: var(--oc-accent); pointer-events: none; z-index: 1; }
+[data-reorder-tab][data-drop-edge="before"]::after { left: 0; }
+[data-reorder-tab][data-drop-edge="after"]::after { right: 0; }
+
+.api-request-list [data-api-drop] { position: relative; }
+.api-request-list [data-api-drop]::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--oc-accent); pointer-events: none; }
+.api-request-list [data-api-drop="before"]::after { top: -2px; }
+.api-request-list [data-api-drop="after"]::after { bottom: -2px; }

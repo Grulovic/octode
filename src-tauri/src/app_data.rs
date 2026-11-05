@@ -145,7 +145,7 @@ impl Store {
         let read_notes = |table: &str| -> Result<Vec<crate::notes::Note>, String> {
             let mut statement = tx
                 .prepare(&format!(
-                    "SELECT n.id,n.title,n.text,COALESCE(l.folder_id,'') FROM {table} n LEFT JOIN global_note_locations l ON l.note_id=n.id ORDER BY n.rowid DESC"
+                    "SELECT n.id,n.title,n.text,COALESCE(l.folder_id,'') FROM {table} n LEFT JOIN global_note_locations l ON l.note_id=n.id LEFT JOIN global_note_order o ON o.note_id=n.id ORDER BY COALESCE(o.position,-1),n.rowid DESC"
                 ))
                 .map_err(|e| e.to_string())?;
             let rows = statement
@@ -312,11 +312,26 @@ impl Store {
             .map_err(|e| e.to_string())?;
         }
         // New IDs keep imported credentials isolated from previous references.
-        for note in data.notes.into_iter().rev() {
+        // Put imported copies before existing notes without changing their order.
+        let first_position = tx
+            .query_row(
+                "SELECT MIN(COALESCE(o.position,-1)) FROM global_notes n LEFT JOIN global_note_order o ON o.note_id=n.id",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .map_err(|e| e.to_string())?
+            .unwrap_or(0)
+            - data.notes.len() as i64;
+        for (position, note) in data.notes.into_iter().enumerate() {
             let id = uuid::Uuid::new_v4().to_string();
             tx.execute(
                 "INSERT INTO global_notes(id,title,text) VALUES (?1,?2,?3)",
                 params![id, note.title, note.text],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT INTO global_note_order(note_id,position) VALUES (?1,?2)",
+                params![id, first_position + position as i64],
             )
             .map_err(|e| e.to_string())?;
             tx.execute(
@@ -639,6 +654,32 @@ mod tests {
             .import_app(data, &crate::secrets::tests::Memory::default())
             .is_err());
         assert!(store.list().unwrap().is_empty());
+    }
+    #[test]
+    fn note_order_survives_export_and_merge_import() {
+        let vault = crate::secrets::tests::Memory::default();
+        let source = Store::open(std::path::Path::new(":memory:")).unwrap();
+        source.0.lock().unwrap().execute_batch("INSERT INTO global_notes VALUES ('one','One','first'),('two','Two','second'); INSERT INTO global_note_order VALUES ('one',0),('two',1);").unwrap();
+        let backup = source.export_app(&vault, true).unwrap();
+        assert_eq!(
+            backup
+                .notes
+                .iter()
+                .map(|note| note.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["One", "Two"]
+        );
+        let target = Store::open(std::path::Path::new(":memory:")).unwrap();
+        target.0.lock().unwrap().execute_batch("INSERT INTO global_notes VALUES ('old','Old','existing'); INSERT INTO global_note_order VALUES ('old',0);").unwrap();
+        target.import_app(backup, &vault).unwrap();
+        assert_eq!(
+            crate::notes::load(&target)
+                .unwrap()
+                .iter()
+                .map(|note| note.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["One", "Two", "Old"]
+        );
     }
     #[test]
     fn notes_round_trip_as_copies_and_legacy_backups_remain_valid() {

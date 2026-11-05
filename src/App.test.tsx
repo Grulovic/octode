@@ -2729,3 +2729,35 @@ it("Replace import refuses unsaved Notes and parked API drafts before applying t
   await act(async () => nextReplace.click());
   expect(apply).not.toHaveBeenCalled(); // API stays dirty even while Code is visible.
 });
+
+it("sorts API requests and folders by mouse drag and automatically persists the order", async () => {
+  const a = { ...apiRequest(), name: "First request", folderId: "one" }, b = { ...apiRequest(), name: "Second request", folderId: "one" };
+  const original = toolsBridge.loadTool;
+  vi.spyOn(toolsBridge, "loadTool").mockImplementation(async (project, tool, fallback) => tool === "api" ? {
+    ...apiDocument(), folders: [{ id: "one", name: "First" }, { id: "two", name: "Second" }], requests: [a, b],
+  } as any : original(project, tool, fallback));
+  const writer = vi.spyOn(toolsBridge, "saveTool");
+  await enterCode(); await click('[aria-label="API"]');
+  await waitFor(() => document.querySelector(`[data-request-id="${a.id}"]`));
+  const previous = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
+  let target: Element | null = null;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => target });
+  const drag = async (source: Element, destination: Element) => {
+    target = destination;
+    await act(async () => source.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true, clientX: 1, clientY: 1 })));
+    await act(async () => window.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 39 })));
+    await act(async () => window.dispatchEvent(new MouseEvent("mouseup", { clientX: 100, clientY: 39 })));
+  };
+  try {
+    await drag(document.querySelector(`[data-request-id="${a.id}"]`)!, document.querySelector(`[data-request-id="${b.id}"]`)!);
+    expect([...document.querySelectorAll('[data-request-folder="one"] .api-request-name')].map((item) => item.textContent)).toEqual(["Second request", "First request"]);
+    const lastSaved = () => writer.mock.calls.filter((call) => call[1] === "api").at(-1)?.[2] as ReturnType<typeof apiDocument>;
+    expect(lastSaved().requests.map((item) => item.id)).toEqual([b.id, a.id]);
+    const first = document.querySelector('[data-request-folder="one"] > .folder-heading')!;
+    const second = document.querySelector('[data-request-folder="two"] > .folder-heading')!;
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 40, height: 40 } as DOMRect);
+    await drag(first, second);
+    expect(lastSaved().folders.map((item) => item.id)).toEqual(["two", "one"]);
+    expect([...document.querySelectorAll('.request-folder:not(.root-requests)')].map((item) => item.getAttribute("data-request-folder"))).toEqual(["two", "one"]);
+  } finally { if (previous) Object.defineProperty(document, "elementFromPoint", previous); else Reflect.deleteProperty(document, "elementFromPoint"); }
+});

@@ -1,3 +1,4 @@
+import { useTabReorder, moveTab } from "../hooks/useTabReorder";
 import { useSaveShortcut } from "../lib/saveShortcut";
 import MarkdownToolbar from "./MarkdownToolbar";
 import type { MarkdownCommand } from "../lib/markdownEditing";
@@ -247,6 +248,10 @@ export default function CodeWorkspace({
     },
     [],
   );
+
+  const tabReorder = useTabReorder((source, target, after) => {
+    updateDocuments((items) => moveTab(items, source, target, after, (item) => item.path));
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -1224,11 +1229,12 @@ export default function CodeWorkspace({
           >
             <ArrowRight size={14} />
           </button>
-          <div className="document-tabs">
+          <div className="document-tabs" ref={tabReorder.container}>
             {documents.map((item) => (
               <div
                 className={`document-tab ${active === item.path ? "active" : ""}`}
                 key={item.path}
+                {...tabReorder.tabProps(item.path)}
                 onContextMenu={(event) => {
                   event.preventDefault();
                   showFileMenu(
@@ -1238,6 +1244,7 @@ export default function CodeWorkspace({
                 }}
                 onMouseDown={(event) => {
                   if (event.button === 1) event.preventDefault();
+                  tabReorder.tabProps(item.path).onMouseDown(event);
                 }}
                 onMouseUp={(event) =>
                   middleClose(event, () => {

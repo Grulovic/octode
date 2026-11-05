@@ -384,3 +384,32 @@ it("uses command text as the dropdown title when its optional name is blank", as
     host.remove(); localStorage.clear();
   }
 });
+
+it("keeps terminal numbers attached to their sessions after dragging and closing tabs", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const original = document.elementFromPoint;
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  try {
+    await act(async () => root.render(<TerminalPanel project={{ id: "p", name: "P", roots: ["/project"], updatedAt: 0 }} initialRoot="/project" visible onError={() => {}} onHide={() => {}} />));
+    await chooseFolder(host, "New terminal", "project");
+    const tabs = () => [...host.querySelectorAll<HTMLElement>(".local-terminal-tabs > div")];
+    const labels = () => tabs().map((tab) => tab.querySelector(".terminal-tab-label")!.textContent!.trim());
+    const [first, second] = tabs();
+    document.elementFromPoint = () => second;
+    await act(async () => {
+      first.querySelector("button")!.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true, clientX: 5 }));
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 100 }));
+      window.dispatchEvent(new MouseEvent("mouseup", { clientX: 100 }));
+    });
+    expect(labels()).toEqual(["project 2", "project 1"]);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close terminal 1"]')!.click());
+    expect(labels()).toEqual(["project 2"]);
+    await chooseFolder(host, "New terminal", "project");
+    expect(labels()).toEqual(["project 2", "project 3"]);
+  } finally {
+    document.elementFromPoint = original;
+    confirm.mockRestore();
+    await act(async () => root.unmount()); host.remove();
+  }
+});

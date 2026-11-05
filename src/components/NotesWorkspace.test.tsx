@@ -6,10 +6,10 @@ import NotesWorkspace, { NotesProvider, useNotes } from "./NotesWorkspace";
 import { createWorkspaceRuntime } from "../lib/workspaceRegistry";
 import { waitForPendingToolSaves } from "../lib/toolSaves";
 import type { Note } from "../lib/notes";
-const storage = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), delete: vi.fn(), export: vi.fn(), readPaths: vi.fn(), readFiles: vi.fn() }));
+const storage = vi.hoisted(() => ({ layout: vi.fn(), load: vi.fn(), save: vi.fn(), delete: vi.fn(), export: vi.fn(), readPaths: vi.fn(), readFiles: vi.fn() }));
 vi.mock("../lib/noteFiles", () => ({ pickNoteFiles: vi.fn(), readNotePaths: storage.readPaths, readNoteFiles: storage.readFiles }));
 vi.mock("../lib/export", () => ({ exportText: storage.export }));
-vi.mock("../lib/notes", () => ({ loadNotes: storage.load, loadNoteFolders: async () => [], saveNotesWorkspace: async (_folders: unknown, _notes: unknown, note: Note) => note ? storage.save(note) : undefined, registerNotesBackup: () => () => {}, saveNote: storage.save, deleteNote: storage.delete, noteLanguage: () => "plaintext", noteFilename: (title: string) => title || "Untitled note.txt" }));
+vi.mock("../lib/notes", () => ({ loadNotes: storage.load, loadNoteFolders: async () => [], saveNotesWorkspace: async (folders: unknown, notes: unknown, note: Note) => { storage.layout(folders, notes, note); return note ? storage.save(note) : undefined; }, registerNotesBackup: () => () => {}, saveNote: storage.save, deleteNote: storage.delete, noteLanguage: () => "plaintext", noteFilename: (title: string) => title || "Untitled note.txt" }));
 vi.mock("./PreviewEditor", () => ({ default: () => <div>Plain text editor</div> }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 it("keeps all note drafts globally and only acknowledges the version explicitly saved", async () => {
@@ -61,6 +61,9 @@ it("retains drafts and reports a failed save so it can be retried", async () => 
     await act(async () => { expect(await model.save()).toBe(false); });
     expect(model.note?.text).toBe("keep me");
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("Disk full");
+    await act(async () => (host.querySelector('[aria-label="Dismiss note error"]') as HTMLButtonElement).click());
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(model.note?.text).toBe("keep me");
     expect(runtime.hasUnsavedSettings()).toBe(true);
     storage.save.mockImplementation(async (note) => note);
     await act(async () => { expect(await model.save()).toBe(true); });
@@ -308,4 +311,97 @@ it("Cmd/Ctrl+N creates a draft in the selected folder only while Notes is active
     await act(async () => press({ metaKey: false, ctrlKey: true }));
     expect(model.notes).toHaveLength(3);
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("duplicates the current draft into the same folder without saving", async () => {
+  storage.load.mockResolvedValue([{ id: "original", title: "query.sql", text: "select 1;", folderId: "folder" }]);
+  storage.save.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
+    await act(async () => { model.setFolders([{ id: "folder", name: "Queries", parentId: "" }]); model.update({ text: "select 2;" }); });
+    await act(async () => (host.querySelector('[aria-label="Duplicate note query.sql"]') as HTMLButtonElement).click());
+    expect(model.notes).toHaveLength(2);
+    expect(model.note).toMatchObject({ title: "query.sql", text: "select 2;", folderId: "folder" });
+    expect(model.active).not.toBe("original");
+    expect(model.isDirty(model.note!)).toBe(true);
+    expect(storage.save).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("autosaves dragged note and folder order while leaving edited note text unsaved", async () => {
+  localStorage.removeItem("octode-layout:notes-collapsed");
+  storage.load.mockResolvedValue([{ id: "a", title: "A", text: "saved", folderId: "work" }, { id: "b", title: "B", text: "other", folderId: "work" }]);
+  storage.save.mockClear(); storage.layout.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const runtime = createWorkspaceRuntime();
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const original = document.elementFromPoint;
+  const settle = async () => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); }); };
+  const drag = async (source: Element, target: Element, y = 39) => {
+    document.elementFromPoint = () => target;
+    await act(async () => {
+      source.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: y }));
+      window.dispatchEvent(new MouseEvent("mouseup", { clientX: 100, clientY: y }));
+    });
+  };
+  try {
+    await act(async () => root.render(<NotesProvider runtime={runtime}><Harness /></NotesProvider>));
+    await act(async () => model.setFolders([{ id: "work", name: "Work" }, { id: "personal", name: "Personal" }, { id: "child", name: "Child", parentId: "work" }]));
+    await settle();
+    expect(model.layoutDirty).toBe(false);
+    storage.layout.mockClear();
+    await act(async () => model.update({ title: "Draft title", text: "unsaved text" }));
+    await settle();
+    expect(storage.layout).not.toHaveBeenCalled();
+    await drag(host.querySelector('[data-note-id="a"]')!, host.querySelector('[data-note-id="b"]')!);
+    expect(model.notes.map((note) => note.id)).toEqual(["b", "a"]);
+    await settle();
+    expect(model.layoutDirty).toBe(false);
+    expect(storage.layout.mock.calls.at(-1)?.[2]).toBeUndefined();
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(model.notes.find((note) => note.id === "a")?.text).toBe("unsaved text");
+    const work = host.querySelector('[data-note-folder="work"] > .folder-heading')!;
+    const personal = host.querySelector('[data-note-folder="personal"] > .folder-heading')!;
+    vi.spyOn(personal, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 40, height: 40 } as DOMRect);
+    await drag(work, personal);
+    expect(model.folders.map((folder) => folder.id)).toEqual(["personal", "work", "child"]);
+    expect(model.folders.find((folder) => folder.id === "child")?.parentId).toBe("work");
+    // Flush on quit/restart must also include a layout waiting for its debounce.
+    await act(async () => runtime.flushAllLayouts());
+    expect(model.layoutDirty).toBe(false);
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(runtime.hasUnsavedSettings()).toBe(true);
+    const child = host.querySelector('[data-note-folder="child"] > .folder-heading')!;
+    vi.spyOn(child, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 40, height: 40 } as DOMRect);
+    await drag(work, child, 20);
+    expect(model.folders.find((folder) => folder.id === "work")?.parentId ?? "").toBe("");
+  } finally { document.elementFromPoint = original; await act(async () => root.unmount()); host.remove(); }
+});
+
+it("retains a failed automatic folder save and retries without saving note text", async () => {
+  storage.load.mockResolvedValue([{ id: "a", title: "A", text: "saved" }]);
+  storage.layout.mockReset().mockImplementationOnce(() => { throw new Error("Disk full"); });
+  storage.save.mockClear();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const runtime = createWorkspaceRuntime();
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={runtime}><Harness /></NotesProvider>));
+    await act(async () => { model.setFolders([{ id: "folder", name: "New folder" }]); model.update({ text: "unsaved" }); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+    expect(model.layoutSaveFailed).toBe(true);
+    expect(model.error).toContain("Disk full");
+    expect(runtime.hasUnsavedSettings()).toBe(true);
+    expect(storage.layout).toHaveBeenCalledTimes(1);
+    await act(async () => { expect(await model.retryLayout()).toBe(true); });
+    expect(model.layoutDirty).toBe(false);
+    expect(model.notes[0].text).toBe("unsaved");
+    expect(storage.save).not.toHaveBeenCalled();
+  } finally { storage.layout.mockReset(); await act(async () => root.unmount()); host.remove(); }
 });

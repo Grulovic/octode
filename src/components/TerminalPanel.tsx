@@ -1,3 +1,4 @@
+import { useTabReorder, moveTab } from "../hooks/useTabReorder";
 import CustomSelect from "./CustomSelect";
 import "./code-tools.css";
 import "./terminal.css";
@@ -51,9 +52,13 @@ export default function TerminalPanel({
     "octode-layout:terminal-height",
     368,
   );
+  const nextTabNumber = useRef(2);
   const [tabs, setTabs] = useState<
-    { id: string; root: string; generation: number; startupCommand?: string }[]
-  >(() => [{ id: crypto.randomUUID(), root: initialRoot, generation: 0 }]);
+    { id: string; root: string; number: number; generation: number; startupCommand?: string }[]
+  >(() => [{ id: crypto.randomUUID(), root: initialRoot, number: 1, generation: 0 }]);
+  const tabReorder = useTabReorder((source, target, after) => {
+    setTabs((items) => moveTab(items, source, target, after, (item) => item.id));
+  });
   const [active, setActive] = useState<string>(() => tabs[0].id);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [activity, setActivity] = useState<Record<string, boolean>>({});
@@ -62,7 +67,7 @@ export default function TerminalPanel({
   const current = tabs.find((item) => item.id === active);
   const add = (root = initialRoot) => {
     if (tabs.length >= 6) return;
-    const tab = { id: crypto.randomUUID(), root, generation: 0 };
+    const tab = { id: crypto.randomUUID(), root, number: nextTabNumber.current++, generation: 0 };
     setTabs((previous) => [...previous, tab]);
     setActive(tab.id);
   };
@@ -113,6 +118,7 @@ export default function TerminalPanel({
       const tab = {
         id: crypto.randomUUID(),
         root,
+        number: nextTabNumber.current++,
         generation: 0,
         startupCommand: command,
       };
@@ -164,13 +170,15 @@ export default function TerminalPanel({
       />
       <div className="terminal-toolbar">
         <span className="terminal-heading"><TerminalSquare size={14} />Terminal</span>
-        <div className="local-terminal-tabs">
-          {tabs.map((tab, index) => (
+        <div className="local-terminal-tabs" ref={tabReorder.container}>
+          {tabs.map((tab) => (
             <div
               key={tab.id}
+              {...tabReorder.tabProps(tab.id)}
               className={active === tab.id ? "selected" : ""}
               onMouseDown={(event) => {
                 if (event.button === 1) event.preventDefault();
+                tabReorder.tabProps(tab.id).onMouseDown(event);
               }}
               onMouseUp={(event) =>
                 middleClose(event, () => {
@@ -186,11 +194,11 @@ export default function TerminalPanel({
               <button title={tab.root} onClick={() => setActive(tab.id)}>
                 <span className={`terminal-tab-dot ${activity[tab.id] ? "terminal-output-dot" : ""}`} title={activity[tab.id] ? "New terminal output" : undefined} data-connected={statuses[tab.id] === "Connected"} aria-label={statuses[tab.id] ?? "Starting shell"} />
                 <span className="terminal-tab-label">
-                  {filename(tab.root)} {index + 1}
+                  {filename(tab.root)} {tab.number}
                 </span>
               </button>
               <button
-                aria-label={`Close terminal ${index + 1}`}
+                aria-label={`Close terminal ${tab.number}`}
                 onClick={() => void close(tab.id)}
               >
                 <X size={11} />

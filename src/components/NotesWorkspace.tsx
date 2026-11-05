@@ -1,7 +1,7 @@
 import { useSaveShortcut } from "../lib/saveShortcut";
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { FileText, WrapText } from "lucide-react";
-import { Plus, Save, Search } from "./DesignIcons";
+import { Plus, Save, Search, X } from "./DesignIcons";
 import { desktop } from "../lib/bridge";
 import { loadNotes, loadNoteFolders, registerNotesBackup, saveNotesWorkspace, deleteNote, noteLanguage, noteFilename, type Note, type NoteFolder } from "../lib/notes";
 import { disposeRetainedEditorModel } from "../lib/retainedEditorModels";
@@ -27,14 +27,25 @@ function useNotesModel(runtime: WorkspaceRuntime) {
   const currentFolders = useRef(folders);
   const savedFolders = useRef<NoteFolder[]>([]);
   const setFolders = (items: NoteFolder[]) => { currentFolders.current = items; renderFolders(items); };
-  const layoutDirty = () => JSON.stringify(currentFolders.current) !== JSON.stringify(savedFolders.current)
-    || current.current.some((note) => saved.current.has(note.id) && (note.folderId ?? "") !== (saved.current.get(note.id)?.folderId ?? ""));
+  const savedOrder = useRef<string[]>([]);
+  const order = (items: Note[]) => items.filter((item) => saved.current.has(item.id)).map((item) => item.id);
+  const layoutKey = () => JSON.stringify([currentFolders.current, current.current.map(({ id, folderId }) => ({ id, folderId: folderId ?? "" }))]);
+  const failedLayout = useRef<string | null>(null);
+  const layoutWriter = useRef<() => Promise<boolean>>(async () => true);
+  const layoutDirty = () => {
+    const ids = new Set(current.current.map((item) => item.id));
+    return JSON.stringify(order(current.current)) !== JSON.stringify(savedOrder.current.filter((id) => ids.has(id)))
+      || JSON.stringify(currentFolders.current) !== JSON.stringify(savedFolders.current)
+      || current.current.some((note) => saved.current.has(note.id) && (note.folderId ?? "") !== (saved.current.get(note.id)?.folderId ?? ""));
+  };
 
   const current = useRef(notes);
   const saved = useRef(new Map<string, Note>());
   const [active, setActive] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, renderError] = useState("");
+  const [errorDismissed, setErrorDismissed] = useState(false);
+  const setError = (message: string) => { renderError(message); setErrorDismissed(false); };
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const pending = useRef<Promise<boolean> | null>(null);
@@ -46,15 +57,15 @@ function useNotesModel(runtime: WorkspaceRuntime) {
   useEffect(() => () => { for (const note of current.current) disposeRetainedEditorModel(`notes://${note.id}.txt`); }, []);
   useEffect(() => registerNotesBackup(() => loading ? null : { notes: current.current, noteFolders: currentFolders.current }), [loading]);
   const dirty = () => layoutDirty() || current.current.some((note) => !same(note, saved.current.get(note.id)));
-  useEffect(() => runtime.register("global-notes", { saveCode: async () => true, flushLayout: async () => {}, hasUnsavedSettings: dirty }), [runtime]);
-  useEffect(() => registerPendingToolSave("global-notes", () => pending.current ?? Promise.resolve(true)), []);
+  useEffect(() => runtime.register("global-notes", { saveCode: async () => true, flushLayout: async () => { if (!(await layoutWriter.current())) throw new Error("Could not save Notes layout"); }, hasUnsavedSettings: dirty }), [runtime]);
+  useEffect(() => registerPendingToolSave("global-notes", () => layoutWriter.current()), []);
   useEffect(() => {
     let gone = false;
     setLoading(true); setError("");
     void Promise.all([loadNotes(), loadNoteFolders()]).then(([items, loadedFolders]) => {
       if (gone) return;
       setFolders(loadedFolders); savedFolders.current = loadedFolders;
-      saved.current = new Map(items.map((note) => [note.id, note]));
+      saved.current = new Map(items.map((note) => [note.id, note])); savedOrder.current = items.map((note) => note.id);
       setNotes(items); setActive(items[0]?.id ?? ""); setLoading(false);
     }).catch((reason) => { if (!gone) { setError(String(reason)); setLoading(false); } });
     return () => { gone = true; };
@@ -64,7 +75,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
       if ((event as CustomEvent).detail?.mode === "replace") {
         setFolders(loadedFolders); savedFolders.current = loadedFolders;
         for (const note of current.current) disposeRetainedEditorModel(`notes://${note.id}.txt`);
-        saved.current = new Map(items.map((note) => [note.id, note]));
+        saved.current = new Map(items.map((note) => [note.id, note])); savedOrder.current = items.map((note) => note.id);
         setNotes(items); setActive(items[0]?.id ?? ""); setSearch("");
         return;
       }
@@ -73,6 +84,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
       savedFolders.current = [...savedFolders.current, ...addedFolders];
       const additions = items.filter((item) => !current.current.some((note) => note.id === item.id));
       for (const item of additions) saved.current.set(item.id, item);
+      savedOrder.current = [...additions.map((item) => item.id), ...savedOrder.current];
       setNotes([...additions, ...current.current]);
     }).catch((reason) => setError(String(reason))); };
     window.addEventListener("octode-app-data-imported", imported);
@@ -84,16 +96,18 @@ function useNotesModel(runtime: WorkspaceRuntime) {
   };
   const create = (folderId = currentFolders.current.some((folder) => folder.id === creationFolder) ? creationFolder : "") => addCopies([{ id: crypto.randomUUID(), title: "", text: "", folderId }]);
   const update = (patch: Partial<Pick<Note, "title" | "text" | "folderId">>) => setNotes(current.current.map((note) => note.id === active ? { ...note, ...patch } : note));
-  const save = (): Promise<boolean> => {
-    if (pending.current) return pending.current;
+  const save = (layoutOnly = false): Promise<boolean> => {
+    if (pending.current) return pending.current.then((ok) => ok ? save(layoutOnly) : false);
     const snapshot = current.current.find((note) => note.id === active);
-    const noteToSave = snapshot && !same(snapshot, saved.current.get(snapshot.id)) ? snapshot : undefined;
+    const noteToSave = !layoutOnly && snapshot && !same(snapshot, saved.current.get(snapshot.id)) ? snapshot : undefined;
     if (!noteToSave && !layoutDirty()) return Promise.resolve(true);
     const folderSnapshot = currentFolders.current;
     const noteSnapshot = current.current;
+    const layoutSnapshot = layoutKey();
     setSaving(true); setError("");
     const job = saveNotesWorkspace(folderSnapshot, noteSnapshot, noteToSave).then((result) => {
       savedFolders.current = folderSnapshot;
+      failedLayout.current = null;
       for (const item of noteSnapshot) {
         const previous = saved.current.get(item.id);
         if (previous) saved.current.set(item.id, { ...previous, folderId: item.folderId });
@@ -103,11 +117,21 @@ function useNotesModel(runtime: WorkspaceRuntime) {
         // Keep edits made while this save was in flight.
         setNotes(current.current.map((note) => note === noteToSave ? result : note));
       } else setNotes([...current.current]);
+      savedOrder.current = order(noteSnapshot);
       return true;
-    }).catch((reason) => { setError(`Could not save note: ${String(reason)}. Your draft is still open.`); return false; }).finally(() => { pending.current = null; setSaving(false); });
+    }).catch((reason) => { failedLayout.current = layoutSnapshot; setError(layoutOnly ? `Could not save Notes folders or order: ${String(reason)}. Your changes are still open.` : `Could not save note: ${String(reason)}. Your draft is still open.`); return false; }).finally(() => { pending.current = null; setSaving(false); });
     pending.current = job;
     return job;
   };
+  layoutWriter.current = async () => {
+    if (pending.current && !(await pending.current)) return false;
+    return layoutDirty() ? save(true) : true;
+  };
+  useEffect(() => {
+    if (loading || saving || deleting || !layoutDirty() || failedLayout.current === layoutKey()) return;
+    const timer = setTimeout(() => { void layoutWriter.current(); }, 400);
+    return () => clearTimeout(timer);
+  }, [notes, folders, loading, saving, deleting]);
   const remove = (id: string): Promise<boolean> => {
     if (pending.current) return pending.current;
     const target = current.current.find((item) => item.id === id);
@@ -129,7 +153,7 @@ function useNotesModel(runtime: WorkspaceRuntime) {
     return job;
   };
   const note = notes.find((item) => item.id === active);
-  return { notes, creationFolder, setCreationFolder, folders, setFolders, setNotes, layoutDirty: layoutDirty(), note, active, setActive, loading, error, saving, deleting, save, remove, create, addCopies, update, dirty: dirty(), isFolderDirty: (folder: NoteFolder) => JSON.stringify(folder) !== JSON.stringify(savedFolders.current.find((item) => item.id === folder.id)), isDirty: (item: Note) => !same(item, saved.current.get(item.id)), retry: () => reload((value) => value + 1), visible, setVisible, wrap, setWrap, markdown, setMarkdown, search, setSearch };
+  return { notes, creationFolder, setCreationFolder, folders, setFolders, setNotes, layoutDirty: layoutDirty(), note, active, setActive, loading, error, errorDismissed, layoutSaveFailed: !!failedLayout.current && layoutDirty(), retryLayout: () => layoutWriter.current(), dismissError: () => setErrorDismissed(true), saving, deleting, save, remove, create, addCopies, update, dirty: dirty(), isFolderDirty: (folder: NoteFolder) => JSON.stringify(folder) !== JSON.stringify(savedFolders.current.find((item) => item.id === folder.id)), isDirty: (item: Note) => !same(item, saved.current.get(item.id)), retry: () => reload((value) => value + 1), visible, setVisible, wrap, setWrap, markdown, setMarkdown, search, setSearch };
 }
 const NotesContext = createContext<ReturnType<typeof useNotesModel> | null>(null);
 export function NotesProvider({ runtime, children }: { runtime: WorkspaceRuntime; children: ReactNode }) {
@@ -229,7 +253,7 @@ export default function NotesWorkspace() {
     </aside>
     <PanelResize target={sidebar} size={sidebarWidth} onResize={setSidebarWidth} minSize={320} label="Resize Notes sidebar" />
     <div className="notes-main">
-      <header>{note ? <input aria-label="Note title" placeholder="Untitled note" value={note.title} readOnly={model.deleting} maxLength={200} onChange={(event) => model.update({ title: event.target.value })} /> : <strong>Notes</strong>}<span className="notes-save-state">{model.saving ? "Saving…" : model.layoutDirty || (note && model.isDirty(note)) ? "Unsaved changes" : "Saved"}</span><button className="primary-button" disabled={model.loading || model.saving || model.deleting || (!model.layoutDirty && (!note || !model.isDirty(note)))} onClick={() => void model.save()}><Save size={14} />Save</button><button className="secondary-button notes-save-as" disabled={!note || model.loading || exporting} onClick={() => void saveAs()}>{exporting ? "Saving file…" : "Save as…"}</button></header>
+      <header>{note ? <input aria-label="Note title" placeholder="Untitled note" value={note.title} readOnly={model.deleting} maxLength={200} onChange={(event) => model.update({ title: event.target.value })} /> : <strong>Notes</strong>}<span className="notes-save-state">{model.saving ? "Saving…" : note && model.isDirty(note) ? "Unsaved changes" : model.layoutSaveFailed ? "Layout not saved" : model.layoutDirty ? "Saving layout…" : "Saved"}</span><button className="primary-button" disabled={model.loading || model.saving || model.deleting || (!note || !model.isDirty(note))} onClick={() => void model.save()}><Save size={14} />Save</button><button className="secondary-button notes-save-as" disabled={!note || model.loading || exporting} onClick={() => void saveAs()}>{exporting ? "Saving file…" : "Save as…"}</button></header>
       <div className="notes-toolbar" role="toolbar" aria-label="Note tools">
         <span>{note ? syntax : "Notes"}</span>
         <div className="notes-toolbar-actions">
@@ -239,9 +263,9 @@ export default function NotesWorkspace() {
         </div>
       </div>
       {note && model.markdown && <MarkdownToolbar key={note.id} disabled={model.loading || model.deleting} preview={markdownPreview} onPreview={setMarkdownPreview} onCommand={setMarkdownCommand} />}
-      {importError && <div className="error-banner" role="alert">{importError}</div>}
-      {exportError && <div className="error-banner" role="alert">{exportError}</div>}
-      {model.error && <div className="error-banner" role="alert">{model.error}{!model.notes.length && <button onClick={model.retry}>Retry</button>}</div>}
+      {importError && <div className="error-banner" role="alert"><span>{importError}</span><button aria-label="Dismiss import error" onClick={() => setImportError("")}><X size={16} /></button></div>}
+      {exportError && <div className="error-banner" role="alert"><span>{exportError}</span><button aria-label="Dismiss export error" onClick={() => setExportError("")}><X size={16} /></button></div>}
+      {model.error && !model.errorDismissed && <div className="error-banner" role="alert"><span>{model.error}</span>{!model.notes.length && !model.layoutSaveFailed && <button onClick={model.retry}>Retry</button>}{model.layoutSaveFailed && <button onClick={() => void model.retryLayout()}>Retry</button>}<button aria-label="Dismiss note error" onClick={model.dismissError}><X size={16} /></button></div>}
       {model.loading ? <div className="loading">Loading notes…</div> : note ? <><div className="notes-editor" style={showingPreview ? { display: "none" } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingPreview && <MarkdownPreview text={note.text} />}</> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={() => model.create()}><Plus size={14} />New note</button></div>}
       {note && <footer>{note.text.split("\n").length} lines · {note.text.length} characters<span>{syntax} · {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}S to save</span></footer>}
     </div>

@@ -15,7 +15,7 @@ pub struct Note {
 pub(crate) fn load(store: &Store) -> Result<Vec<Note>, String> {
     let db = store.0.lock().map_err(|error| error.to_string())?;
     let mut statement = db
-        .prepare("SELECT n.id,n.title,n.text,COALESCE(l.folder_id,'') FROM global_notes n LEFT JOIN global_note_locations l ON l.note_id=n.id ORDER BY n.rowid DESC")
+        .prepare("SELECT n.id,n.title,n.text,COALESCE(l.folder_id,'') FROM global_notes n LEFT JOIN global_note_locations l ON l.note_id=n.id LEFT JOIN global_note_order o ON o.note_id=n.id ORDER BY COALESCE(o.position,-1),n.rowid DESC")
         .map_err(|error| error.to_string())?;
     let notes = statement
         .query_map([], |row| {
@@ -262,12 +262,15 @@ fn save_workspace(
         )
         .map_err(|e| e.to_string())?;
     }
-    for location in locations {
+    for location in &locations {
         tx.execute("INSERT INTO global_note_locations(note_id,folder_id) SELECT id,?2 FROM global_notes WHERE id=?1 ON CONFLICT(note_id) DO UPDATE SET folder_id=excluded.folder_id", params![location.id,location.folder_id]).map_err(|e| e.to_string())?;
     }
     if let Some(ref note) = note {
         tx.execute("INSERT INTO global_notes(id,title,text) VALUES (?1,?2,?3) ON CONFLICT(id) DO UPDATE SET title=excluded.title,text=excluded.text", params![note.id,note.title,note.text]).map_err(|e| e.to_string())?;
         tx.execute("INSERT INTO global_note_locations(note_id,folder_id) VALUES (?1,?2) ON CONFLICT(note_id) DO UPDATE SET folder_id=excluded.folder_id", params![note.id,note.folder_id]).map_err(|e| e.to_string())?;
+    }
+    for (position, location) in locations.iter().enumerate() {
+        tx.execute("INSERT INTO global_note_order(note_id,position) SELECT id,?2 FROM global_notes WHERE id=?1 ON CONFLICT(note_id) DO UPDATE SET position=excluded.position", params![location.id,position as i64]).map_err(|e| e.to_string())?;
     }
     if tx.query_row("SELECT COUNT(*) FROM global_note_locations WHERE folder_id != '' AND folder_id NOT IN (SELECT id FROM global_note_folders)", [], |row| row.get::<_, i64>(0)).map_err(|e| e.to_string())? != 0 { return Err("A note still references a removed folder".into()); }
     tx.commit().map_err(|e| e.to_string())?;
@@ -290,6 +293,45 @@ pub fn save_notes_workspace(
 #[cfg(test)]
 mod folder_tests {
     use super::*;
+    #[test]
+    fn saves_note_order_without_saving_draft_text() {
+        let store = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let one = Note {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: "One".into(),
+            text: "saved".into(),
+            folder_id: String::new(),
+        };
+        let two = Note {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: "Two".into(),
+            ..one.clone()
+        };
+        save(&store, one.clone()).unwrap();
+        save(&store, two.clone()).unwrap();
+        assert_eq!(load(&store).unwrap(), vec![two.clone(), one.clone()]);
+        save_workspace(
+            &store,
+            vec![],
+            vec![
+                NoteLocation {
+                    id: one.id.clone(),
+                    folder_id: String::new(),
+                },
+                NoteLocation {
+                    id: two.id.clone(),
+                    folder_id: String::new(),
+                },
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(load(&store).unwrap(), vec![one.clone(), two.clone()]);
+        let mut edited = two.clone();
+        edited.text = "updated".into();
+        save(&store, edited.clone()).unwrap();
+        assert_eq!(load(&store).unwrap(), vec![one, edited]);
+    }
     #[test]
     fn saves_layout_without_saving_other_note_text_and_rejects_cycles_atomically() {
         let store = Store::open(std::path::Path::new(":memory:")).unwrap();

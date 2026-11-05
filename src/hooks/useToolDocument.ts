@@ -41,14 +41,16 @@ export function useToolDocument<T extends ToolDocument>(
     () => toolChanges(document, saved),
     [document, saved],
   );
-  const save = useCallback((): Promise<boolean> => {
-    if (queue.current) return queue.current;
+  const persist = useCallback((selectSnapshot?: (current: T, saved: T) => T): Promise<boolean> => {
+    if (queue.current && !selectSnapshot) return queue.current;
+    const previous = queue.current;
     if (!loaded.current) return Promise.resolve(false);
     const job = (async () => {
+      if (previous && !(await previous)) return false;
       if (alive.current) setSaving(true);
       try {
-        if (dirtyDraft(current.current, baseline.current)) {
-          const snapshot = current.current;
+        const snapshot = selectSnapshot ? selectSnapshot(current.current, baseline.current) : current.current;
+        if (dirtyDraft(snapshot, baseline.current)) {
           const result = await saveTool(project, tool, snapshot);
           baseline.current = result;
           if (alive.current) setSaved(result);
@@ -75,6 +77,9 @@ export function useToolDocument<T extends ToolDocument>(
     });
     return job;
   }, [project, tool]);
+  const save = useCallback(() => persist(), [persist]);
+  // A layout action can update saved metadata without persisting open request drafts.
+  const savePartial = useCallback((updateSaved: (saved: T) => T) => persist((_current, saved) => updateSaved(saved)), [persist]);
   const setDocument = useCallback((action: SetStateAction<T>) => {
     const next =
       typeof action === "function"
@@ -134,6 +139,7 @@ export function useToolDocument<T extends ToolDocument>(
     saving,
     dirty,
     save,
+    savePartial,
     saveError,
   };
 }

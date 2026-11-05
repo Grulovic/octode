@@ -1,5 +1,6 @@
+import { placeApiItem, type ApiDrop } from "../lib/apiOrdering";
 import { useSaveShortcut } from "../lib/saveShortcut";
-import { folderAncestors, orderedFolders, canMoveFolder } from "../lib/apiFolders";
+import { folderAncestors, orderedFolders } from "../lib/apiFolders";
 import { environmentCredential, requestWithEnvironment } from "../lib/apiAuthorization";
 import { inheritHeaders } from "../lib/apiHeaders";
 import { resolvedPublicUrl } from "../lib/resolvedPublicUrl";
@@ -52,6 +53,7 @@ export default function ApiWorkspace({
     changes,
     dirty,
     save,
+    savePartial,
   } = useToolDocument(project, "api", apiDocument, onError, onDirty);
   useSaveShortcut(visible && !loading && !saving, save);
   const dirtyRequests = changedIds(doc.requests, savedDocument.requests);
@@ -130,9 +132,6 @@ export default function ApiWorkspace({
   };
   const draggedRequest = useRef<string | null>(null);
   const draggedFolder = useRef<string | null>(null);
-  const moveFolder = (folderId: string, parentId: string) => set((previous) => canMoveFolder(previous.folders, folderId, parentId) ? {
-    ...previous, folders: previous.folders.map((item) => item.id === folderId ? { ...item, parentId } : item),
-  } : previous);
   const createFolder = (parentId = "") => {
     const folder = { id: id(), name: "New folder", parentId };
     set((previous) => ({ ...previous, folders: [folder, ...previous.folders] }));
@@ -148,72 +147,73 @@ export default function ApiWorkspace({
     kind?: "folder";
   } | null>(null);
   const suppressRequestClick = useRef(false);
-  const moveRequest = (requestId: string, folderId: string) =>
-    set((previous) => {
-      if (
-        folderId &&
-        !previous.folders.some((folder) => folder.id === folderId)
-      )
-        return previous;
-      return {
-        ...previous,
-        requests: previous.requests.map((item) =>
-          item.id === requestId ? { ...item, folderId } : item,
-        ),
-      };
-    });
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const [sortDrop, setSortDrop] = useState<ApiDrop | null>(null);
+  const place = (source: { id: string; kind?: "folder" }, target: ApiDrop) => {
+    set((previous) => placeApiItem(previous, source, target));
+    void savePartial((previous) => placeApiItem(previous, source, target));
+    const parent = target.edge === "inside" ? target.id : target.kind === "request" ? doc.requests.find((request) => request.id === target.id)?.folderId ?? "" : doc.folders.find((folder) => folder.id === target.id)?.parentId ?? "";
+    if (source.kind === "folder") setCollapsedFolders((previous) => previous.filter((id) => id !== parent && !folderAncestors(doc.folders, parent).includes(id)));
+  };
+  const moveFolder = (id: string, folder: string) => place({ id, kind: "folder" }, { id: folder, kind: "folder", edge: "inside" });
+  const moveRequest = (id: string, folder: string) => place({ id }, { id: folder, kind: "folder", edge: "inside" });
+  const dragHandlers = useRef({ move: (_event: MouseEvent) => {}, finish: (_event: MouseEvent) => {} });
+  const targetAt = (event: { clientX: number; clientY: number }): ApiDrop | null => {
+    const element = window.document.elementFromPoint(event.clientX, event.clientY);
+    const drag = pointerDrag.current;
+    if (!element || !drag) return null;
+    const row = element.closest<HTMLElement>("[data-request-id]");
+    if (row && drag.kind !== "folder") {
+      if (row.dataset.requestId === drag.id) return null;
+      const rect = row.getBoundingClientRect();
+      return { id: row.dataset.requestId!, kind: "request", edge: event.clientY < rect.top + rect.height / 2 ? "before" : "after" };
+    }
+    const group = element.closest<HTMLElement>("[data-request-folder]");
+    if (!group) return null;
+    const id = group.dataset.requestFolder ?? "";
+    if (drag.kind === "folder" && id === drag.id) return null;
+    let edge: ApiDrop["edge"] = "inside";
+    const heading = element.closest<HTMLElement>(".folder-heading");
+    if (drag.kind === "folder" && heading) {
+      const rect = heading.getBoundingClientRect();
+      if (event.clientY < rect.top + rect.height * .25) edge = "before";
+      else if (event.clientY > rect.bottom - rect.height * .25) edge = "after";
+    }
+    const target: ApiDrop = { id, kind: "folder", edge };
+    return placeApiItem(doc, drag, target) === doc ? null : target;
+  };
+  const moving = (event: MouseEvent) => {
+    const drag = pointerDrag.current;
+    if (!drag || (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6)) return;
+    drag.moved = true; event.preventDefault();
+    const target = targetAt(event);
+    setSortDrop(target?.edge !== "inside" ? target : null);
+    setDropFolder(target?.edge === "inside" ? target.id : null);
+    const bounds = requestList.current?.getBoundingClientRect();
+    if (bounds && requestList.current) {
+      if (event.clientY > bounds.bottom - 24) requestList.current.scrollTop += 20;
+      else if (event.clientY < bounds.top + 24) requestList.current.scrollTop -= 20;
+    }
+  };
+  const finish = (event: MouseEvent) => {
+    const drag = pointerDrag.current;
+    const target = drag?.moved ? targetAt(event) : null;
+    pointerDrag.current = null;
+    if (drag?.moved) {
+      if (target) place(drag, target);
+      suppressRequestClick.current = true;
+      setTimeout(() => { suppressRequestClick.current = false; }, 0);
+    }
+    setDropFolder(null); setSortDrop(null);
+  };
+  dragHandlers.current = { move: moving, finish };
   useEffect(() => {
-    const move = (event: MouseEvent) => {
-      const drag = pointerDrag.current;
-      if (!drag) return;
-      if (
-        !drag.moved &&
-        Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6
-      )
-        return;
-      drag.moved = true;
-      event.preventDefault();
-      const target = window.document
-        .elementFromPoint(event.clientX, event.clientY)
-        ?.closest<HTMLElement>("[data-request-folder]");
-      setDropFolder(target?.dataset.requestFolder ?? null);
-    };
-    const finish = (event: MouseEvent) => {
-      const drag = pointerDrag.current;
-      pointerDrag.current = null;
-      if (drag?.moved) {
-        const target = window.document
-          .elementFromPoint(event.clientX, event.clientY)
-          ?.closest<HTMLElement>("[data-request-folder]");
-        if (target) {
-          const folderId = target.dataset.requestFolder ?? "";
-          set((previous) => {
-            if (drag.kind === "folder") return canMoveFolder(previous.folders, drag.id, folderId) ? { ...previous, folders: previous.folders.map((item) => item.id === drag.id ? { ...item, parentId: folderId } : item) } : previous;
-            return !folderId || previous.folders.some((folder) => folder.id === folderId) ? { ...previous, requests: previous.requests.map((item) => item.id === drag.id ? { ...item, folderId } : item) } : previous;
-          });
-          if (drag.kind === "folder") setCollapsedFolders((previous) => previous.filter((id) => id !== folderId));
-        }
-        suppressRequestClick.current = true;
-        setTimeout(() => {
-          suppressRequestClick.current = false;
-        }, 0);
-      }
-      setDropFolder(null);
-    };
-    const cancel = () => {
-      pointerDrag.current = null;
-      setDropFolder(null);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", finish);
-    window.addEventListener("blur", cancel);
-    return () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", finish);
-      window.removeEventListener("blur", cancel);
-    };
-  }, [set]);
+    const moving = (event: MouseEvent) => dragHandlers.current.move(event);
+    const finish = (event: MouseEvent) => dragHandlers.current.finish(event);
+    const cancel = () => { pointerDrag.current = null; setDropFolder(null); setSortDrop(null); };
+    window.addEventListener("mousemove", moving); window.addEventListener("mouseup", finish); window.addEventListener("blur", cancel);
+    return () => { window.removeEventListener("mousemove", moving); window.removeEventListener("mouseup", finish); window.removeEventListener("blur", cancel); };
+  }, []);
 
   const [tab, setTab] = useToolView(project.id, "ApiWorkspace:tab", "params");
   const [env, setEnv] = useToolView(project.id, "ApiWorkspace:env", "");
@@ -560,32 +560,18 @@ export default function ApiWorkspace({
                 event.stopPropagation();
                 draggedRequest.current = null;
                 setDropFolder(null);
-                set((previous) => {
-                  if (
-                    folder.id &&
-                    !previous.folders.some((item) => item.id === folder.id)
-                  )
-                    return previous;
-                  return {
-                    ...previous,
-                    requests: previous.requests.map((item) =>
-                      item.id === requestId
-                        ? { ...item, folderId: folder.id }
-                        : item,
-                    ),
-                  };
-                });
+                moveRequest(requestId, folder.id);
               }}
             >
               {folder.id ? (
-                <div className={`folder-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false}
+                <div data-api-drop={sortDrop?.kind === "folder" && sortDrop.id === folder.id ? sortDrop.edge : undefined} className={`folder-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false}
                   onClick={() => { if (!suppressRequestClick.current) setHighlightedFolder(folder.id); }}
                   onMouseDown={(event) => {
                     if (event.button !== 0 || editingFolder === folder.id || (event.target as Element).closest(".folder-edit,.folder-delete,input")) return;
                     event.preventDefault();
                     pointerDrag.current = { id: folder.id, kind: "folder", x: event.clientX, y: event.clientY, moved: false };
                   }}
-                  title="Drag folder to move it inside another folder, or to the top actions row to move it to the root"
+                  title="Drag between folder headings to sort, or onto a folder to move inside"
                   onDragStart={(event) => { draggedFolder.current = folder.id; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-octode-api-folder", folder.id); }}
                   onDragEnd={() => { draggedFolder.current = null; setDropFolder(null); }}>
 
@@ -696,8 +682,10 @@ export default function ApiWorkspace({
                     <div
                       key={request.id}
                       className={`api-request-row api-route-row ${selected === request.id ? "selected" : ""}`}
+                      data-request-id={request.id}
+                      data-api-drop={sortDrop?.kind === "request" && sortDrop.id === request.id ? sortDrop.edge : undefined}
                       draggable={false}
-                      title="Drag to a folder to move this request"
+                      title="Drag to sort or move to a folder"
                       onMouseDown={(event) => {
                         if (
                           event.button !== 0 ||
@@ -730,57 +718,10 @@ export default function ApiWorkspace({
                         };
                       }}
                       onPointerMove={(event) => {
-                        const drag = pointerDrag.current;
-                        if (!drag || drag.kind === "folder") return;
-                        if (
-                          !drag.moved &&
-                          Math.hypot(
-                            event.clientX - drag.x,
-                            event.clientY - drag.y,
-                          ) < 6
-                        )
-                          return;
-                        if (!drag.moved)
-                          event.currentTarget.setPointerCapture?.(
-                            event.pointerId,
-                          );
-                        drag.moved = true;
-                        event.preventDefault();
-                        const target = window.document
-                          .elementFromPoint(event.clientX, event.clientY)
-                          ?.closest<HTMLElement>("[data-request-folder]");
-                        setDropFolder(target?.dataset.requestFolder ?? null);
-                        const sidebar =
-                          event.currentTarget.closest<HTMLElement>(
-                            ".api-request-list",
-                          );
-                        if (sidebar) {
-                          const bounds = sidebar.getBoundingClientRect();
-                          if (event.clientY > bounds.bottom - 30)
-                            sidebar.scrollTop += 12;
-                          else if (event.clientY < bounds.top + 30)
-                            sidebar.scrollTop -= 12;
-                        }
+                        dragHandlers.current.move(event.nativeEvent);
                       }}
                       onPointerUp={(event) => {
-                        const drag = pointerDrag.current;
-                        if (drag?.kind === "folder") return;
-                        pointerDrag.current = null;
-                        if (drag?.moved) {
-                          const target = window.document
-                            .elementFromPoint(event.clientX, event.clientY)
-                            ?.closest<HTMLElement>("[data-request-folder]");
-                          if (target)
-                            moveRequest(
-                              drag.id,
-                              target.dataset.requestFolder ?? "",
-                            );
-                          suppressRequestClick.current = true;
-                          setTimeout(() => {
-                            suppressRequestClick.current = false;
-                          }, 0);
-                        }
-                        setDropFolder(null);
+                        dragHandlers.current.finish(event.nativeEvent);
                       }}
                       onPointerCancel={() => {
                         pointerDrag.current = null;

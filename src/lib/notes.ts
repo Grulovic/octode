@@ -46,7 +46,9 @@ export async function saveNotesWorkspace(folders: NoteFolder[], notes: Note[], n
     const index = next.findIndex((item) => item.id === note.id);
     if (index < 0) next.unshift(note); else next[index] = note;
   }
-  localStorage.setItem(key, JSON.stringify(next));
+  const byId = new Map(next.map((item) => [item.id, item]));
+  const ordered = locations.flatMap(({ id }) => { const item = byId.get(id); if (!item) return []; byId.delete(id); return [item]; });
+  localStorage.setItem(key, JSON.stringify([...ordered, ...byId.values()]));
   localStorage.setItem(foldersKey, JSON.stringify(folders));
   return note ? { ...note } : undefined;
 }

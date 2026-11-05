@@ -1,4 +1,4 @@
-.main-workspace.notes-open > :not(.notes-workspace):not(.workspace-terminal-dock) { display: none !important; }
+.main-workspace.notes-open > :not(.notes-workspace):not(.workspace-terminal-dock):not(.error-banner) { display: none !important; }
 .notes-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--oc-bg); }
 .notes-sidebar { width: 340px; min-width: 320px; max-width: calc(100% - 320px); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--oc-border); }
 .notes-sidebar > header, .notes-main > header { display: flex; flex: none; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid var(--oc-border); background: var(--oc-panel); }
@@ -90,3 +90,15 @@
 .app-shell .notes-folder .folder-heading > .folder-count { margin-left: auto; padding: 0 6px; flex: none; text-align: right; }
 .app-shell .notes-folder .folder-heading > :is(.folder-edit,.folder-delete) { display: none; opacity: 1; pointer-events: auto; }
 .app-shell .notes-folder .folder-heading:is(:hover,:focus-within) > :is(.folder-edit,.folder-delete) { display: inline-flex; }
+
+.notes-folder .folder-heading + .notes-list-row { margin-top: 6px; }
+.notes-duplicate { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 28px; border-radius: 4px; color: var(--oc-muted); opacity: 0; pointer-events: none; }
+.notes-list-row:is(:hover,:focus-within) .notes-duplicate { opacity: 1; pointer-events: auto; }
+.notes-duplicate:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-text); }
+.notes-main > .error-banner { min-width: 0; max-height: 30%; }
+.notes-main > .error-banner > span { max-height: min(20vh, 160px); overflow-y: auto; }
+
+.notes-list :is(.notes-list-row,.folder-heading)[data-note-drop] { position: relative; }
+.notes-list [data-note-drop]::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--oc-accent); pointer-events: none; }
+.notes-list [data-note-drop="before"]::after { top: -2px; }
+.notes-list [data-note-drop="after"]::after { bottom: -2px; }

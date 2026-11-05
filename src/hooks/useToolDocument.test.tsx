@@ -131,3 +131,41 @@ it("acknowledges a sealed password even when another field changes during Save",
   expect(hook.document.requests[0].name).toBe("New name while saving");
   expect(hook.dirty).toBe(true);
 });
+
+it("saves API ordering from the saved baseline without persisting edited request fields", async () => {
+  const a = { ...apiRequest(), name: "A" }, b = { ...apiRequest(), name: "B" };
+  vi.mocked(bridge.loadTool).mockResolvedValue({ ...apiDocument(), requests: [a, b] });
+  const writer = vi.spyOn(bridge, "saveTool").mockImplementation(async (_project, _tool, document) => structuredClone(document));
+  await act(async () => root.render(<Harness />));
+  await act(async () => hook.setDocument((previous) => ({ ...previous, requests: [{ ...b, body: "unsaved body", url: "https://draft.invalid" }, a] })));
+  await act(async () => expect(await hook.savePartial((saved) => ({ ...saved, requests: [saved.requests[1], saved.requests[0]] }))).toBe(true));
+  const sent = writer.mock.calls[0][2] as ReturnType<typeof apiDocument>;
+  expect(sent.requests.map((request) => request.name)).toEqual(["B", "A"]);
+  expect(sent.requests[0].body).toBe(b.body);
+  expect(sent.requests[0].url).toBe(b.url);
+  expect(hook.document.requests[0].body).toBe("unsaved body");
+  expect(hook.document.requests[0].url).toBe("https://draft.invalid");
+  expect(hook.savedDocument.requests[0].body).toBe(b.body);
+  expect(hook.dirty).toBe(true);
+});
+
+it("waits for every queued layout save and keeps request edits made during those saves", async () => {
+  const a = { ...apiRequest(), name: "A" }, b = { ...apiRequest(), name: "B" };
+  vi.mocked(bridge.loadTool).mockResolvedValue({ ...apiDocument(), requests: [a, b] });
+  const releases: (() => void)[] = [];
+  const writer = vi.spyOn(bridge, "saveTool").mockImplementation(async (_project, _tool, document) => new Promise((resolve) => releases.push(() => resolve(structuredClone(document)))));
+  await act(async () => root.render(<Harness />));
+  let first!: Promise<boolean>, second!: Promise<boolean>, flush!: Promise<boolean>;
+  await act(async () => {
+    hook.setDocument((previous) => ({ ...previous, requests: [b, { ...a, body: "unsaved" }] }));
+    first = hook.savePartial((saved) => ({ ...saved, requests: [...saved.requests].reverse() }));
+    second = hook.savePartial((saved) => ({ ...saved, requests: [...saved.requests].reverse() }));
+    flush = waitForPendingToolSaves();
+  });
+  expect(writer).toHaveBeenCalledTimes(1);
+  await act(async () => { releases[0](); expect(await first).toBe(true); });
+  expect(writer).toHaveBeenCalledTimes(2);
+  await act(async () => { releases[1](); expect(await second).toBe(true); expect(await flush).toBe(true); });
+  expect(hook.savedDocument.requests.map((request) => request.name)).toEqual(["A", "B"]);
+  expect(hook.document.requests.find((request) => request.id === a.id)?.body).toBe("unsaved");
+});

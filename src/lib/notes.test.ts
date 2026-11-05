@@ -23,3 +23,11 @@ it("includes live note drafts in a detached backup snapshot and skips unloaded p
   stop(); expect(notesForBackup()).toBeNull();
   const unloaded = registerNotesBackup(() => null); expect(notesForBackup()).toBeNull(); unloaded();
 });
+
+import { saveNotesWorkspace, loadNotes } from "./notes";
+it("persists note order without saving another note's draft text", async () => {
+  const a = { id: "a", title: "A", text: "saved" }, b = { id: "b", title: "B", text: "other" };
+  localStorage.setItem("octode-global-notes", JSON.stringify([a, b]));
+  await saveNotesWorkspace([], [b, { ...a, text: "unsaved" }]);
+  expect(await loadNotes()).toEqual([{ ...b, folderId: "" }, { ...a, folderId: "" }]);
+});

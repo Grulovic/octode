@@ -37,8 +37,8 @@ npm run buildDev -- --check --offline
 
 ## Persistence and operation boundaries
 
-- Only Code files autosave (600 ms pause, flush before navigation/close). Preserve disk-conflict checks, recovery drafts, and failed-save buffers.
-- Notes, API collections/environments, Server profiles, and Database connection/query settings require explicit Save. Tool switching must not silently save them.
+- Code files autosave (600 ms pause, flush before navigation/close). Preserve disk-conflict checks, recovery drafts, and failed-save buffers. Notes folder creation/rename/moves and drag ordering also autosave; note titles and contents still require explicit Save. Layout saves must never persist other note drafts.
+- Note titles/contents, API collections/environments, Server profiles, and Database connection/query settings require explicit Save. Tool switching must not silently save them.
 - Projects can be parked with their live drafts, terminal sessions, and connection state. Quit/restart checks unsaved work across all parked projects and waits for pending saves. Running processes/connections end on quit/restart.
 - Metadata lives in `octode.sqlite` under the Tauri identifier's application-data directory. Project source folders remain at their original paths. Keep app-data migrations additive/backward compatible.
 - Global Notes, including open unsaved drafts, are included in app-data export/import. Merge import creates copies with new IDs and preserves existing live drafts/preferences. Replace import is an explicit reviewed choice: block it on unsaved tool/Note/row drafts, flush Code/layout saves, atomically replace saved metadata, close parked workspaces and reload Notes after success. App-data exports include credentials; collection export removes credentials. Avoid logging secrets or private export contents.
@@ -67,7 +67,7 @@ npm run buildDev -- --check --offline
 
 ## API and Git behavior
 
-- API folders support nesting and moving requests/folders between parents, with cycle prevention. Keep the WebKit drag fallback; folder dragging previously failed with native HTML drag alone.
+- API folders support nesting and moving requests/folders between parents, with cycle prevention. Drag sorting/moves of saved requests and folders persist automatically from the saved collection baseline; never save request/environment drafts as a side effect. New unsaved items still need collection Save. Keep the WebKit drag fallback; folder dragging previously failed with native HTML drag alone.
 - Environment headers and bearer/basic authorization can be inherited; explicit request overrides win. Preserve backward compatibility for existing None auth, normalize pasted Bearer prefixes, and never send duplicate Authorization headers.
 - Multipart files must be actual file parts. Let the multipart builder generate Content-Type/boundary and Content-Length; a stale manual header breaks server parsing.
 - Git branch rename/delete, commit revert, and individual stash Apply/Drop are implemented. Preserve repository locks/stale HEAD/index checks. Branch deletion refuses current/unmerged branches; revert stages inverse changes for review rather than auto-committing. Stash actions verify both reference and hash to avoid acting on a shifted stash index.

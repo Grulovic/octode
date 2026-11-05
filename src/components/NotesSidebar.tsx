@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { FileText } from "lucide-react";
-import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FoldVertical, Pencil, Plus, Search, Trash2, X } from "./DesignIcons";
+import { Copy, ChevronDown, ChevronRight, FolderOpen, FolderPlus, FoldVertical, Pencil, Plus, Search, Trash2, X } from "./DesignIcons";
 import CustomSelect from "./CustomSelect";
 import FileIcon from "./FileIcon";
 import { desktop } from "../lib/bridge";
 import { canMoveFolder, folderAncestors, orderedFolders } from "../lib/apiFolders";
+import { moveTab } from "../hooks/useTabReorder";
 import type { Note, NoteFolder } from "../lib/notes";
 import type { useNotes } from "./NotesWorkspace";
 
+type Drop = { id: string; kind: "note" | "folder"; edge: "before" | "after" | "inside" };
 type Drag = { id: string; kind: "note" | "folder"; x: number; y: number; moved: boolean };
 export default function NotesSidebar({ model, importing, onOpen }: { model: ReturnType<typeof useNotes>; importing: boolean; onOpen: () => void }) {
   const [collapsed, setCollapsed] = useState<string[]>(() => {
@@ -20,7 +22,7 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
   const list = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
-  const [drop, setDrop] = useState<string | null>(null);
+  const [drop, setDrop] = useState<Drop | null>(null);
   const busy = model.loading || model.deleting || importing || (!model.notes.length && !!model.error);
   const creationFolder = model.folders.some((folder) => folder.id === model.creationFolder) ? model.creationFolder : "";
   const query = model.search.trim().toLocaleLowerCase();
@@ -67,19 +69,68 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
     }
     reveal(parentId);
   };
-  const latest = useRef({ move, busy }); latest.current = { move, busy };
+  const place = (item: Pick<Drag, "id" | "kind">, target: Drop) => {
+    if (busy) return;
+    if (target.edge === "inside") { move(item, target.id); return; }
+    if (item.kind !== target.kind || item.id === target.id) return;
+    if (item.kind === "note") {
+      const destination = model.notes.find((note) => note.id === target.id);
+      if (!destination) return;
+      model.setNotes(moveTab(model.notes.map((note) => note.id === item.id ? { ...note, folderId: destination.folderId ?? "" } : note), item.id, target.id, target.edge === "after", (note) => note.id));
+      reveal(destination.folderId ?? "");
+    } else {
+      const destination = model.folders.find((folder) => folder.id === target.id);
+      if (!destination || !canMoveFolder(model.folders, item.id, destination.parentId ?? "")) return;
+      model.setFolders(moveTab(model.folders.map((folder) => folder.id === item.id ? { ...folder, parentId: destination.parentId ?? "" } : folder), item.id, target.id, target.edge === "after", (folder) => folder.id));
+      reveal(destination.parentId ?? "");
+    }
+  };
+  const latest = useRef({ place, folders: model.folders }); latest.current = { place, folders: model.folders };
   useEffect(() => {
-    const targetAt = (event: globalThis.MouseEvent) => document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-note-folder]");
+    const targetAt = (event: globalThis.MouseEvent): Drop | null => {
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      const item = drag.current;
+      if (!element || !item) return null;
+      const row = element.closest<HTMLElement>("[data-note-id]");
+      if (row && item.kind === "note") {
+        if (row.dataset.noteId === item.id) return null;
+        const rect = row.getBoundingClientRect();
+        return { kind: "note", id: row.dataset.noteId!, edge: event.clientY < rect.top + rect.height / 2 ? "before" : "after" };
+      }
+      const group = element.closest<HTMLElement>("[data-note-folder]");
+      if (!group) return null;
+      const id = group.dataset.noteFolder ?? "";
+      if (item.kind === "folder" && id === item.id) return null;
+      let edge: Drop["edge"] = "inside";
+      const heading = element.closest<HTMLElement>(".folder-heading");
+      if (item.kind === "folder" && heading) {
+        const rect = heading.getBoundingClientRect();
+        if (event.clientY < rect.top + rect.height * .25) edge = "before";
+        else if (event.clientY > rect.bottom - rect.height * .25) edge = "after";
+      }
+      if (item.kind === "folder") {
+        const parent = edge === "inside" ? id : latest.current.folders.find((folder) => folder.id === id)?.parentId ?? "";
+        if (!canMoveFolder(latest.current.folders, item.id, parent)) return null;
+      }
+      return { kind: "folder", id, edge };
+    };
     const moving = (event: globalThis.MouseEvent) => {
       const item = drag.current;
       if (!item || (!item.moved && Math.hypot(event.clientX - item.x, event.clientY - item.y) < 6)) return;
-      item.moved = true; event.preventDefault(); setDrop(targetAt(event)?.dataset.noteFolder ?? null);
+      item.moved = true; event.preventDefault();
+      const bounds = list.current?.getBoundingClientRect();
+      if (bounds && list.current) {
+        if (event.clientY < bounds.top + 24) list.current.scrollTop -= 20;
+        else if (event.clientY > bounds.bottom - 24) list.current.scrollTop += 20;
+      }
+      setDrop(targetAt(event));
     };
     const finish = (event: globalThis.MouseEvent) => {
-      const item = drag.current; drag.current = null;
+      const item = drag.current;
+      const target = item?.moved ? targetAt(event) : null;
+      drag.current = null;
       if (item?.moved) {
-        const target = targetAt(event);
-        if (target) latest.current.move(item, target.dataset.noteFolder ?? "");
+        if (target) latest.current.place(item, target);
         suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0);
       }
       setDrop(null);
@@ -89,7 +140,7 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
     return () => { window.removeEventListener("mousemove", moving); window.removeEventListener("mouseup", finish); window.removeEventListener("blur", cancel); };
   }, []);
   const start = (event: MouseEvent, id: string, kind: Drag["kind"]) => {
-    if (busy || event.button !== 0 || (event.target as Element).closest("input,.folder-edit,.folder-delete,.notes-delete,.notes-move")) return;
+    if (busy || event.button !== 0 || (event.target as Element).closest("input,.folder-edit,.folder-delete,.notes-delete,.notes-duplicate,.notes-move")) return;
     event.preventDefault(); drag.current = { id, kind, x: event.clientX, y: event.clientY, moved: false };
   };
   const removeFolder = (folder: NoteFolder) => {
@@ -100,15 +151,16 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
   };
   const matchingFolder = (id: string) => [id, ...folderAncestors(model.folders, id)].some((id) => model.folders.find((folder) => folder.id === id)?.name.toLocaleLowerCase().includes(query));
   const visibleNotes = model.notes.filter((note) => !query || `${note.title}\n${note.text}`.toLocaleLowerCase().includes(query) || matchingFolder(note.folderId ?? ""));
-  const noteRow = (note: Note) => <div key={note.id} className={`notes-list-row ${model.active === note.id ? "selected" : ""}`} draggable={false} onMouseDown={(event) => start(event, note.id, "note")} title="Drag to a folder to move this note">
+  const noteRow = (note: Note) => <div key={note.id} className={`notes-list-row ${model.active === note.id ? "selected" : ""}`} data-note-id={note.id} data-note-drop={drop?.kind === "note" && drop.id === note.id ? drop.edge : undefined} draggable={false} onMouseDown={(event) => start(event, note.id, "note")} title="Drag to sort or move to a folder">
     <button className="notes-select" onClick={() => { if (!suppressClick.current) { model.setActive(note.id); model.setCreationFolder(note.folderId ?? ""); } }}>{/\.[^.\s/\\]+$/.test(note.title.trim()) ? <FileIcon path={note.title.trim()} size={16} /> : <FileText size={16} />}<span>{note.title || "Untitled note"}<small>{note.text.split("\n").find((line) => line.trim()) || "Empty note"}</small></span>{model.isDirty(note) && <span className="tool-unsaved-dot" aria-label="Unsaved note" />}</button>
     <CustomSelect className="notes-move" aria-label={`Move note ${note.title || "Untitled note"}`} title="Move note to folder" value={note.folderId ?? ""} triggerContent={<FolderOpen size={14} />} disabled={busy} onChange={(event) => move({ id: note.id, kind: "note" }, event.target.value)}><option value="">Unfiled</option>{orderedFolders(model.folders).map(({ folder, depth }) => <option key={folder.id} value={folder.id}>{`${"　".repeat(depth)}${folder.name}`}</option>)}</CustomSelect>
+    <button className="notes-duplicate" aria-label={`Duplicate note ${note.title || "Untitled note"}`} title="Duplicate note" disabled={busy} onClick={() => model.addCopies([{ ...note, id: crypto.randomUUID() }])}><Copy size={14} /></button>
     <button className="notes-delete" aria-label={`Delete note ${note.title || "Untitled note"}`} title="Delete note" disabled={model.saving || model.deleting} onClick={() => void model.remove(note.id)}><Trash2 size={15} /></button>
   </div>;
   return <>
     <header><strong>Notes <span>{model.notes.length}</span></strong><div className="notes-file-actions"><button className="secondary-button" disabled={busy} title="New note (Cmd/Ctrl+N)" onClick={addNote}><Plus size={14} />New note</button><button className="secondary-button" disabled={busy} onClick={onOpen}><FolderOpen size={14} />{importing ? "Opening…" : "Open"}</button></div></header>
     <div className="notes-search"><Search size={14} /><input spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" aria-label="Search notes" placeholder="Search notes…" value={model.search} onChange={(event) => model.setSearch(event.target.value)} />{model.search && <button aria-label="Clear notes search" onClick={() => model.setSearch("")}><X size={13} /></button>}</div>
-    <div className={`service-subheading api-request-heading notes-folder-toolbar ${drop === "" ? "notes-folder-drop" : ""}`} role="toolbar" aria-label="Notes folders" data-note-folder="" onClick={(event) => { if (event.target === event.currentTarget) model.setCreationFolder(""); }}>
+    <div className={`service-subheading api-request-heading notes-folder-toolbar ${drop?.id === "" && drop.edge === "inside" ? "notes-folder-drop" : ""}`} role="toolbar" aria-label="Notes folders" data-note-folder="" onClick={(event) => { if (event.target === event.currentTarget) model.setCreationFolder(""); }}>
       <button className="notes-root" aria-pressed={!creationFolder} title="Select top level; drop here to move out of a folder" onClick={() => model.setCreationFolder("")}>All notes</button><span className="api-request-actions-spacer" />
       <CustomSelect className="api-add-menu" aria-label="Add note or folder" title={creationFolder ? `Add inside ${model.folders.find((folder) => folder.id === creationFolder)?.name}` : "Add at top level"} value="" triggerContent={<Plus size={15} />} disabled={busy} onChange={(event) => { if (event.target.value === "note") addNote(); if (event.target.value === "folder") createFolder(); }}><option value="" disabled>Add…</option><option value="note">Add note</option><option value="folder">Add folder</option></CustomSelect>
       <button title="Collapse all folders" aria-label="Collapse all folders" disabled={!model.folders.length} onClick={() => { model.setSearch(""); setCollapsed(model.folders.map((folder) => folder.id)); }}><FoldVertical size={14} /></button>
@@ -117,8 +169,8 @@ export default function NotesSidebar({ model, importing, onOpen }: { model: Retu
       {[{ folder: { id: "", name: "Unfiled", parentId: "" }, depth: 0 }, ...orderedFolders(model.folders)].filter(({ folder }) => {
         if (!query) return !folderAncestors(model.folders, folder.id).some((id) => collapsed.includes(id));
         return matchingFolder(folder.id) || visibleNotes.some((note) => (note.folderId ?? "") === folder.id || folderAncestors(model.folders, note.folderId ?? "").includes(folder.id));
-      }).map(({ folder, depth }) => <div key={folder.id} role="group" aria-label={`Note folder ${folder.name}`} data-note-folder={folder.id} className={`notes-folder ${drop === folder.id ? "notes-folder-drop" : ""}`} style={{ marginLeft: depth * 14 }}>
-        {folder.id && <div className={`folder-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false} onMouseDown={(event) => { if (editing !== folder.id) start(event, folder.id, "folder"); }} onClick={(event) => { if (!suppressClick.current && !(event.target as Element).closest(".folder-edit,.folder-delete,input")) model.setCreationFolder(folder.id); }}>
+      }).map(({ folder, depth }) => <div key={folder.id} role="group" aria-label={`Note folder ${folder.name}`} data-note-folder={folder.id} className={`notes-folder ${drop?.id === folder.id && drop.edge === "inside" ? "notes-folder-drop" : ""}`} style={{ marginLeft: depth * 14 }}>
+        {folder.id && <div data-note-drop={drop?.kind === "folder" && drop.id === folder.id && drop.edge !== "inside" ? drop.edge : undefined} className={`folder-heading ${creationFolder === folder.id ? "selected" : ""}`} draggable={false} onMouseDown={(event) => { if (editing !== folder.id) start(event, folder.id, "folder"); }} onClick={(event) => { if (!suppressClick.current && !(event.target as Element).closest(".folder-edit,.folder-delete,input")) model.setCreationFolder(folder.id); }}>
           <button className={`folder-toggle ${editing === folder.id ? "" : "folder-name-button"}`} aria-label={`${!query && collapsed.includes(folder.id) ? "Expand" : "Collapse"} folder ${folder.name}`} aria-expanded={!!query || !collapsed.includes(folder.id)} onClick={() => { if (!suppressClick.current) setCollapsed((previous) => previous.includes(folder.id) ? previous.filter((id) => id !== folder.id) : [...previous, folder.id]); }}>{!query && collapsed.includes(folder.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}{editing !== folder.id && <span>{folder.name}</span>}{(model.isFolderDirty(folder) || model.notes.some((note) => ((note.folderId ?? "") === folder.id || folderAncestors(model.folders, note.folderId ?? "").includes(folder.id)) && model.isDirty(note))) && <span className="tool-unsaved-dot" aria-label={`Unsaved changes in folder ${folder.name}`} />}</button>
           {editing === folder.id && <input autoFocus spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" aria-label="Folder name" maxLength={200} value={name} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); cancelRename.current = event.key === "Escape"; event.currentTarget.blur(); } }} onBlur={() => { if (!cancelRename.current) model.setFolders(model.folders.map((item) => item.id === folder.id ? { ...item, name: name.trim() || folder.name } : item)); setEditing(null); }} />}
           <button className="folder-edit" aria-label={`New subfolder in ${folder.name}`} title="New subfolder" disabled={busy} onClick={() => createFolder(folder.id)}><FolderPlus size={14} /></button>
