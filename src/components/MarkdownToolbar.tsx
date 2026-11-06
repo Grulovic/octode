@@ -11,8 +11,9 @@ const tools = [
   ["link", "Insert link", Link], ["image", "Insert image", Image], ["table", "Insert or convert table", Table], ["rule", "Horizontal rule", Minus],
 ] as const;
 
-export default function MarkdownToolbar({ disabled, preview, onPreview, onCommand }: {
-  disabled: boolean; preview: boolean; onPreview: (preview: boolean) => void; onCommand: (command: MarkdownCommand) => void;
+export default function MarkdownToolbar({ disabled, preview, split = false, onSplit, syncScroll, onSyncScroll, onPreview, onCommand }: {
+  syncScroll?: boolean; onSyncScroll?: () => void;
+  disabled: boolean; preview: boolean; split?: boolean; onSplit?: () => void; onPreview: (preview: boolean) => void; onCommand: (command: MarkdownCommand) => void;
 }) {
   const [panel, setPanel] = useState<"link" | "image" | "table" | null>(null);
   const [url, setUrl] = useState("https://");
@@ -25,9 +26,11 @@ export default function MarkdownToolbar({ disabled, preview, onPreview, onComman
   return <div className="notes-markdown-tools">
     <div className="notes-format-toolbar" role="toolbar" aria-label="Markdown formatting">
       <div className="notes-markdown-views">
-        <button aria-pressed={!preview} onClick={() => { setPanel(null); onPreview(false); }}>Write</button>
+        <button aria-pressed={!preview && !split} onClick={() => { setPanel(null); onPreview(false); }}>Write</button>
+        {onSplit && <button aria-pressed={split} onClick={() => { setPanel(null); onSplit(); }}>Split</button>}
         <button aria-pressed={preview} onClick={() => { setPanel(null); onPreview(true); }}>Preview</button>
       </div>
+      {split && onSyncScroll && <button aria-label="Sync scroll" aria-pressed={syncScroll} title="Keep editor and preview scrolling together" onClick={onSyncScroll}>Sync scroll</button>}
       {!preview && <>
         <CustomSelect aria-label="Markdown heading" title="Format selected lines" value="" disabled={disabled} onChange={(event) => { setPanel(null); onCommand({ action: event.target.value as MarkdownAction }); }}>
           <option value="" disabled>Heading</option><option value="paragraph">Paragraph</option><option value="heading1">Heading 1</option><option value="heading2">Heading 2</option><option value="heading3">Heading 3</option>

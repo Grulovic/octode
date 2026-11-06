@@ -23,6 +23,8 @@
 .app-shell .sidebar-tree-list .sidebar-tree-delete:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-error); }
 .app-shell .service-api .request-folder > .sidebar-tree-row { margin-left: 10px; width: calc(100% - 10px); }
 .app-shell .service-api .root-requests > .sidebar-tree-row { margin-left: 0; width: 100%; }
+.app-shell .service-api .sidebar-tree-row > .sidebar-tree-action { display: none; }
+.app-shell .service-api .sidebar-tree-row:is(:hover,:focus-within) > .sidebar-tree-action { display: flex; opacity: 1; pointer-events: auto; }
 
 /* Match the Notes search bar and the separate folder action strip. */
 .app-shell .service-api .service-sidebar { padding: 0; }

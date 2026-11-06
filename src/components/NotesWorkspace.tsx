@@ -1,3 +1,5 @@
+import type { editor } from "monaco-editor";
+import { syncMarkdownScroll } from "../lib/markdownScrollSync";
 import { useSaveShortcut } from "../lib/saveShortcut";
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { FileText, WrapText } from "lucide-react";
@@ -181,13 +183,27 @@ export function useNotes() {
 export default function NotesWorkspace() {
   const model = useNotes();
   const { note } = model;
-  const [markdownPreview, setMarkdownPreview] = useState(false);
+  const [markdownView, setMarkdownView] = useState<"write" | "split" | "preview">("write");
   const [markdownCommand, setMarkdownCommand] = useState<MarkdownCommand | null>(null);
   useEffect(() => setMarkdownCommand(null), [note?.id, model.markdown]);
-  const showingPreview = model.markdown && markdownPreview;
+  const showingPreview = model.markdown && markdownView === "preview";
+  const showingSplit = model.markdown && markdownView === "split";
+  const previewScroll = useRef<HTMLElement>(null);
+  const [scrollEditor, setScrollEditor] = useState<{ noteId: string; instance: editor.IStandaloneCodeEditor } | null>(null);
+  const [syncScroll, setSyncScroll] = useState(() => {
+    try { return localStorage.getItem("octode-layout:notes:sync-scroll") !== "false"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("octode-layout:notes:sync-scroll", String(syncScroll)); } catch { /* Best effort preference. */ }
+  }, [syncScroll]);
+  useEffect(() => {
+    if (showingSplit && syncScroll && scrollEditor?.noteId === note?.id && scrollEditor && previewScroll.current) return syncMarkdownScroll(scrollEditor.instance, previewScroll.current);
+  }, [showingSplit, syncScroll, scrollEditor, note?.id]);
   const syntax = model.markdown ? "Markdown" : note && noteLanguage(note.title) !== "plaintext" ? noteLanguage(note.title).toUpperCase() : "Plain text";
   const section = useRef<HTMLElement>(null);
   const sidebar = useRef<HTMLElement>(null);
+  const splitEditor = useRef<HTMLDivElement>(null);
+  const [splitWidth, setSplitWidth] = usePanelSize("octode-layout:notes:markdown-split", 400);
   const [savedWidth, setSidebarWidth] = usePanelSize("octode-layout:sidebar:notes", 340);
   const sidebarWidth = Math.max(320, savedWidth);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -262,11 +278,11 @@ export default function NotesWorkspace() {
           <button aria-label="Markdown preview" title="Toggle Markdown mode" aria-pressed={model.markdown} disabled={!note || model.loading} onClick={() => model.setMarkdown((value) => !value)}>MD</button>
         </div>
       </div>
-      {note && model.markdown && <MarkdownToolbar key={note.id} disabled={model.loading || model.deleting} preview={markdownPreview} onPreview={setMarkdownPreview} onCommand={setMarkdownCommand} />}
+      {note && model.markdown && <MarkdownToolbar key={note.id} disabled={model.loading || model.deleting} preview={markdownView === "preview"} split={markdownView === "split"} onSplit={() => setMarkdownView("split")} onPreview={(preview) => setMarkdownView(preview ? "preview" : "write")} onCommand={setMarkdownCommand} syncScroll={syncScroll} onSyncScroll={() => setSyncScroll((value) => !value)} />}
       {importError && <div className="error-banner" role="alert"><span>{importError}</span><button aria-label="Dismiss import error" onClick={() => setImportError("")}><X size={16} /></button></div>}
       {exportError && <div className="error-banner" role="alert"><span>{exportError}</span><button aria-label="Dismiss export error" onClick={() => setExportError("")}><X size={16} /></button></div>}
       {model.error && !model.errorDismissed && <div className="error-banner" role="alert"><span>{model.error}</span>{!model.notes.length && !model.layoutSaveFailed && <button onClick={model.retry}>Retry</button>}{model.layoutSaveFailed && <button onClick={() => void model.retryLayout()}>Retry</button>}<button aria-label="Dismiss note error" onClick={model.dismissError}><X size={16} /></button></div>}
-      {model.loading ? <div className="loading">Loading notes…</div> : note ? <><div className="notes-editor" style={showingPreview ? { display: "none" } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingPreview && <MarkdownPreview text={note.text} />}</> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={() => model.create()}><Plus size={14} />New note</button></div>}
+      {model.loading ? <div className="loading">Loading notes…</div> : note ? <div className={`notes-content${showingSplit ? " notes-content-split" : ""}`}><div ref={splitEditor} className="notes-editor" style={showingPreview ? { display: "none" } : showingSplit ? { width: splitWidth } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane onReady={(instance) => setScrollEditor({ noteId: note.id, instance })} key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingSplit && <PanelResize target={splitEditor} size={splitWidth} onResize={setSplitWidth} minSize={160} maxSize={1600} minRemainingSize={164} label="Resize Markdown split" title="Drag to resize editor and preview" />}{(showingPreview || showingSplit) && <MarkdownPreview text={note.text} scrollRef={previewScroll} />}</div> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={() => model.create()}><Plus size={14} />New note</button></div>}
       {note && <footer>{note.text.split("\n").length} lines · {note.text.length} characters<span>{syntax} · {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}S to save</span></footer>}
     </div>
   </section>;

@@ -9,6 +9,8 @@ it("renders Markdown blocks and inline formatting while keeping HTML and unsafe 
   try {
     await act(async () => root.render(<MarkdownPreview text={'# Heading\n\n**Bold** &amp; `x < y`\n\n- [x] Done\n- Item\n\n> Quote\n\n```sql\nselect * from notes;\n```\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n[Web](https://example.com) [Bad](javascript:alert%281%29)\n\n<script>alert(1)</script>\n\n![bad](javascript:alert%281%29)'} />));
     expect(host.querySelector("h1")?.textContent).toBe("Heading");
+    expect(host.querySelector("h1")?.getAttribute("data-source-line")).toBe("1");
+    expect(host.querySelector("p")?.getAttribute("data-source-line")).toBe("3");
     expect(host.querySelector("strong")?.textContent).toBe("Bold");
     expect(host.querySelector("code")?.textContent).toBe("x < y");
     expect(host.querySelector("p")?.textContent).toContain("Bold &");

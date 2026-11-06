@@ -15,6 +15,7 @@ export default function PreviewEditor({
   markdownCommand,
   onMarkdownHandled,
 }: {
+  onReady?: (editor: import("monaco-editor").editor.IStandaloneCodeEditor) => void | (() => void);
   blameProjectId?: string;
   markdownCommand?: MarkdownCommand | null;
   onMarkdownHandled?: () => void;

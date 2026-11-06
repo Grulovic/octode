@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useMemo, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { desktop, invoke } from "../lib/bridge";
 import { marked, type Token, type Tokens } from "marked";
 
@@ -19,7 +19,7 @@ function safeUrl(value: string, image = false) {
   } catch { return undefined; }
 }
 // Render tokens through React rather than inserting HTML from note contents.
-function content(tokens: Token[]): ReactNode {
+function content(tokens: Token[]): ReactNode[] {
   return tokens.map((token, key): ReactNode => {
     const children = "tokens" in token && token.tokens ? content(token.tokens) : null;
     switch (token.type) {
@@ -57,10 +57,18 @@ function content(tokens: Token[]): ReactNode {
     }
   });
 }
-export default function MarkdownPreview({ text }: { text: string }) {
+export default function MarkdownPreview({ text, scrollRef }: { text: string; scrollRef?: RefObject<HTMLElement | null> }) {
   const [error, setError] = useState("");
-  const rendered = useMemo(() => content(marked.lexer(text, { gfm: true })), [text]);
-  return <article className="notes-markdown" aria-label="Markdown preview" onClick={(event) => {
+  const rendered = useMemo(() => {
+    let line = 1;
+    return marked.lexer(text, { gfm: true }).map((token, key) => {
+      const start = line;
+      line += (token.raw.match(/\n/g) ?? []).length;
+      const node = content([token])[0];
+      return isValidElement(node) ? cloneElement(node as ReactElement<{ "data-source-line": number }>, { key, "data-source-line": start }) : node;
+    });
+  }, [text]);
+  return <article ref={scrollRef} className="notes-markdown" aria-label="Markdown preview" onClick={(event) => {
     const link = (event.target as HTMLElement).closest("a");
     if (!desktop || !link || link.getAttribute("href")?.startsWith("#")) return;
     event.preventDefault();

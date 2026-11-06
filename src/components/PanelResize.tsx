@@ -40,6 +40,8 @@ export default function PanelResize({
   className = "",
   title,
   minSize = 160,
+  maxSize,
+  minRemainingSize,
 }: {
   target: RefObject<HTMLElement | null>;
   size: number;
@@ -49,6 +51,8 @@ export default function PanelResize({
   className?: string;
   title?: string;
   minSize?: number;
+  maxSize?: number;
+  minRemainingSize?: number;
 }) {
   const drag = useRef<{ start: number; size: number } | null>(null);
   const latest = useRef(onResize);
@@ -66,8 +70,8 @@ export default function PanelResize({
       max: Math.max(
         minSize,
         Math.min(
-          axis === "x" ? 640 : 1600,
-          (available ?? 800) - (axis === "x" ? 320 : 140),
+          maxSize ?? (axis === "x" ? 640 : 1600),
+          (available ?? 800) - (minRemainingSize ?? (axis === "x" ? 320 : 140)),
         ),
       ),
     };
@@ -109,7 +113,7 @@ export default function PanelResize({
       window.removeEventListener("pointercancel", end);
       window.removeEventListener("blur", end);
     };
-  }, [axis, minSize]);
+  }, [axis, minSize, maxSize, minRemainingSize]);
   const begin = (
     event:
       | React.PointerEvent<HTMLDivElement>

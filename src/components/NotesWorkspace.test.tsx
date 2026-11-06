@@ -155,6 +155,7 @@ it("deletes persisted notes only after confirmation and retains notes on failure
   } finally { confirm.mockRestore(); await act(async () => root.unmount()); host.remove(); }
 });
 it("toggles Markdown preview beside wrap without changing or saving the draft", async () => {
+  localStorage.removeItem("octode-layout:notes:sync-scroll");
   storage.load.mockResolvedValue([]); storage.save.mockClear();
   let model!: ReturnType<typeof useNotes>;
   function Harness() { model = useNotes(); return <NotesWorkspace />; }
@@ -172,9 +173,33 @@ it("toggles Markdown preview beside wrap without changing or saving the draft", 
     await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Preview")!.click());
     expect(host.querySelector("article h1")?.textContent).toBe("Preview");
     expect(host.querySelector("article strong")?.textContent).toBe("Hello");
+    const editor = host.querySelector<HTMLElement>(".notes-editor")!;
+    expect(editor.style.display).toBe("none");
+    const viewButton = (label: string) => Array.from(host.querySelectorAll<HTMLButtonElement>(".notes-markdown-views button")).find((button) => button.textContent === label)!;
+    await act(async () => viewButton("Split").click());
+    expect(viewButton("Split").getAttribute("aria-pressed")).toBe("true");
+    expect(viewButton("Write").getAttribute("aria-pressed")).toBe("false");
+    expect(viewButton("Preview").getAttribute("aria-pressed")).toBe("false");
+    expect(host.querySelector(".notes-content-split")).not.toBeNull();
+    const syncToggle = host.querySelector<HTMLButtonElement>('[aria-label="Sync scroll"]')!;
+    expect(syncToggle.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => syncToggle.click());
+    expect(syncToggle.getAttribute("aria-pressed")).toBe("false");
+    expect(localStorage.getItem("octode-layout:notes:sync-scroll")).toBe("false");
+    expect(host.querySelector(".notes-editor")).toBe(editor);
+    expect(editor.style.display).toBe("");
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Find in note"]')?.disabled).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Word wrap"]')?.disabled).toBe(false);
+    expect(host.querySelector('[aria-label="Bold"]')).not.toBeNull();
+    await act(async () => model.update({ text: "# Live preview" }));
+    expect(host.querySelector("article h1")?.textContent).toBe("Live preview");
+    await act(async () => viewButton("Write").click());
+    expect(host.querySelector("article")).toBeNull();
+    expect(host.querySelector(".notes-editor")).toBe(editor);
+    await act(async () => viewButton("Split").click());
     await act(async () => toggle.click());
     expect(host.querySelector("article")).toBeNull();
-    expect(model.note?.text).toBe("# Preview\n\n**Hello**"); expect(model.dirty).toBe(true);
+    expect(model.note?.text).toBe("# Live preview"); expect(model.dirty).toBe(true);
     expect(storage.save).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); }
 });
