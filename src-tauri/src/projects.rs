@@ -53,8 +53,50 @@ impl Store {
             db.execute("VACUUM INTO ?1", [backup.to_string_lossy().as_ref()])
                 .map_err(|e| e.to_string())?;
         }
-        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; BEGIN; CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, roots TEXT NOT NULL, updated_at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS workspace_state (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tool_documents (project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, tool TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(project_id,tool)); CREATE TABLE IF NOT EXISTS code_drafts (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, document TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_notes (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_note_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, parent_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_note_locations (note_id TEXT PRIMARY KEY REFERENCES global_notes(id) ON DELETE CASCADE, folder_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_note_order (note_id TEXT PRIMARY KEY REFERENCES global_notes(id) ON DELETE CASCADE, position INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS project_colors (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, color TEXT NOT NULL); PRAGMA user_version=5; COMMIT;").map_err(|e| e.to_string())?;
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; BEGIN; CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, roots TEXT NOT NULL, updated_at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS ssh_host_keys (host TEXT NOT NULL, port INTEGER NOT NULL, fingerprint TEXT NOT NULL, PRIMARY KEY(host,port)); CREATE TABLE IF NOT EXISTS workspace_state (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tool_documents (project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, tool TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(project_id,tool)); CREATE TABLE IF NOT EXISTS code_drafts (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, document TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_notes (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_note_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, parent_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_note_locations (note_id TEXT PRIMARY KEY REFERENCES global_notes(id) ON DELETE CASCADE, folder_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS global_note_order (note_id TEXT PRIMARY KEY REFERENCES global_notes(id) ON DELETE CASCADE, position INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS project_colors (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, color TEXT NOT NULL); PRAGMA user_version=5; COMMIT;").map_err(|e| e.to_string())?;
         Ok(Self(Mutex::new(db)))
+    }
+
+    pub fn ssh_host_key(&self, host: &str, port: u16) -> Result<Option<String>, String> {
+        self.0
+            .lock()
+            .map_err(|e| e.to_string())?
+            .query_row(
+                "SELECT fingerprint FROM ssh_host_keys WHERE host=?1 AND port=?2",
+                params![host.trim().to_lowercase(), port],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn remember_ssh_host_key(
+        &self,
+        host: &str,
+        port: u16,
+        fingerprint: &str,
+    ) -> Result<(), String> {
+        let db = self.0.lock().map_err(|e| e.to_string())?;
+        let host = host.trim().to_lowercase();
+        db.execute(
+            "INSERT OR IGNORE INTO ssh_host_keys (host,port,fingerprint) VALUES (?1,?2,?3)",
+            params![host, port, fingerprint],
+        )
+        .map_err(|e| e.to_string())?;
+        let saved: String = db
+            .query_row(
+                "SELECT fingerprint FROM ssh_host_keys WHERE host=?1 AND port=?2",
+                params![host, port],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if saved != fingerprint {
+            return Err(
+                "SSH host fingerprint changed. Verify the server identity before reconnecting."
+                    .into(),
+            );
+        }
+        Ok(())
     }
 
     pub fn list(&self) -> Result<Vec<Project>, String> {
@@ -388,6 +430,26 @@ fn now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatically_recorded_ssh_keys_are_stable_and_host_scoped() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        assert_eq!(store.ssh_host_key("example.test", 22).unwrap(), None);
+        store
+            .remember_ssh_host_key("Example.Test", 22, "SHA256:first")
+            .unwrap();
+        store
+            .remember_ssh_host_key("example.test", 22, "SHA256:first")
+            .unwrap();
+        assert!(store
+            .remember_ssh_host_key("example.test", 22, "SHA256:changed")
+            .is_err());
+        assert_eq!(
+            store.ssh_host_key("EXAMPLE.test", 22).unwrap().as_deref(),
+            Some("SHA256:first")
+        );
+        assert_eq!(store.ssh_host_key("example.test", 2222).unwrap(), None);
+    }
 
     #[test]
     fn project_colors_persist_and_validate_without_changing_sources() {

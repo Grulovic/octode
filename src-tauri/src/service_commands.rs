@@ -31,12 +31,22 @@ pub async fn ssh_connect(
     connection: ServerConnection,
 ) -> Result<String, String> {
     authorize(&window, &store, &project_id)?;
+    let mut connection = connection;
+    if let Some(saved) = store.ssh_host_key(&connection.host, connection.port)? {
+        if !connection.fingerprint.is_empty() && connection.fingerprint != saved {
+            return Err("SSH host fingerprint differs from the recorded key. Verify the server identity before reconnecting.".into());
+        }
+        connection.fingerprint = saved;
+    } else if connection.fingerprint.is_empty() {
+        connection.fingerprint = ssh::fingerprint(connection.clone()).await?;
+    }
     let handle = tokio::time::timeout(
         std::time::Duration::from_secs(45),
         ssh::authenticate(&connection, &project_id),
     )
     .await
     .map_err(|_| "SSH authentication timed out")??;
+    store.remember_ssh_host_key(&connection.host, connection.port, &connection.fingerprint)?;
     servers.insert(window.label(), &project_id, handle)
 }
 #[tauri::command]
@@ -96,6 +106,24 @@ pub async fn sftp_list(
     tokio::time::timeout(std::time::Duration::from_secs(30), session.list(&path))
         .await
         .map_err(|_| "SFTP listing timed out")?
+}
+#[tauri::command]
+pub async fn database_connected(
+    window: WebviewWindow,
+    databases: State<'_, Databases>,
+    id: String,
+) -> Result<bool, String> {
+    let Ok(session) = databases.get(window.label(), &id) else {
+        return Ok(false);
+    };
+    Ok(matches!(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            session.query("SELECT 1", 1)
+        )
+        .await,
+        Ok(Ok(_))
+    ))
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

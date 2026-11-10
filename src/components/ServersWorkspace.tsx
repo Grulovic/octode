@@ -1,3 +1,4 @@
+import { useConnectionRecovery } from "../hooks/useConnectionRecovery";
 import { useSaveShortcut } from "../lib/saveShortcut";
 import { changedIds } from "../lib/toolChanges";
 import CustomSelect from "./CustomSelect";
@@ -46,7 +47,7 @@ export default function ServersWorkspace({
     "ServersWorkspace:selected",
     "",
   );
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setBusy] = useState(false);
   const working = useRef(false);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const sessionsRef = useRef(sessions);
@@ -83,34 +84,29 @@ export default function ServersWorkspace({
         void nativeTool("ssh_close", { id: session }).catch(() => {});
     };
   }, []);
-  useEffect(() => {
-    let gone = false;
-    const timer = setInterval(() => {
-      for (const [connectionId, session] of Object.entries(
-        sessionsRef.current,
-      )) {
-        void nativeTool<boolean>("ssh_connected", { id: session })
-          .then((connected) => {
-            if (connected || gone) return;
-            transfers.cancelSession(session);
-            void nativeTool("ssh_close", { id: session }).catch(() => {});
-            setSessions((previous) => {
-              const next = { ...previous };
-              delete next[connectionId];
-              return next;
-            });
-            onError(
-              "SSH connection closed. Open Terminal or SFTP files to reconnect.",
-            );
-          })
-          .catch(() => {});
-      }
-    }, 5000);
-    return () => {
-      gone = true;
-      clearInterval(timer);
-    };
-  }, [onError, transfers.cancelSession]);
+  const { recovering: recovery } = useConnectionRecovery({
+    sessions,
+    check: (id) => nativeTool<boolean>("ssh_connected", { id }),
+    reconnect: async (connectionId, oldSession, isCurrent) => {
+      const connection = doc.connections.find((item) => item.id === connectionId);
+      if (!connection) throw new Error("Server connection no longer exists.");
+      transfers.cancelSession(oldSession);
+      const value = await nativeTool<string>("ssh_connect", { projectId: project.id, connection });
+      if (!isCurrent() || sessionsRef.current[connectionId] !== oldSession) { await nativeTool("ssh_close", { id: value }); return; }
+      sessionsRef.current = { ...sessionsRef.current, [connectionId]: value };
+      setSessions(sessionsRef.current);
+      void nativeTool("ssh_close", { id: oldSession }).catch(() => {});
+      if (selected === connectionId && tab === "files") await list(path, value);
+    },
+    onExhausted: (key) => {
+      const next = { ...sessionsRef.current };
+      delete next[key];
+      sessionsRef.current = next;
+      setSessions(next);
+    },
+    onError,
+  });
+  const busy = operationBusy || recovery.includes(selected);
   const current = doc.connections.find((item) => item.id === selected);
   const session = sessions[selected];
   const patch = (value: Partial<ServerConnection>) =>
@@ -172,12 +168,16 @@ export default function ServersWorkspace({
         void nativeTool("ssh_close", { id: value });
         return;
       }
-      setSessions((previous) => ({ ...previous, [current.id]: value }));
+      sessionsRef.current = { ...sessionsRef.current, [current.id]: value };
+      setSessions(sessionsRef.current);
       setTab(destination);
       if (destination === "files") await list(path, value);
     });
   const disconnect = async () => {
     if (!session) return;
+    sessionsRef.current = { ...sessionsRef.current };
+    delete sessionsRef.current[selected];
+    setSessions(sessionsRef.current);
     transfers.cancelSession(session);
     await nativeTool("ssh_close", { id: session });
     setSessions((previous) => {
@@ -301,8 +301,8 @@ export default function ServersWorkspace({
       {!current ? (
         <>
           <EmptyTool title="Your servers, close by">
-            Add an SSH connection. Verify its fingerprint before opening a
-            terminal or transferring files.
+            Add an SSH connection to open a terminal or transfer files.
+            Host fingerprints are checked automatically when connecting.
           </EmptyTool>
         </>
       ) : (
@@ -313,7 +313,7 @@ export default function ServersWorkspace({
                 <h2>{current.name}</h2>
               </div>
               <p className="service-hint">
-                {session ? "SSH connected" : "Not connected"} · Changes require
+                {recovery.includes(selected) ? "Reconnecting…" : session ? "SSH connected" : "Not connected"} · Changes require
                 Save
               </p>
             </div>
@@ -452,30 +452,7 @@ export default function ServersWorkspace({
                 </>
               )}
             </fieldset>
-            <div className="host-fingerprint">
-              <strong>Trusted host fingerprint</strong>
-              <code>{current.fingerprint || "Not checked yet"}</code>
-              <button
-                className="secondary-button"
-                disabled={busy || !!session || !current.host}
-                onClick={() =>
-                  void task(async () => {
-                    const fingerprint = await nativeTool<string>(
-                      "ssh_fingerprint",
-                      { projectId: project.id, connection: current },
-                    );
-                    if (
-                      await confirmAction(
-                        `Host: ${current.host}:${current.port}\nFingerprint: ${fingerprint}\n\nCompare this fingerprint with your server provider or a trusted source. Trust this key for this connection?`,
-                      )
-                    )
-                      patch({ fingerprint });
-                  })
-                }
-              >
-                Check fingerprint
-              </button>
-            </div>
+            <p className="service-hint server-fingerprint-hint">Host fingerprints are recorded automatically on first connection and verified on every reconnect.</p>
 
           </div>
           {Object.entries(sessions).map(([connectionId, sessionId]) => (

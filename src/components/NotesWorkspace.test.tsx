@@ -284,15 +284,14 @@ it("keeps folder changes pending, preserves other note drafts on Save, and expos
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("creates nested folders from the API-style toolbar and can save an empty folder tree", async () => {
+it("creates nested folders from the icon toolbar and can save an empty folder tree", async () => {
   storage.load.mockResolvedValue([]); storage.save.mockClear();
   let model!: ReturnType<typeof useNotes>;
   function Harness() { model = useNotes(); return <NotesWorkspace />; }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(<NotesProvider runtime={createWorkspaceRuntime()}><Harness /></NotesProvider>));
-    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Add note or folder"]')!;
-    await act(async () => { select.value = "folder"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Add folder"]')!.click());
     const first = model.folders[0].id;
     await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Folder name"]')!.blur());
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="New subfolder in New folder"]')!.click());
@@ -466,4 +465,21 @@ it("sorts Notes folders through group padding and list gaps with pointer draggin
     await act(async () => { expect(await model.retryLayout()).toBe(true); });
     expect(model.layoutDirty).toBe(false);
   } finally { document.elementFromPoint = original; await act(async () => root.unmount()); host.remove(); }
+});
+
+it("creates a note directly inside the folder whose hover action was clicked", async () => {
+  storage.load.mockResolvedValue([]); storage.save.mockClear();
+  const runtime = createWorkspaceRuntime();
+  let model!: ReturnType<typeof useNotes>;
+  function Harness() { model = useNotes(); return <NotesWorkspace />; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<NotesProvider runtime={runtime}><Harness /></NotesProvider>));
+    await act(async () => model.setFolders([{ id: "work", name: "Work" }, { id: "personal", name: "Personal" }]));
+    await act(async () => model.setCreationFolder("personal"));
+    await act(async () => (host.querySelector('[aria-label="New note in Work"]') as HTMLButtonElement).click());
+    expect(model.note?.folderId).toBe("work");
+    expect(model.creationFolder).toBe("work");
+    expect(storage.save).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });

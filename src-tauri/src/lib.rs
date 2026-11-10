@@ -513,6 +513,7 @@ pub fn run() {
             sftp_transfer,
             sftp_mutate,
             database_connect,
+            database_connected,
             database_close,
             database_tables,
             database_metadata,

@@ -39,6 +39,8 @@
 
 .notes-select { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px; text-align: left; color: inherit; }
 .notes-delete { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; margin-right: 6px; border-radius: 4px; color: var(--oc-muted); }
+.notes-list-row > .notes-delete { opacity: 0; pointer-events: none; }
+.notes-list-row:is(:hover,:focus-within) > .notes-delete { opacity: 1; pointer-events: auto; }
 .notes-delete:hover:not(:disabled) { background: var(--oc-surface); color: var(--oc-error); }
 .notes-markdown { flex: 1; min-height: 0; overflow: auto; padding: 24px 32px; color: var(--oc-text); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .notes-markdown > :first-child { margin-top: 0; }
@@ -89,7 +91,6 @@
 .notes-search-empty { padding: 14px 8px; color: var(--oc-muted); font-size: 12px; }
 
 .app-shell .notes-workspace .notes-folder-toolbar { margin: 0; padding: 0 10px; }
-.app-shell .notes-folder-toolbar .api-add-menu.custom-select { width: 28px; min-height: 28px; height: 28px; padding: 0; border: 0; background: transparent; }
 
 .app-shell .notes-folder .folder-heading > .folder-count { margin-left: auto; padding: 0 6px; flex: none; text-align: right; }
 .app-shell .notes-folder .folder-heading > :is(.folder-edit,.folder-delete) { display: none; opacity: 1; pointer-events: auto; }

@@ -1,3 +1,4 @@
+import { useConnectionRecovery } from "../hooks/useConnectionRecovery";
 import { useSaveShortcut } from "../lib/saveShortcut";
 import SqlFilterInput from "./SqlFilterInput";
 import { changedIds } from "../lib/toolChanges";
@@ -95,6 +96,7 @@ export default function DatabaseWorkspace({
     "DatabaseWorkspace:selected",
     "",
   );
+  const [connectionLost, setConnectionLost] = useState(false);
   const [session, setSession] = useState<string | null>(null);
   const [screen, setScreen] = useState<"connections" | "workspace">(
     "connections",
@@ -116,7 +118,6 @@ export default function DatabaseWorkspace({
   >([]);
   const [operationBusy, setBusy] = useState(false);
   const [cellEditing, setCellEditing] = useState(false);
-  const busy = operationBusy || cellEditing || pendingRows;
   const operation = useRef<string | null>(null);
   const [servers, setServers] = useState<ServerConnection[]>([]);
   const [tables, setTables] = useState<DbTable[]>([]);
@@ -264,6 +265,32 @@ export default function DatabaseWorkspace({
         .catch((error) => onError(String(error)));
   }, [visible, project, onError]);
   const current = doc.connections.find((item) => item.id === selected);
+  const { recovering: recovery, retry: retryRecovery } = useConnectionRecovery({
+    sessions: session ? { database: session } : {},
+    check: (id) => operationBusy || cellEditing || loadingRows || !!operation.current
+      ? Promise.resolve(true)
+      : nativeTool<boolean>("database_connected", { id }),
+    reconnect: async (_key, oldSession, isCurrent) => {
+      if (operationBusy || cellEditing || loadingRows || operation.current) return;
+      if (!current) throw new Error("Database connection no longer exists.");
+      const oldSsh = sshRef.current;
+      const next = await openConnection();
+      if (!isCurrent()) {
+        await nativeTool("database_close", { id: next.databaseSession });
+        if (next.sshSession) await nativeTool("ssh_close", { id: next.sshSession });
+        return;
+      }
+      setConnectionLost(false);
+      sessionRef.current = next.databaseSession;
+      sshRef.current = next.sshSession;
+      setSession(next.databaseSession);
+      void nativeTool("database_close", { id: oldSession }).catch(() => {});
+      if (oldSsh) void nativeTool("ssh_close", { id: oldSsh }).catch(() => {});
+    },
+    onExhausted: () => setConnectionLost(true),
+    onError,
+  });
+  const busy = operationBusy || cellEditing || pendingRows || recovery.length > 0;
   const patch = (value: Partial<DatabaseConnection>) =>
     set((previous) => ({
       ...previous,
@@ -283,6 +310,7 @@ export default function DatabaseWorkspace({
     }
   };
   const disconnect = async () => {
+    setSession(null);
     setTableInfo(false);
     browseVersion.current++;
     setLoadingRows(false);
@@ -303,58 +331,51 @@ export default function DatabaseWorkspace({
     setTable(null);
     setResult(null);
   };
-  const connect = () =>
-    task(async () => {
-      if (!current) return;
-      if (current.engine !== "sqlite" && !current.database.trim()) {
-        throw new Error("Enter a database name before connecting.");
+  const openConnection = async () => {
+    if (!current) throw new Error("Select a database connection.");
+    if (current.engine !== "sqlite" && !current.database.trim()) {
+      throw new Error("Enter a database name before connecting.");
+    }
+    let sshSession: string | null = null;
+    let databaseSession: string | null = null;
+    try {
+      if (current.sshId) {
+        const server = servers.find((item) => item.id === current.sshId);
+        if (!server) throw new Error("Save the SSH connection in Servers first.");
+        sshSession = await nativeTool<string>("ssh_connect", { projectId: project.id, connection: server });
       }
-      let sshSession: string | null = null;
-      let databaseSession: string | null = null;
-      try {
-        if (current.sshId) {
-          const server = servers.find((item) => item.id === current.sshId);
-          if (!server)
-            throw new Error("Save the SSH connection in Servers first.");
-          sshSession = await nativeTool<string>("ssh_connect", {
-            projectId: project.id,
-            connection: server,
-          });
-        }
-        databaseSession = await nativeTool<string>("database_connect", {
-          projectId: project.id,
-          connection: current,
-          sshSession,
-        });
-        const metadata = await nativeTool<DbResult>("database_tables", {
-          id: databaseSession,
-        });
-        if (!alive.current) {
-          await nativeTool("database_close", { id: databaseSession });
-          if (sshSession) await nativeTool("ssh_close", { id: sshSession });
-          return;
-        }
-        sessionRef.current = databaseSession;
-        sshRef.current = sshSession;
-        setSession(databaseSession);
-        setTables(
-          metadata.rows.map((row) => ({
-            schema: row[0].value,
-            name: row[1].value,
-          })),
-        );
-        setTab("tables");
-        setScreen("workspace");
-      } catch (error) {
-        if (databaseSession)
-          await nativeTool("database_close", { id: databaseSession }).catch(
-            () => {},
-          );
-        if (sshSession)
-          await nativeTool("ssh_close", { id: sshSession }).catch(() => {});
-        throw error;
+      databaseSession = await nativeTool<string>("database_connect", {
+        projectId: project.id, connection: current, sshSession,
+      });
+      return { databaseSession, sshSession };
+    } catch (error) {
+      if (databaseSession) await nativeTool("database_close", { id: databaseSession }).catch(() => {});
+      if (sshSession) await nativeTool("ssh_close", { id: sshSession }).catch(() => {});
+      throw error;
+    }
+  };
+  const connect = () => task(async () => {
+    const next = await openConnection();
+    try {
+      const metadata = await nativeTool<DbResult>("database_tables", { id: next.databaseSession });
+      if (!alive.current) {
+        await nativeTool("database_close", { id: next.databaseSession });
+        if (next.sshSession) await nativeTool("ssh_close", { id: next.sshSession });
+        return;
       }
-    });
+      setConnectionLost(false);
+      sessionRef.current = next.databaseSession;
+      sshRef.current = next.sshSession;
+      setSession(next.databaseSession);
+      setTables(metadata.rows.map((row) => ({ schema: row[0].value, name: row[1].value })));
+      setTab("tables");
+      setScreen("workspace");
+    } catch (error) {
+      await nativeTool("database_close", { id: next.databaseSession }).catch(() => {});
+      if (next.sshSession) await nativeTool("ssh_close", { id: next.sshSession }).catch(() => {});
+      throw error;
+    }
+  });
   const browse = async (
     nextTable = table,
     nextPage = page,
@@ -594,7 +615,7 @@ export default function DatabaseWorkspace({
                 onClick={() => setScreen("connections")}
               >
                 <ArrowLeft size={16} />
-                <span className="connection-dot connected" aria-hidden="true"/><span>{current?.name}</span><span className="connection-engine">{current?.engine}</span>
+                <span className={`connection-dot ${connectionLost || recovery.length ? "" : "connected"}`} aria-hidden="true"/><span>{current?.name}</span><span className="connection-engine">{current?.engine}</span>
               </button>
               <div className="service-tabs">
                 {["tables", "console"].map((value) => (
@@ -631,7 +652,7 @@ export default function DatabaseWorkspace({
                 }}
               >
                 <span
-                  className={`connection-dot ${selected === item.id && session ? "connected" : ""}`}
+                  className={`connection-dot ${selected === item.id && session && !connectionLost && !recovery.length ? "connected" : ""}`}
                 />
                 <span>
                   {item.name}
@@ -755,7 +776,7 @@ export default function DatabaseWorkspace({
             <div>
               <h2>{current.name}</h2>
               <span className="service-hint">
-                {session ? "Connected" : "Not connected"} ·{" "}
+                {recovery.length ? "Reconnecting…" : connectionLost && session ? "Connection lost" : session ? "Connected" : "Not connected"} ·{" "}
                 {current.readOnly ? "Read-only connection" : "Writes enabled"}
               </span>
             </div>
@@ -821,6 +842,10 @@ export default function DatabaseWorkspace({
               </button>
             </div>
           </div>
+          {connectionLost && session && <div className="service-content" role="status">
+            Connection lost. Pending edits are kept.
+            <button className="secondary-button" disabled={operationBusy || cellEditing || recovery.length > 0} onClick={() => retryRecovery("database")}>Retry connection</button>
+          </div>}
           {session && (
             <div className="database-workspace-actions">
               {screen === "connections" && (
@@ -992,8 +1017,8 @@ export default function DatabaseWorkspace({
                     </Field>
                     {current.sshId && (
                       <p className="service-hint">
-                        Uses the saved Server connection and its trusted
-                        fingerprint. Host is resolved from that server. TLS
+                        Uses the saved Server connection with automatic host
+                        fingerprint verification. Host is resolved from that server. TLS
                         hostname verification through tunnels is pending; choose
                         a TLS mode explicitly.
                       </p>
@@ -1259,7 +1284,7 @@ export default function DatabaseWorkspace({
                   </span>
                 </div>
                 <DatabaseDataGrid
-                  key={`${session}:${tab}:${table?.schema}:${table?.name}`}
+                  key={`${selected}:${tab}:${table?.schema}:${table?.name}`}
                   session={session}
                   selectionKey={JSON.stringify([
                     session,
@@ -1275,7 +1300,7 @@ export default function DatabaseWorkspace({
                   table={tab === "tables" ? (table?.name ?? "") : ""}
                   result={result}
                   metadata={tab === "tables" ? metadata : null}
-                  disabled={operationBusy || loadingRows || csvImport}
+                  disabled={operationBusy || loadingRows || csvImport || recovery.length > 0}
                   sort={sort}
                   descending={descending}
                   onSort={(column) =>

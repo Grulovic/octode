@@ -1959,7 +1959,7 @@ describe("browser sandbox workflows", () => {
     await click('[aria-label="New project"]');
     await click('.rail-button[aria-label="Servers"]');
     await click('[aria-label="Servers workspace"] button[title="New server"]');
-    await waitFor(() => document.querySelector(".host-fingerprint"));
+    await waitFor(() => document.querySelector(".server-fingerprint-hint"));
     expect(
       document.querySelector(
         '[aria-label="Servers workspace"] .service-toolbar',
@@ -1971,8 +1971,8 @@ describe("browser sandbox workflows", () => {
       ),
     ).not.toBeNull();
     expect(document.querySelector(".rail-label")).toBeNull();
-    expect(document.querySelector(".host-fingerprint")?.textContent).toContain(
-      "Not checked yet",
+    expect(document.querySelector(".server-fingerprint-hint")?.textContent).toContain(
+      "recorded automatically",
     );
     expect(
       document.querySelector<HTMLButtonElement>(
