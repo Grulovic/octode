@@ -919,7 +919,7 @@
 .git-commit-file > h3 { margin: 18px 0 10px; color: var(--oc-text-strong); font: 500 12px/1.6 var(--oc-font-mono); overflow-wrap: anywhere; }
 .git-stash-row { display: flex; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--oc-border); }
 .git-stash-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
-.git-stash-row > button { padding: 4px 6px; border: 1px solid var(--oc-border-strong); border-radius: 4px; font-size: 11px; }
+.git-stash-row > button { flex-shrink: 0; white-space: nowrap; padding: 4px 6px; border: 1px solid var(--oc-border-strong); border-radius: 4px; font-size: 11px; }
 
 .git-blame-gutter {
   position: absolute;

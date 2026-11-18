@@ -683,7 +683,7 @@ export default function GitPanel({
             </button>
             <label className="git-control">Manage local branch<CustomSelect aria-label="Manage local branch" value={managedBranch} onChange={(event) => { setManagedBranch(event.target.value); setRenamedBranch(event.target.value); }}><option value="">Select branch…</option>{state.branches.map((name) => <option key={name}>{name}</option>)}</CustomSelect></label>
             <input aria-label="Rename branch to" placeholder="New branch name" value={renamedBranch} onChange={(event) => setRenamedBranch(event.target.value)} />
-            <div className="git-action-row"><button disabled={busy || !managedBranch || !renamedBranch.trim() || renamedBranch === managedBranch} onClick={() => void act("rename-branch", managedBranch, renamedBranch)}>Rename branch</button><button className="danger-action" disabled={busy || !managedBranch || managedBranch === state.branch} onClick={() => void act("delete-branch", managedBranch)}>Delete branch</button></div>
+            <div className="git-action-row"><button disabled={busy || !managedBranch || !renamedBranch.trim() || renamedBranch === managedBranch} onClick={() => void act("rename-branch", managedBranch, renamedBranch)}>Rename branch</button><button className="danger-outline" disabled={busy || !managedBranch || managedBranch === state.branch} onClick={() => void act("delete-branch", managedBranch)}>Delete branch</button></div>
             <label className="git-control">
               Remote
               <CustomSelect
@@ -716,7 +716,7 @@ export default function GitPanel({
                 Stash changes
               </button>
             </div>
-            <div className="git-stashes" aria-label="Saved stashes">{(state.stashes ?? []).length ? (state.stashes ?? []).map((stash) => <div key={`${stash.reference}:${stash.hash}`} className="git-stash-row"><span title={stash.subject}><code>{stash.reference}</code> {stash.subject}</span><button disabled={busy || !!state.entries.length || state.merging || state.reverting} onClick={() => void act("stash-apply", stash.reference, stash.hash)}>Apply</button><button className="danger-action" disabled={busy || state.merging || state.reverting} onClick={() => void act("stash-drop", stash.reference, stash.hash)}>Drop</button></div>) : <p className="git-help">No saved stashes.</p>}</div>
+            <div className="git-stashes" aria-label="Saved stashes">{(state.stashes ?? []).length ? (state.stashes ?? []).map((stash) => <div key={`${stash.reference}:${stash.hash}`} className="git-stash-row"><span title={stash.subject}><code>{stash.reference}</code> {stash.subject}</span><button disabled={busy || !!state.entries.length || state.merging || state.reverting} onClick={() => void act("stash-apply", stash.reference, stash.hash)}>Apply</button><button className="danger-outline" disabled={busy || state.merging || state.reverting} onClick={() => void act("stash-drop", stash.reference, stash.hash)}>Drop</button></div>) : <p className="git-help">No saved stashes.</p>}</div>
             <p className="git-help">
               Applying keeps the stash. Network operations use your configured
               Git credentials and SSH agent.
