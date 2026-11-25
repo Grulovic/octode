@@ -16,6 +16,7 @@ import { confirmAction } from "./ToolLayout";
 import MarkdownToolbar from "./MarkdownToolbar";
 import type { MarkdownCommand } from "../lib/markdownEditing";
 import MarkdownPreview from "./MarkdownPreview";
+import { copyMarkdownForEmail } from "../lib/markdownClipboard";
 import NotesSidebar from "./NotesSidebar";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import "./notes.css";
@@ -185,6 +186,15 @@ export default function NotesWorkspace() {
   const { note } = model;
   const [markdownView, setMarkdownView] = useState<"write" | "split" | "preview">("write");
   const [markdownCommand, setMarkdownCommand] = useState<MarkdownCommand | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied">("idle");
+  const [copyError, setCopyError] = useState("");
+  useEffect(() => { setCopyState("idle"); setCopyError(""); }, [note?.id, note?.text]);
+  const copyForGmail = async () => {
+    if (!note || copyState === "copying") return;
+    setCopyState("copying"); setCopyError("");
+    try { await copyMarkdownForEmail(note.text); setCopyState("copied"); }
+    catch (reason) { setCopyState("idle"); setCopyError(`Could not copy for Gmail: ${String(reason)}`); }
+  };
   useEffect(() => setMarkdownCommand(null), [note?.id, model.markdown]);
   const showingPreview = model.markdown && markdownView === "preview";
   const showingSplit = model.markdown && markdownView === "split";
@@ -276,10 +286,12 @@ export default function NotesWorkspace() {
           <button aria-label="Find in note" title="Find in note" disabled={!note || model.loading || showingPreview} onClick={() => setFindToken((value) => value + 1)}><Search size={15} /></button>
           <button aria-label="Word wrap" title="Word wrap" aria-pressed={model.wrap} disabled={!note || model.loading || showingPreview} onClick={() => model.setWrap((value) => !value)}><WrapText size={16} /></button>
           <button aria-label="Markdown preview" title="Toggle Markdown mode" aria-pressed={model.markdown} disabled={!note || model.loading} onClick={() => model.setMarkdown((value) => !value)}>MD</button>
+          <button className="notes-copy-gmail" aria-label="Copy MD for Gmail" title="Copy formatted Markdown for pasting into Gmail" disabled={!note || model.loading || copyState === "copying"} onClick={() => void copyForGmail()}>{copyState === "copying" ? "Copying…" : copyState === "copied" ? "Copied!" : "Copy MD for Gmail"}</button>
         </div>
       </div>
       {note && model.markdown && <MarkdownToolbar key={note.id} disabled={model.loading || model.deleting} preview={markdownView === "preview"} split={markdownView === "split"} onSplit={() => setMarkdownView("split")} onPreview={(preview) => setMarkdownView(preview ? "preview" : "write")} onCommand={setMarkdownCommand} syncScroll={syncScroll} onSyncScroll={() => setSyncScroll((value) => !value)} />}
       {importError && <div className="error-banner" role="alert"><span>{importError}</span><button aria-label="Dismiss import error" onClick={() => setImportError("")}><X size={16} /></button></div>}
+      {copyError && <div className="error-banner" role="alert"><span>{copyError}</span><button aria-label="Dismiss copy error" onClick={() => setCopyError("")}><X size={16} /></button></div>}
       {exportError && <div className="error-banner" role="alert"><span>{exportError}</span><button aria-label="Dismiss export error" onClick={() => setExportError("")}><X size={16} /></button></div>}
       {model.error && !model.errorDismissed && <div className="error-banner" role="alert"><span>{model.error}</span>{!model.notes.length && !model.layoutSaveFailed && <button onClick={model.retry}>Retry</button>}{model.layoutSaveFailed && <button onClick={() => void model.retryLayout()}>Retry</button>}<button aria-label="Dismiss note error" onClick={model.dismissError}><X size={16} /></button></div>}
       {model.loading ? <div className="loading">Loading notes…</div> : note ? <div className={`notes-content${showingSplit ? " notes-content-split" : ""}`}><div ref={splitEditor} className="notes-editor" style={showingPreview ? { display: "none" } : showingSplit ? { width: splitWidth } : undefined}><Suspense fallback={<div className="loading">Opening note…</div>}>{<EditorPane onReady={(instance) => setScrollEditor({ noteId: note.id, instance })} key={note.id} document={{ path: `notes://${note.id}.txt`, name: note.title || "Untitled note", text: note.text, saved: note.text }} modelPath={`notes://${note.id}.txt`} retainModel readOnly={model.deleting} languageId={model.markdown ? "markdown" : noteLanguage(note.title)} wordWrap={model.wrap ? "on" : "off"} findToken={findToken} markdownCommand={markdownCommand} onMarkdownHandled={() => setMarkdownCommand(null)} onChange={(text) => model.update({ text })} />}</Suspense></div>{showingSplit && <PanelResize target={splitEditor} size={splitWidth} onResize={setSplitWidth} minSize={160} maxSize={1600} minRemainingSize={164} label="Resize Markdown split" title="Drag to resize editor and preview" />}{(showingPreview || showingSplit) && <MarkdownPreview text={note.text} scrollRef={previewScroll} />}</div> : <div className="notes-empty"><FileText size={28} /><h2>A little space for your thoughts.</h2><p>Plain-text notes, shared across all your projects.</p><button className="secondary-button" disabled={!!model.error} onClick={() => model.create()}><Plus size={14} />New note</button></div>}

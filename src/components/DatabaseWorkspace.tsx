@@ -17,7 +17,7 @@ import {
   useState,
 } from "react";
 
-import { Play, Table2 } from "./DesignIcons";
+import { Play, RefreshCw, Table2 } from "./DesignIcons";
 import { ChevronLeft, ArrowLeft, ChevronRight, Plus, Copy, Save, Search, X, Trash2 } from "./DesignIcons";
 import { useToolDocument } from "../hooks/useToolDocument";
 import {
@@ -150,6 +150,8 @@ export default function DatabaseWorkspace({
   const [descending, setDescending] = useState(false);
   const [page, setPage] = useState(0);
   const [result, setResult] = useState<DbResult | null>(null);
+  const queryResult = useRef<{ result: DbResult; statement: string } | null>(null);
+  const refreshStatement = queryResult.current?.result === result ? queryResult.current.statement : undefined;
   const [copiedResult, setCopiedResult] = useState<DbResult | null>(null);
   useEffect(() => {
     if (metadata)
@@ -488,6 +490,7 @@ export default function DatabaseWorkspace({
           request: { sql: statement, operationId },
         });
         if (alive.current) {
+          queryResult.current = { result: value, statement };
           setResult(value);
           if (/^\s*(?:ALTER|DROP|CREATE|RENAME)\b/i.test(statement)) {
             // Refresh metadata after successful DDL without turning a refresh error into a failed write.
@@ -1251,6 +1254,15 @@ export default function DatabaseWorkspace({
                   </div>
                 )}
                   <span>
+                    {tab === "console" && (
+                      <button
+                        disabled={busy || !session || !refreshStatement}
+                        title="Run the SQL that produced these results again"
+                        onClick={() => { if (refreshStatement) void run(refreshStatement); }}
+                      >
+                        <RefreshCw size={14} /> Refresh query
+                      </button>
+                    )}{" "}
                     <button
                       disabled={busy}
                       onClick={() =>

@@ -114,7 +114,7 @@ it("Cmd+W closes the focused terminal tab only after confirmation", async () => 
   }
 });
 
-it("launches in a fresh tab once per request and rejects unavailable roots or full capacity", async () => {
+it("launches in a fresh tab once per request beyond six sessions and rejects unavailable roots", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host),
@@ -156,10 +156,9 @@ it("launches in a fresh tab once per request and rejects unavailable roots or fu
     for (let id = 3; id <= 6; id++) await act(async () => render(id));
     expect(tabs()).toHaveLength(6);
     await act(async () => render(7));
-    expect(tabs()).toHaveLength(6);
-    expect(onError).toHaveBeenLastCalledWith(
-      expect.stringContaining("six terminal tabs"),
-    );
+    expect(tabs()).toHaveLength(7);
+    expect(tabs()[6].classList.contains("selected")).toBe(true);
+    expect(onError).toHaveBeenCalledOnce();
     expect(handled).toHaveBeenLastCalledWith(7);
   } finally {
     await act(async () => root.unmount());
@@ -167,7 +166,7 @@ it("launches in a fresh tab once per request and rejects unavailable roots or fu
   }
 });
 
-it("Cmd/Ctrl+T opens plain tabs only in the focused visible terminal and respects the tab limit", async () => {
+it("Cmd/Ctrl+T opens plain tabs beyond six sessions only in the focused visible terminal", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const outside = document.createElement("input");
@@ -233,10 +232,8 @@ it("Cmd/Ctrl+T opens plain tabs only in the focused visible terminal and respect
     await act(async () => render());
     focus();
     for (let i = 0; i < 4; i++) await key();
-    expect(tabs()).toHaveLength(6);
-    expect(onError).toHaveBeenCalledWith(
-      expect.stringContaining("six terminal tabs"),
-    );
+    expect(tabs()).toHaveLength(7);
+    expect(onError).not.toHaveBeenCalled();
     expect(host.textContent).not.toContain("Launch command:");
   } finally {
     await act(async () => root.unmount());
@@ -333,12 +330,42 @@ it("AI star offers folders and launches the current configured command on select
     localStorage.setItem(key, JSON.stringify({ version: 1, terminalCommand: "claude" }));
     await chooseFolder(host, "New AI terminal", "api");
     expect(tabs()).toHaveLength(3); expect(host.textContent).toContain("claude");
-    for (let count = 0; count < 3; count++) await chooseFolder(host, "New AI terminal", "api");
-    expect(tabs()).toHaveLength(6); expect(star.disabled).toBe(true);
-    await act(async () => star.click()); expect(tabs()).toHaveLength(6);
+    for (let count = 0; count < 4; count++) await chooseFolder(host, "New AI terminal", "api");
+    expect(tabs()).toHaveLength(7); expect(star.disabled).toBe(false);
   } finally {
     if (previous === null) localStorage.removeItem(key); else localStorage.setItem(key, previous);
     await act(async () => root.unmount()); host.remove();
+  }
+});
+
+it("renames a terminal without replacing the session and cancels an edit with Escape", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<TerminalPanel project={{ id: "p", name: "P", roots: ["/project"], updatedAt: 0 }} initialRoot="/project" visible onError={() => {}} onHide={() => {}} />));
+    const session = host.querySelector(".local-terminal-session");
+    const label = () => host.querySelector(".terminal-tab-label");
+    const rename = async (name: string, key: string) => {
+      await act(async () => label()!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      const input = host.querySelector<HTMLInputElement>(".terminal-tab-rename")!;
+      expect(document.activeElement).toBe(input);
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+    };
+    await rename(" Dev server ", "Enter");
+    expect(label()?.textContent).toBe("Dev server");
+    await rename("Discard this edit", "Escape");
+    expect(label()?.textContent).toBe("Dev server");
+    await rename("", "Enter");
+    expect(label()?.textContent).toBe("project 1");
+    expect(host.querySelector(".local-terminal-session")).toBe(session);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
   }
 });
 

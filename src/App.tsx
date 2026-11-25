@@ -154,8 +154,13 @@ export default function App() {
   useLayoutEffect(() => {
     const host = slots.find((slot) => slot.key === activeKey)?.host;
     // Detaching a portal host preserves React instances, editor models and PTYs.
-    if (host && surface.current && surface.current.firstChild !== host)
-      surface.current.replaceChildren(host);
+    if (!host || !surface.current || surface.current.firstChild === host) return;
+    // Monaco routes typing through its cached focus state. Blur while the
+    // outgoing editor is still connected so it receives the blur event.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && surface.current.contains(focused))
+      focused.blur();
+    surface.current.replaceChildren(host);
   }, [activeKey, slots]);
   return (
     <NotesProvider runtime={runtime}>

@@ -19,9 +19,9 @@ function safeUrl(value: string, image = false) {
   } catch { return undefined; }
 }
 // Render tokens through React rather than inserting HTML from note contents.
-function content(tokens: Token[]): ReactNode[] {
+export function markdownContent(tokens: Token[]): ReactNode[] {
   return tokens.map((token, key): ReactNode => {
-    const children = "tokens" in token && token.tokens ? content(token.tokens) : null;
+    const children = "tokens" in token && token.tokens ? markdownContent(token.tokens) : null;
     switch (token.type) {
       case "space": return null;
       case "heading": {
@@ -50,9 +50,9 @@ function content(tokens: Token[]): ReactNode[] {
       }
       case "list": {
         const Tag = token.ordered ? "ol" : "ul";
-        return <Tag key={key} start={token.ordered ? Number(token.start) : undefined}>{token.items.map((item: Tokens.ListItem, index: number) => <li key={index}>{item.task && <input type="checkbox" checked={!!item.checked} disabled aria-label={item.checked ? "Completed task" : "Incomplete task"} />}{content(item.tokens)}</li>)}</Tag>;
+        return <Tag key={key} start={token.ordered ? Number(token.start) : undefined}>{token.items.map((item: Tokens.ListItem, index: number) => <li key={index}>{item.task && <input type="checkbox" checked={!!item.checked} disabled aria-label={item.checked ? "Completed task" : "Incomplete task"} />}{markdownContent(item.tokens)}</li>)}</Tag>;
       }
-      case "table": return <div key={key} className="notes-markdown-table"><table><thead><tr>{token.header.map((cell: Tokens.TableCell, index: number) => <th key={index} style={{ textAlign: token.align[index] ?? undefined }}>{content(cell.tokens)}</th>)}</tr></thead><tbody>{token.rows.map((row: Tokens.TableCell[], index: number) => <tr key={index}>{row.map((cell: Tokens.TableCell, col: number) => <td key={col} style={{ textAlign: token.align[col] ?? undefined }}>{content(cell.tokens)}</td>)}</tr>)}</tbody></table></div>;
+      case "table": return <div key={key} className="notes-markdown-table"><table><thead><tr>{token.header.map((cell: Tokens.TableCell, index: number) => <th key={index} style={{ textAlign: token.align[index] ?? undefined }}>{markdownContent(cell.tokens)}</th>)}</tr></thead><tbody>{token.rows.map((row: Tokens.TableCell[], index: number) => <tr key={index}>{row.map((cell: Tokens.TableCell, col: number) => <td key={col} style={{ textAlign: token.align[col] ?? undefined }}>{markdownContent(cell.tokens)}</td>)}</tr>)}</tbody></table></div>;
       default: return "raw" in token ? token.raw : null;
     }
   });
@@ -64,7 +64,7 @@ export default function MarkdownPreview({ text, scrollRef }: { text: string; scr
     return marked.lexer(text, { gfm: true }).map((token, key) => {
       const start = line;
       line += (token.raw.match(/\n/g) ?? []).length;
-      const node = content([token])[0];
+      const node = markdownContent([token])[0];
       return isValidElement(node) ? cloneElement(node as ReactElement<{ "data-source-line": number }>, { key, "data-source-line": start }) : node;
     });
   }, [text]);

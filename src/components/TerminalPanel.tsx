@@ -3,7 +3,7 @@ import CustomSelect from "./CustomSelect";
 import "./code-tools.css";
 import "./terminal.css";
 import { registerTabCloser } from "../lib/closeTab";
-import { lazy, Suspense, useState, useRef, useEffect } from "react";
+import { lazy, Suspense, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Plus, RotateCcw, X, TerminalSquare, Folder, ChevronDown, Sparkle, Play } from "./DesignIcons";
 import PanelResize, { usePanelSize } from "./PanelResize";
 import { middleClose } from "../lib/middleClose";
@@ -54,19 +54,47 @@ export default function TerminalPanel({
   );
   const nextTabNumber = useRef(2);
   const [tabs, setTabs] = useState<
-    { id: string; root: string; number: number; generation: number; startupCommand?: string }[]
+    { id: string; root: string; number: number; generation: number; title?: string; startupCommand?: string }[]
   >(() => [{ id: crypto.randomUUID(), root: initialRoot, number: 1, generation: 0 }]);
   const tabReorder = useTabReorder((source, target, after) => {
     setTabs((items) => moveTab(items, source, target, after, (item) => item.id));
   });
   const [active, setActive] = useState<string>(() => tabs[0].id);
+  const [rename, setRename] = useState<{ id: string; value: string } | null>(null);
+  const tabStrip = tabReorder.container;
+  useLayoutEffect(() => {
+    const strip = tabStrip.current;
+    const selected = strip?.querySelector(".selected");
+    if (!visible || !strip || !selected) return;
+    const bounds = strip.getBoundingClientRect();
+    const tab = selected.getBoundingClientRect();
+    if (tab.left < bounds.left) strip.scrollLeft += tab.left - bounds.left;
+    else if (tab.right > bounds.right) strip.scrollLeft += tab.right - bounds.right;
+  }, [active, visible, tabStrip]);
+  useEffect(() => {
+    const strip = tabStrip.current;
+    if (!strip) return;
+    const scrollTabs = (event: WheelEvent) => {
+      if (event.ctrlKey || event.deltaX || !event.deltaY || strip.scrollWidth <= strip.clientWidth) return;
+      event.preventDefault();
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? strip.clientWidth : 1;
+      strip.scrollLeft += event.deltaY * scale;
+    };
+    strip.addEventListener("wheel", scrollTabs, { passive: false });
+    return () => strip.removeEventListener("wheel", scrollTabs);
+  }, [tabStrip]);
+  const finishRename = () => {
+    if (!rename) return;
+    const title = rename.value.trim() || undefined;
+    setTabs((items) => items.map((tab) => tab.id === rename.id ? { ...tab, title } : tab));
+    setRename(null);
+  };
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [activity, setActivity] = useState<Record<string, boolean>>({});
   const hasOutput = tabs.some((tab) => activity[tab.id]);
   useEffect(() => { onActivityChange?.(hasOutput); }, [hasOutput, onActivityChange]);
   const current = tabs.find((item) => item.id === active);
   const add = (root = initialRoot) => {
-    if (tabs.length >= 6) return;
     const tab = { id: crypto.randomUUID(), root, number: nextTabNumber.current++, generation: 0 };
     setTabs((previous) => [...previous, tab]);
     setActive(tab.id);
@@ -89,12 +117,6 @@ export default function TerminalPanel({
       event.stopImmediatePropagation();
       if (event.repeat) return;
       window.dispatchEvent(new Event("octode-dismiss-popovers"));
-      if (tabs.length >= 6) {
-        onError(
-          "All six terminal tabs are in use. Close a tab before opening another.",
-        );
-        return;
-      }
       add();
     };
     window.addEventListener("keydown", key, true);
@@ -106,11 +128,7 @@ export default function TerminalPanel({
   }, [visible, tabs.length]);
   const handledLaunch = useRef<number | null>(null);
   const launchCommand = (root: string, command: string) => {
-    if (tabs.length >= 6)
-      onError(
-        "All six terminal tabs are in use. Close a tab before launching the command.",
-      );
-    else if (!project.roots.includes(root))
+    if (!project.roots.includes(root))
       onError(
         "Choose an available project folder before launching the terminal command.",
       );
@@ -131,7 +149,7 @@ export default function TerminalPanel({
     handledLaunch.current = launchRequest.id;
     launchCommand(launchRequest.root, launchRequest.command);
     onLaunchHandled?.(launchRequest.id);
-  }, [launchRequest, onLaunchHandled, tabs.length, project, onError]);
+  }, [launchRequest, onLaunchHandled, project, onError]);
   const close = async (id: string) => {
     if (
       !(await confirmAction(
@@ -170,48 +188,83 @@ export default function TerminalPanel({
       />
       <div className="terminal-toolbar">
         <span className="terminal-heading"><TerminalSquare size={14} />Terminal</span>
-        <div className="local-terminal-tabs" ref={tabReorder.container}>
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              {...tabReorder.tabProps(tab.id)}
-              className={active === tab.id ? "selected" : ""}
-              onMouseDown={(event) => {
-                if (event.button === 1) event.preventDefault();
-                tabReorder.tabProps(tab.id).onMouseDown(event);
-              }}
-              onMouseUp={(event) =>
-                middleClose(event, () => {
-                  void close(tab.id);
-                })
-              }
-              onAuxClick={(event) =>
-                middleClose(event, () => {
-                  void close(tab.id);
-                })
-              }
-            >
-              <button title={tab.root} onClick={() => setActive(tab.id)}>
-                <span className={`terminal-tab-dot ${activity[tab.id] ? "terminal-output-dot" : ""}`} title={activity[tab.id] ? "New terminal output" : undefined} data-connected={statuses[tab.id] === "Connected"} aria-label={statuses[tab.id] ?? "Starting shell"} />
-                <span className="terminal-tab-label">
-                  {filename(tab.root)} {tab.number}
-                </span>
-              </button>
-              <button
-                aria-label={`Close terminal ${tab.number}`}
-                onClick={() => void close(tab.id)}
+        <div className="local-terminal-tabs" ref={tabStrip}>
+          {tabs.map((tab) => {
+            const label = tab.title ?? `${filename(tab.root)} ${tab.number}`;
+            const startRename = () => setRename({ id: tab.id, value: label });
+            return (
+              <div
+                key={tab.id}
+                {...tabReorder.tabProps(tab.id)}
+                className={active === tab.id ? "selected" : ""}
+                onMouseDown={(event) => {
+                  if (event.button === 1) event.preventDefault();
+                  tabReorder.tabProps(tab.id).onMouseDown(event);
+                }}
+                onMouseUp={(event) =>
+                  middleClose(event, () => {
+                    void close(tab.id);
+                  })
+                }
+                onAuxClick={(event) =>
+                  middleClose(event, () => {
+                    void close(tab.id);
+                  })
+                }
               >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
+                {rename?.id === tab.id ? (
+                  <input
+                    className="terminal-tab-rename"
+                    aria-label={`Rename terminal ${tab.number}`}
+                    autoFocus
+                    value={rename.value}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onChange={(event) => setRename({ id: tab.id, value: event.target.value })}
+                    onBlur={finishRename}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return;
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      } else if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setRename(null);
+                      }
+                    }}
+                  />
+                ) : (
+                  <button
+                    title={tab.title ? `${tab.title}\n${tab.root}` : tab.root}
+                    onClick={() => setActive(tab.id)}
+                    onDoubleClick={startRename}
+                    onKeyDown={(event) => {
+                      if (event.key === "F2") {
+                        event.preventDefault();
+                        startRename();
+                      }
+                    }}
+                  >
+                    <span className={`terminal-tab-dot ${activity[tab.id] ? "terminal-output-dot" : ""}`} title={activity[tab.id] ? "New terminal output" : undefined} data-connected={statuses[tab.id] === "Connected"} aria-label={statuses[tab.id] ?? "Starting shell"} />
+                    <span className="terminal-tab-label">{label}</span>
+                  </button>
+                )}
+                <button
+                  aria-label={`Close terminal ${tab.number}`}
+                  onClick={() => void close(tab.id)}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            );
+          })}
         </div>
         {[false, true].map((ai) => <CustomSelect
           key={String(ai)}
           className={`terminal-add terminal-folder-menu ${ai ? "terminal-ai-launch" : ""}`}
           aria-label={ai ? "New AI terminal" : "New terminal"}
           title={ai ? "Choose a folder and run the terminal launch command" : "Choose a folder for a new terminal (Cmd/Ctrl+T uses the Code folder)"}
-          disabled={tabs.length >= 6}
           value={initialRoot}
           triggerContent={ai ? <Sparkle size={16} /> : <Plus size={14} />}
           onChange={(event) => ai ? launchCommand(event.target.value, loadSettings().terminalCommand) : add(event.target.value)}

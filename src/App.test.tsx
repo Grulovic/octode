@@ -301,8 +301,12 @@ describe("browser sandbox workflows", () => {
       editor,
     );
     expect((editor as HTMLTextAreaElement).value).toBe("Alpha file draft");
-    await click('[aria-label="Back to projects"]');
+    const connectedOnBlur = vi.fn(() => editor?.isConnected);
+    editor?.addEventListener("blur", connectedOnBlur, { once: true });
+    (editor as HTMLTextAreaElement).focus();
+    await act(async () => editor?.dispatchEvent(new KeyboardEvent("keydown", { key: "0", metaKey: true, bubbles: true, cancelable: true })));
     await open("Beta");
+    expect(connectedOnBlur.mock.results.map(({ value }) => value)).toEqual([true]);
     expect(document.querySelector('[aria-label="Request name"]')).toBe(
       betaRequest,
     );
@@ -668,7 +672,7 @@ describe("browser sandbox workflows", () => {
               ],
             ],
           } as any;
-        if (command === "database_browse") return rows() as any;
+        if (command === "database_browse" || command === "database_query") return rows() as any;
         if (command === "database_metadata")
           return {
             columns: rows().columns.map((column, index) => ({
@@ -782,6 +786,19 @@ describe("browser sandbox workflows", () => {
       ),
     ).toBeNull();
     expect(document.querySelector('[aria-label="Save query"]')).not.toBeNull();
+    const refresh = '[title="Run the SQL that produced these results again"]';
+    expect(document.querySelector(refresh)).toBeNull();
+    await type('[aria-label="SQL query"]', "SELECT * FROM things");
+    await click(".service-content .sftp-toolbar .primary-button");
+    await type('[aria-label="SQL query"]', "SELECT name FROM things");
+    await click(refresh);
+    expect(native.mock.calls.filter(([command]) => command === "database_query")).toEqual([
+      ["database_query", { id: "test-session", request: { sql: "SELECT * FROM things", operationId: expect.any(String) } }],
+      ["database_query", { id: "test-session", request: { sql: "SELECT * FROM things", operationId: expect.any(String) } }],
+    ]);
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="SQL query"]')?.value).toBe("SELECT name FROM things");
+    await click('.database-query-list [title="New query"]');
+    expect(document.querySelector(refresh)).toBeNull();
     await click('[title="Back to connections"]');
     expect(
       document.querySelector(

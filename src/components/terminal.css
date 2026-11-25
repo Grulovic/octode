@@ -75,6 +75,20 @@
 .workspace-terminal-host .local-terminal-tabs > div > button:last-child { flex-basis: 24px; }
 .workspace-terminal-host .local-terminal-tabs .terminal-tab-label { color: #8d9aa3; font-size: 12px; }
 .workspace-terminal-host .local-terminal-tabs > div.selected .terminal-tab-label { color: #e3e7ea; }
+.workspace-terminal-host .local-terminal-tabs .terminal-tab-rename {
+  flex: 1 1 0;
+  width: 116px;
+  min-width: 0;
+  height: 24px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid var(--oc-border-strong);
+  border-radius: 4px;
+  background: var(--oc-bg);
+  color: var(--oc-text-strong);
+  font: inherit;
+  font-size: 12px;
+}
 .workspace-terminal-host .terminal-toolbar > .terminal-add,
 .workspace-terminal-host .terminal-toolbar-actions > button:not(.custom-select) {
   display: inline-flex;
