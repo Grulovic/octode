@@ -145,7 +145,7 @@
   gap: 6px;
   font-size: 11.5px;
 }
-.workspace-terminal-host .terminal-search-field {
+:is(.workspace-terminal-host, .remote-terminal) .terminal-search-field {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -157,9 +157,9 @@
   border-radius: 6px;
   background: #0b1519;
 }
-.workspace-terminal-host .terminal-search-field:focus-within { border-color: #80cbc4; }
-.workspace-terminal-host .terminal-search-field > svg { flex: none; }
-.workspace-terminal-host .terminal-search-field > input {
+:is(.workspace-terminal-host, .remote-terminal) .terminal-search-field:focus-within { border-color: #80cbc4; }
+:is(.workspace-terminal-host, .remote-terminal) .terminal-search-field > svg { flex: none; }
+:is(.workspace-terminal-host, .remote-terminal) .terminal-search-field > input {
   flex: 1;
   width: 0;
   min-width: 0;
@@ -185,7 +185,7 @@
   color: #8d9aa3;
 }
 .workspace-terminal-host .terminal-search > button:last-child { padding: 0 8px; color: #c6ccd3; }
-.workspace-terminal-host .terminal-previous-icon { transform: rotate(180deg); }
+:is(.workspace-terminal-host, .remote-terminal) .terminal-previous-icon { transform: rotate(180deg); }
 .workspace-terminal-host .terminal-search > .terminal-search-result { flex: 1; }
 .workspace-terminal-host .terminal-search > .terminal-status {
   position: static;
@@ -242,3 +242,27 @@
   background: transparent;
 }
 .workspace-terminal-host .terminal-folder-menu > .custom-select-label { display: flex; align-items: center; justify-content: center; }
+
+.remote-terminal-toolbar { flex-wrap: wrap; gap: 8px; }
+.remote-terminal .remote-terminal-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 300px;
+  min-width: 0;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+}
+.remote-terminal-search > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+}
+.remote-terminal-search > button:hover { background: var(--oc-surface); color: var(--oc-text-strong); }
+.remote-terminal-search > .terminal-search-result { white-space: nowrap; }
+.app-shell .remote-terminal .terminal-search-field > input:focus-visible { outline: none; box-shadow: none; }

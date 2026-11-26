@@ -1,5 +1,6 @@
 mod app_data;
 mod notes;
+mod vaults;
 use app_data::{export_app_data, import_app_data};
 mod exports;
 mod formatting;
@@ -560,6 +561,10 @@ pub fn run() {
             notes::load_notes,
             notes::load_note_folders,
             notes::save_notes_workspace,
+            vaults::list_vaults,
+            vaults::load_vault,
+            vaults::save_vault,
+            vaults::delete_vault,
             notes::save_note,
             notes::delete_note,
             create_project,

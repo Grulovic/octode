@@ -25,6 +25,8 @@ pub struct AppData {
     notes: Vec<crate::notes::Note>,
     #[serde(default)]
     note_folders: Vec<crate::notes::NoteFolder>,
+    #[serde(default)]
+    vaults: Vec<crate::vaults::VaultDocument>,
 }
 #[cfg(test)]
 fn reveal(value: &mut Value, project: &str, vault: &impl Secrets) -> Result<(), String> {
@@ -160,7 +162,18 @@ impl Store {
                 .map_err(|e| e.to_string())?;
             rows.map(|row| row.map_err(|e| e.to_string())).collect()
         };
+        let mut vaults = crate::vaults::read_all(&tx, vault, true)?;
+        if !include_credentials {
+            for doc in &mut vaults {
+                for item in &mut doc.items {
+                    if item.kind == "password" {
+                        item.value.clear();
+                    }
+                }
+            }
+        }
         Ok(AppData {
+            vaults,
             notes: read_notes("global_notes")?,
             note_folders: crate::notes::read_folders(&tx)?,
             format: "octode-app-data".into(),
@@ -281,10 +294,34 @@ impl Store {
                 secrets::seal(document, &project.id, vault)?;
             }
         }
+        if data.vaults.len() > 1000 {
+            return Err("Too many vaults in app data".into());
+        }
+        let mut vault_ids = HashSet::new();
+        for doc in &mut data.vaults {
+            crate::vaults::validate(doc)?;
+            if !vault_ids.insert(doc.id.clone()) {
+                return Err("Duplicate vault in app data".into());
+            }
+            if !doc.project_id.is_empty() {
+                doc.project_id = ids.get(&doc.project_id).cloned().unwrap_or_default();
+            }
+            doc.id = if doc.project_id.is_empty() {
+                uuid::Uuid::new_v4().to_string()
+            } else {
+                doc.project_id.clone()
+            };
+            for item in &mut doc.items {
+                item.id = uuid::Uuid::new_v4().to_string();
+            }
+            crate::vaults::encrypt(doc, vault)?;
+        }
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
         // Replacement is atomic: validation and credential verification have already succeeded.
         if mode == ImportMode::Replace {
+            tx.execute("DELETE FROM global_vaults", [])
+                .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM projects", [])
                 .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM global_note_folders", [])
@@ -386,6 +423,9 @@ impl Store {
                 .map_err(|e| e.to_string())?;
             }
         }
+        for doc in &data.vaults {
+            crate::vaults::write(&tx, doc)?;
+        }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(ids)
     }
@@ -421,6 +461,60 @@ pub async fn import_app_data(
 mod tests {
     use super::*;
     #[test]
+    fn vault_export_import_remaps_projects_and_preserves_existing_vaults() {
+        use crate::vaults::{VaultDocument, VaultItem};
+        let secrets = crate::secrets::tests::Memory::default();
+        let source = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let project = source
+            .create("Vault project".into(), vec!["/tmp".into()])
+            .unwrap();
+        let mut doc = VaultDocument {
+            id: project.id.clone(),
+            project_id: project.id.clone(),
+            name: "Vault project".into(),
+            revision: String::new(),
+            items: vec![VaultItem {
+                id: uuid::Uuid::new_v4().to_string(),
+                kind: "password".into(),
+                label: "Login".into(),
+                value: "fixture-password".into(),
+            }],
+        };
+        crate::vaults::encrypt(&mut doc, &secrets).unwrap();
+        crate::vaults::write(&source.0.lock().unwrap(), &doc).unwrap();
+        assert_eq!(
+            source.export_app(&secrets, false).unwrap().vaults[0].items[0].value,
+            ""
+        );
+        let backup = source.export_app(&secrets, true).unwrap();
+        let target = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let ids = target.import_app(backup, &secrets).unwrap();
+        let docs = crate::vaults::read_all(&target.0.lock().unwrap(), &secrets, true).unwrap();
+        assert_eq!(docs[0].project_id, ids[&project.id]);
+        assert_eq!(docs[0].id, ids[&project.id]);
+        assert_eq!(docs[0].items[0].value, "fixture-password");
+        assert_ne!(docs[0].revision, doc.revision);
+        assert_ne!(docs[0].items[0].id, doc.items[0].id);
+        let backup = source.export_app(&secrets, true).unwrap();
+        target.import_app(backup, &secrets).unwrap();
+        assert_eq!(
+            crate::vaults::read_all(&target.0.lock().unwrap(), &secrets, true)
+                .unwrap()
+                .len(),
+            2
+        );
+        let backup = source.export_app(&secrets, true).unwrap();
+        target
+            .import_app_mode(backup, &secrets, ImportMode::Replace)
+            .unwrap();
+        assert_eq!(
+            crate::vaults::read_all(&target.0.lock().unwrap(), &secrets, true)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+    #[test]
     fn replacement_validates_first_and_replaces_all_metadata_atomically() {
         let vault = crate::secrets::tests::Memory::default();
         let target = Store::open(std::path::Path::new(":memory:")).unwrap();
@@ -445,6 +539,7 @@ mod tests {
             projects: vec![],
             notes: vec![],
             note_folders: vec![],
+            vaults: vec![],
         };
         assert!(target
             .import_app_mode(invalid, &vault, ImportMode::Replace)
@@ -646,6 +741,7 @@ mod tests {
         let data = AppData {
             notes: vec![],
             note_folders: vec![],
+            vaults: vec![],
             format: "wrong".into(),
             version: 1,
             projects: vec![],

@@ -1,3 +1,4 @@
+import { vaultsForBackup, type VaultDocument } from "./vaults";
 import { notesForBackup, type Note } from "./notes";
 import { desktop, invoke } from "./bridge";
 import { setTerminalHighlightEnabled } from "./terminalHighlight";
@@ -11,6 +12,7 @@ interface Backup {
   projects: unknown[];
   preferences: Preferences;
   notes?: Note[];
+  vaults?: VaultDocument[];
 }
 const allowedPreference = (key: string) => key === "octode-editor-settings" || key === "octode-terminal-highlighting" || key.startsWith("octode-view:") || key.startsWith("octode-layout:");
 export function appPreferences(): Preferences {
@@ -26,7 +28,7 @@ export async function exportAppData(includeCredentials = true) {
   if (!desktop) throw new Error("Open the desktop app to export app data.");
   return exportText(async () => {
     const data = await invoke<Omit<Backup, "preferences">>("export_app_data", { includeCredentials });
-    return JSON.stringify({ ...data, ...notesForBackup(), preferences: appPreferences() }, null, 2);
+    return JSON.stringify({ ...data, vaults: vaultsForBackup(data.vaults ?? [], includeCredentials), ...notesForBackup(), preferences: appPreferences() }, null, 2);
   }, `octode-app-data-${new Date().toISOString().slice(0, 10)}.json`, "Export app data");
 }
 export async function importAppData(raw: string, mode: ImportMode = "merge") {

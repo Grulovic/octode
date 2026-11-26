@@ -1,6 +1,6 @@
 # Octode
 
-A calmer place to build. A local desktop workspace for Code, Servers, Database, and API tools.
+A calmer place to build. A local desktop workspace for Code, Servers, Database, API, Vault, and Notes.
 
 ## Working build
 
@@ -10,6 +10,7 @@ Autocomplete is out of scope across the whole app: no suggestion popups, inline 
 
 Implemented source:
 
+- Global Vault, above Notes in the rail: project vaults and custom vaults are accessible from any project or Projects. Each vault has a single list of section titles, clickable/copyable URLs, copyable values, hidden passwords with reveal/copy, and multiline notes. Edit mode supports drag ordering and keyboard/button moves, with explicit Save/Cmd+S and confirmed Discard/deletion. Drafts survive navigation and participate in quit/restart checks. Item contents use the existing encrypted credential store; app-data backups include saved vaults and open drafts, and merge imports create independent copies.
 - Global plain-text Notes (Cmd/Ctrl+6), with title/content search, available above Terminal and from Projects, with a note list, titles, line numbers, title-extension syntax highlighting, Open/file-drop imports as independent note copies, Find/Word Wrap toolbar, explicit Save/Cmd+S, Save as to external files, per-note drafts, drag sorting with automatic folder/order saves (note titles and contents still use Save), SQLite persistence, and quit/restart unsaved-change checks. Notes are shared across projects and included in app-data exports/imports (including open drafts).
 - React workspace shell, project cards, multi-folder project creation/editing/removal, and one native window for the whole app.
 - Newly opened projects start in Code; returning to a parked project restores its last section. Cmd/Ctrl+1 selects Code → Files, +2 toggles the shared local terminal, +3 selects Servers, +4 Database, +5 API, and +0 returns to Projects.
@@ -55,7 +56,7 @@ Open **New project**, select one or more folders, and create the project. Its wo
 
 A temporary **Restart** button at the bottom left relaunches the current app/profile after saving Code, waiting for pending explicit saves, and warning about unsaved tool settings. This loads the latest rebuilt app at the same path.
 
-Only Code files autosave. API requests/environments/folders, Server profiles, and Database connection/query settings require **Save**. Editing, changing tools, losing focus, or leaving/closing never saves these settings automatically. Switching to Projects parks the live workspace without discarding drafts or closing terminals/connections. Quitting or restarting checks unsaved work across all parked projects and waits for any Save already in progress. Native saves are read back to verify persistence, and SQLite uses full synchronous writes. A failed Save preserves edits for retry. HTTP requests, SSH connections, SQL queries, transfers, database Apply, and schema execution remain explicit actions.
+Only Code files autosave. Vault contents, API requests/environments/folders, Server profiles, and Database connection/query settings require **Save**. Editing, changing tools, losing focus, or leaving/closing never saves these settings automatically. Switching to Projects parks the live workspace without discarding drafts or closing terminals/connections. Quitting or restarting checks unsaved work across all parked projects and waits for any Save already in progress. Native saves are read back to verify persistence, and SQLite uses full synchronous writes. A failed Save preserves edits for retry. HTTP requests, SSH connections, SQL queries, transfers, database Apply, and schema execution remain explicit actions.
 
 Build a standalone macOS app (no development server required):
 

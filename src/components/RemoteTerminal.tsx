@@ -18,6 +18,7 @@ import {
 import type { TerminalEvent } from "../types";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
+import { Search, ChevronDown } from "./DesignIcons";
 export default function RemoteTerminal({
   session,
   visible,
@@ -29,6 +30,11 @@ export default function RemoteTerminal({
 }) {
   const activity = useTerminalActivity(visible);
   const host = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState("");
+  const [searchStatus, setSearchStatus] = useState("");
+  const lastMatch = useRef<{ query: string; row: number; column: number } | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const errorRef = useRef(onError);
   errorRef.current = onError;
@@ -56,6 +62,20 @@ export default function RemoteTerminal({
       fontFamily: monoFont,
       scrollback: 3000,
       theme: terminalTheme,
+    });
+    termRef.current = terminal;
+    lastMatch.current = null;
+    setSearchStatus("");
+    terminal.attachCustomKeyEventHandler((event) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+        if (event.type === "keydown") {
+          event.preventDefault();
+          searchInput.current?.focus();
+          searchInput.current?.select();
+        }
+        return false;
+      }
+      return true;
     });
     const fit = new FitAddon();
     fitRef.current = fit;
@@ -151,6 +171,7 @@ export default function RemoteTerminal({
       stopLinks();
       stopSelectAll();
       terminal.dispose();
+      termRef.current = null;
       fitRef.current = null;
       void nativeTool("ssh_shell_close", { id: session, shellKey }).catch(
         () => {},
@@ -161,9 +182,94 @@ export default function RemoteTerminal({
     highlighter.current?.refresh();
     if (visible) requestAnimationFrame(() => fitRef.current?.fit());
   }, [visible]);
+  const find = (backward = false) => {
+    const term = termRef.current;
+    if (!term || !search) {
+      term?.clearSelection();
+      setSearchStatus("");
+      return;
+    }
+    const matches: { row: number; column: number }[] = [];
+    for (let row = 0; row < term.buffer.active.length; row++) {
+      const text =
+        term.buffer.active.getLine(row)?.translateToString(true) ?? "";
+      let offset = 0;
+      for (;;) {
+        const column = text.toLowerCase().indexOf(search.toLowerCase(), offset);
+        if (column < 0) break;
+        matches.push({ row, column });
+        offset = column + Math.max(search.length, 1);
+        if (matches.length >= 1000) break;
+      }
+      if (matches.length >= 1000) break;
+    }
+    if (!matches.length) {
+      term.clearSelection();
+      lastMatch.current = null;
+      setSearchStatus("No matches");
+      return;
+    }
+    const previous = lastMatch.current;
+    const index =
+      previous?.query === search
+        ? matches.findIndex(
+            (match) =>
+              match.row === previous.row && match.column === previous.column,
+          )
+        : -1;
+    const next =
+      matches[index < 0 ? (backward ? matches.length - 1 : 0) : (index + (backward ? -1 : 1) + matches.length) % matches.length];
+    lastMatch.current = { query: search, ...next };
+    term.select(next.column, next.row, search.length);
+    term.scrollToLine(Math.max(0, next.row - 2));
+    setSearchStatus(
+      `${matches.indexOf(next) + 1} / ${matches.length}${matches.length === 1000 ? "+" : ""}`,
+    );
+  };
   return (
-    <div className="remote-terminal">
+    <div className="remote-terminal" onKeyDown={(event) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        searchInput.current?.focus();
+        searchInput.current?.select();
+      }
+    }}>
       <div className="remote-terminal-toolbar">
+        <div className="terminal-search remote-terminal-search">
+          <label className="terminal-search-field">
+            <Search size={13} />
+            <input
+              ref={searchInput}
+              aria-label="Find in server terminal"
+              placeholder="Find in output…"
+              value={search}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setSearchStatus("");
+                lastMatch.current = null;
+                termRef.current?.clearSelection();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  find(event.shiftKey);
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  termRef.current?.focus();
+                }
+              }}
+            />
+          </label>
+          <button type="button" aria-label="Previous match" title="Previous match (Shift+Enter)" onClick={() => find(true)}><ChevronDown className="terminal-previous-icon" size={13} /></button>
+          <button type="button" aria-label="Next match" title="Next match (Enter)" onClick={() => find()}><ChevronDown size={13} /></button>
+          <span className="terminal-search-result" role="status">{searchStatus}</span>
+        </div>
         <span className="remote-terminal-status">{activity.active && <span className="terminal-output-dot" role="img" aria-label="New terminal output" />}{status}</span>
         <button
           type="button"
