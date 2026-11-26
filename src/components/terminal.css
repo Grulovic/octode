@@ -8,7 +8,7 @@
 }
 .workspace-terminal-host .terminal-panel {
   min-width: 0;
-  border-top: 1px solid rgb(128 203 196 / 55%);
+  border-top: 1px solid color-mix(in srgb, var(--oc-accent) 55%, transparent);
   background: #050b0e;
   color: #d4dae0;
 }
@@ -18,8 +18,8 @@
   justify-content: flex-start;
   padding: 0 6px 0 0;
   gap: 2px;
-  background: #182b33;
-  border-bottom: 1px solid #26414b;
+  background: var(--oc-raised);
+  border-bottom: 1px solid var(--oc-border-strong);
 }
 .workspace-terminal-host .terminal-heading {
   flex: none;
@@ -29,7 +29,7 @@
   font-weight: 600;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: #8d9aa3;
+  color: var(--oc-muted);
 }
 .workspace-terminal-host .local-terminal-tabs {
   flex: 0 1 auto;
@@ -52,9 +52,9 @@
 }
 .workspace-terminal-host .local-terminal-tabs > div.selected {
   background: #050b0e;
-  border-color: #26414b;
+  border-color: var(--oc-border-strong);
   border-bottom-color: #050b0e;
-  box-shadow: inset 0 2px 0 #80cbc4;
+  box-shadow: inset 0 2px 0 var(--oc-accent);
   color: var(--oc-text-strong);
 }
 .workspace-terminal-host .local-terminal-tabs > div:is(:hover,:focus-within) { background: var(--oc-surface); color: var(--oc-text-strong); }
@@ -68,13 +68,13 @@
   width: 6px;
   height: 6px;
   margin-right: 8px;
-  border: 1px solid #8d9aa3;
+  border: 1px solid var(--oc-muted);
   border-radius: 50%;
 }
 .workspace-terminal-host .terminal-tab-dot[data-connected='true'] { background: #c3e88d; border-color: #c3e88d; }
 .workspace-terminal-host .local-terminal-tabs > div > button:last-child { flex-basis: 24px; }
-.workspace-terminal-host .local-terminal-tabs .terminal-tab-label { color: #8d9aa3; font-size: 12px; }
-.workspace-terminal-host .local-terminal-tabs > div.selected .terminal-tab-label { color: #e3e7ea; }
+.workspace-terminal-host .local-terminal-tabs .terminal-tab-label { color: var(--oc-muted); font-size: 12px; }
+.workspace-terminal-host .local-terminal-tabs > div.selected .terminal-tab-label { color: var(--oc-text-strong); }
 .workspace-terminal-host .local-terminal-tabs .terminal-tab-rename {
   flex: 1 1 0;
   width: 116px;
@@ -99,7 +99,7 @@
   height: 26px;
   padding: 0;
   border-radius: 6px;
-  color: #8d9aa3;
+  color: var(--oc-muted);
 }
 .workspace-terminal-host .terminal-toolbar-actions {
   display: flex;
@@ -115,10 +115,10 @@
   height: 24px;
   min-height: 24px;
   padding-left: 8px;
-  border: 1px solid #1f363f;
+  border: 1px solid var(--oc-border);
   border-radius: 6px;
-  background: #0b1519;
-  color: #c6ccd3;
+  background: var(--oc-bg);
+  color: var(--oc-text);
   font: 400 11.5px var(--oc-font-mono);
 }
 /* The dropdown is portaled to body, so its labels also need these styles. */
@@ -153,11 +153,11 @@
   min-width: 100px;
   height: 26px;
   padding: 0 4px 0 8px;
-  border: 1px solid #1f363f;
+  border: 1px solid var(--oc-border);
   border-radius: 6px;
-  background: #0b1519;
+  background: var(--oc-bg);
 }
-:is(.workspace-terminal-host, .remote-terminal) .terminal-search-field:focus-within { border-color: #80cbc4; }
+:is(.workspace-terminal-host, .remote-terminal) .terminal-search-field:focus-within { border-color: var(--oc-accent); }
 :is(.workspace-terminal-host, .remote-terminal) .terminal-search-field > svg { flex: none; }
 :is(.workspace-terminal-host, .remote-terminal) .terminal-search-field > input {
   flex: 1;
@@ -168,7 +168,7 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: #c6ccd3;
+  color: var(--oc-text);
   font-size: 12px;
   outline: none;
   box-shadow: none;
@@ -182,9 +182,9 @@
   min-width: 24px;
   padding: 0 4px;
   border-radius: 4px;
-  color: #8d9aa3;
+  color: var(--oc-muted);
 }
-.workspace-terminal-host .terminal-search > button:last-child { padding: 0 8px; color: #c6ccd3; }
+.workspace-terminal-host .terminal-search > button:last-child { padding: 0 8px; color: var(--oc-text); }
 :is(.workspace-terminal-host, .remote-terminal) .terminal-previous-icon { transform: rotate(180deg); }
 .workspace-terminal-host .terminal-search > .terminal-search-result { flex: 1; }
 .workspace-terminal-host .terminal-search > .terminal-status {
@@ -195,8 +195,8 @@
   gap: 6px;
   margin-right: 4px;
   padding-right: 10px;
-  border-right: 1px solid #1f363f;
-  color: #8d9aa3;
+  border-right: 1px solid var(--oc-border);
+  color: var(--oc-muted);
   font-size: 11.5px;
 }
 .workspace-terminal-host .terminal-state-dot {
@@ -204,7 +204,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #8d9aa3;
+  background: var(--oc-muted);
 }
 .workspace-terminal-host [data-connected='true'] .terminal-state-dot { background: #c3e88d; }
 .workspace-terminal-host .terminal-toolbar > button:hover:not(:disabled),
@@ -218,7 +218,7 @@
   width: 36px;
   height: 3px;
   border-radius: 2px;
-  background: #3a5a66;
+  background: var(--oc-border-strong);
 }
 @media (max-width: 720px) {
   .workspace-terminal-host .terminal-heading { padding: 0 8px; font-size: 10px; }

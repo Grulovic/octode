@@ -1220,7 +1220,7 @@ fieldset.service-form-grid {
 .api-request-heading.request-folder-drop {
   outline: 1px dashed var(--oc-accent);
   border-radius: 4px;
-  background: #80cbc412;
+  background: color-mix(in srgb, var(--oc-accent) 7%, transparent);
 }
 .database-connection-nav .service-tabs button {
   white-space: nowrap;
@@ -1810,7 +1810,7 @@ fieldset.service-form-grid {
 }
 .database-column-resize:hover,
 .database-column-resize:focus-visible {
-  background: #80cbc440;
+  background: color-mix(in srgb, var(--oc-accent) 25%, transparent);
   outline: none;
   border-right: 1px solid var(--oc-accent);
 }

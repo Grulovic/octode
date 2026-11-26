@@ -1,25 +1,25 @@
-/* Octode · Deep Ocean — runtime design tokens. */
+/* Octode · neutral charcoal UI — runtime design tokens. */
 :root {
   /* surfaces */
-  --oc-bg: #091014;
-  --oc-panel: #0e1d24;
-  --oc-surface: #14242b;
-  --oc-raised: #182b33;
-  --oc-selection: #173138;
-  --oc-border: #1a2d34;
-  --oc-border-subtle: #16282f;
-  --oc-border-strong: #26414b;
+  --oc-bg: #141518;
+  --oc-panel: #1b1c20;
+  --oc-surface: #23252a;
+  --oc-raised: #2b2d33;
+  --oc-selection: #293537;
+  --oc-border: #303239;
+  --oc-border-subtle: #27292f;
+  --oc-border-strong: #42454f;
 
   /* text */
-  --oc-text: #c6ccd3;
-  --oc-text-strong: #e3e7ea;
-  --oc-muted: #8d9aa3;
-  --oc-faint: #7d8c96;
-  --oc-disabled: #5c6b74;
+  --oc-text: #c9cbd1;
+  --oc-text-strong: #eceef2;
+  --oc-muted: #9699a3;
+  --oc-faint: #838792;
+  --oc-disabled: #61656f;
 
   /* accent & states */
   --oc-accent: #80cbc4;
-  --oc-accent-ink: #06201d;
+  --oc-accent-ink: #131518;
   --oc-accent-tint: rgba(128, 203, 196, 0.12);
   --oc-focus-ring: 0 0 0 3px rgba(128, 203, 196, 0.25);
   --oc-unsaved: #ff9e60;                 /* unsaved changes only */
@@ -31,7 +31,7 @@
   --oc-warning: #ffcb6b;
   --oc-diff-add: rgba(195, 232, 141, 0.10);
   --oc-diff-del: rgba(240, 113, 120, 0.13);
-  --oc-scrim: rgba(4, 8, 10, 0.62);
+  --oc-scrim: rgba(8, 9, 11, 0.62);
 
   /* syntax */
   --oc-syn-keyword: #c792ea;

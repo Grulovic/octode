@@ -1,4 +1,4 @@
-import { colors, syntax } from "../theme/palette";
+import { deepOceanColors as colors, syntax } from "../theme/palette";
 import type { editor } from "monaco-editor";
 // Adapted from Kostya Safonov's DeepOcean.theme.json and themes/DeepOcean.xml.
 // https://github.com/KostyaSafonov/DeepOceanTheme (editor scheme b1ba5a5).

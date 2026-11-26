@@ -37,6 +37,7 @@ import {
   listProjects,
   previewProject,
 } from "./lib/bridge";
+import { applyProjectAccent } from "./theme/projectAccent";
 import { projectColors, projectColor } from "./lib/projectColors";
 import {
   useProjectTerminal,
@@ -127,6 +128,11 @@ export default function App() {
     setActiveKey(project.id);
   }, []);
   const projects = useCallback(() => setActiveKey("dashboard"), []);
+  const activeColor = slots.find((slot) => slot.key === activeKey)?.project?.color;
+  useLayoutEffect(() => {
+    applyProjectAccent(activeColor);
+    return () => applyProjectAccent();
+  }, [activeColor]);
   const projectChanged = useCallback((next: Project) => {
     setSlots((previous) =>
       previous.flatMap((slot) => {

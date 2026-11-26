@@ -80,6 +80,32 @@ afterEach(async () => {
 });
 
 describe("browser sandbox workflows", () => {
+  it("follows the active project accent across parked workspaces and resets on Projects", async () => {
+    await act(async () => root.unmount());
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([
+      { ...bridge.previewProject, id: "accent-purple", name: "Purple project", color: "#bd9df2" },
+      { ...bridge.previewProject, id: "accent-orange", name: "Orange project", color: "#fb9551" },
+    ]);
+    root = createRoot(document.getElementById("root")!);
+    await act(async () => root.render(<App />));
+    const accent = () => document.documentElement.style.getPropertyValue("--oc-accent");
+    expect(accent()).toBe("#80cbc4");
+    await click('.project-card[aria-keyshortcuts="1"]');
+    await waitFor(() => document.querySelector(".tree-root"));
+    expect(accent()).toBe("#bd9df2");
+    const selection = document.documentElement.style.getPropertyValue("--oc-selection");
+    expect(selection).not.toBe("#173138");
+    await click('[aria-label="Back to projects"]');
+    expect(accent()).toBe("#80cbc4");
+    await click('.project-card[aria-keyshortcuts="2"]');
+    await waitFor(() => document.querySelector(".tree-root"));
+    expect(accent()).toBe("#fb9551");
+    await click('[aria-label="Back to projects"]');
+    await click('.project-card[aria-keyshortcuts="1"]');
+    expect(accent()).toBe("#bd9df2");
+    expect(document.documentElement.style.getPropertyValue("--oc-selection")).toBe(selection);
+  });
+
   it("opens visible projects with plain number keys while preserving search and dialog typing", async () => {
     await act(async () => root.unmount());
     vi.spyOn(bridge, "listProjects").mockResolvedValue([bridge.previewProject]);

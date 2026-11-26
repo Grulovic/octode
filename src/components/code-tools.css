@@ -84,6 +84,30 @@
   min-width: 72px;
   max-width: 144px;
 }
+.app-shell .git-workspace-toolbar .custom-select.custom-select {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--oc-control);
+  height: var(--oc-control);
+  padding: 0 7px 0 8px;
+  line-height: 18px;
+}
+.app-shell .git-workspace-toolbar .git-branch-switch {
+  width: auto;
+  min-width: 80px;
+}
+.app-shell .git-workspace-toolbar .git-sync-controls > .custom-select {
+  min-width: 88px;
+}
+.app-shell .git-workspace-toolbar .custom-select-label {
+  text-align: left;
+}
+.app-shell .git-workspace-toolbar .custom-select > svg {
+  position: static;
+  transform: none;
+}
 .git-heading .git-repository-summary,
 .git-sync-controls .git-action-row {
   margin: 0;
@@ -398,7 +422,7 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: #091014d9;
+  background: color-mix(in srgb, var(--oc-bg) 85%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -15,7 +15,7 @@
 * {
   box-sizing: border-box;
 }
-/* Keep native WebView scrollbars quiet and consistent with Deep Ocean. */
+/* Keep native WebView scrollbars quiet and consistent with the app palette. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--oc-border-strong) transparent;
@@ -228,7 +228,7 @@ input {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  background: radial-gradient(ellipse at 95% 5%, #0e1d241f, transparent 55%);
+  background: radial-gradient(ellipse at 95% 5%, color-mix(in srgb, var(--oc-panel) 12%, transparent), transparent 55%);
 }
 .dashboard {
   width: min(1080px, 100%);
@@ -672,7 +672,7 @@ h1 > span {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: #091014bb;
+  background: color-mix(in srgb, var(--oc-bg) 73%, transparent);
   backdrop-filter: blur(7px);
   z-index: 20;
   display: flex;
@@ -1403,7 +1403,7 @@ kbd {
 .modal-heading h2 {
   flex: 1;
 }
-/* Deep Ocean UI palette from KostyaSafonov/DeepOceanTheme. */
+/* Shared app UI palette. */
 :root {
   --mint: var(--oc-accent);
   --muted: var(--oc-muted);
