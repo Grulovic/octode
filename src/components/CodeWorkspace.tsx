@@ -101,6 +101,7 @@ export default function CodeWorkspace({
 }) {
   const initial = useRef(initialSession).current;
   const sidebarRef = useRef<HTMLElement>(null);
+  const [gitEditorHost, setGitEditorHost] = useState<HTMLElement | null>(null);
   const [gitCount, setGitCount] = useState(0);
   const [sidebarWidth, setSidebarWidth] = usePanelSize(
     "octode-layout:sidebar:Code",
@@ -555,7 +556,7 @@ export default function CodeWorkspace({
     };
   }, [visible, save]);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || tab === "git") return;
     const find = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -574,7 +575,7 @@ export default function CodeWorkspace({
     };
     window.addEventListener("keydown", find, true);
     return () => window.removeEventListener("keydown", find, true);
-  }, [visible]);
+  }, [visible, tab]);
   const handledSearch = useRef<SearchEntry | undefined>(undefined);
   useEffect(() => {
     if (
@@ -585,6 +586,7 @@ export default function CodeWorkspace({
     )
       return;
     handledSearch.current = searchTarget;
+    setTab("files");
     void open(searchTarget.path, searchTarget.line);
   }, [searchTarget, restoring]);
   const close = async (path: string) => {
@@ -622,6 +624,7 @@ export default function CodeWorkspace({
     registerTabCloser({
       active: () =>
         visible &&
+        tab !== "git" &&
         !!active &&
         !fileBusy &&
         !gitBusy &&
@@ -982,7 +985,7 @@ export default function CodeWorkspace({
     }
   };
   return (
-    <div className="code-workspace" style={{ "--diff-left": `${sidebarWidth}px` } as React.CSSProperties}>
+    <div className="code-workspace">
       <aside
         className="explorer"
         ref={sidebarRef}
@@ -1157,22 +1160,25 @@ export default function CodeWorkspace({
             onOpen={(path) => void open(path)}
             onError={onError}
           />
-        ) : (
-          <Suspense fallback={<div className="loading">Opening Git…</div>}>
+        ) : gitEditorHost && (
+          <Suspense fallback={null}>
             <GitPanel
               key={root}
               project={project}
               root={root}
-              overlayHost={sidebarRef.current?.parentElement ?? undefined}
+              overlayHost={gitEditorHost}
               visible={visible && tab === "git"}
               revision={treeVersion}
-              onError={onError}
               onBusy={setGitBusy}
               onCount={setGitCount}
               beforeAction={async () =>
                 (await autosave.current?.flush()) ?? true
               }
               onOpen={(path) => open(path)}
+              onOpenInCode={async (path) => {
+                await open(path);
+                setTab("files");
+              }}
               renderMerge={(path, conflict) => {
                 const item = documents.find((item) => item.path === path);
                 return item ? (
@@ -1209,7 +1215,8 @@ export default function CodeWorkspace({
         onResize={setSidebarWidth}
         label="Resize Code sidebar"
       />
-      <section className="editor-section">
+      <section className="editor-section" hidden={tab !== "git"} aria-label="Git workspace" ref={setGitEditorHost} />
+      <section className="editor-section" hidden={tab === "git"}>
         <div className="editor-tabs">
           <button
             className="icon-button"
@@ -1470,7 +1477,10 @@ export default function CodeWorkspace({
       {quickOpen && (
         <QuickOpen
           project={project}
-          onOpen={(path) => void open(path)}
+          onOpen={(path) => {
+            setTab("files");
+            void open(path);
+          }}
           onClose={() => setQuickOpen(false)}
         />
       )}

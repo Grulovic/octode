@@ -180,7 +180,7 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .database-cell-values > div:last-child dd { background: var(--oc-diff-add); border-color: var(--oc-border-strong); }
 .app-shell .database-date-popup { background: var(--oc-raised); border-color: var(--oc-border-strong); border-radius: var(--oc-radius-menu); box-shadow: var(--oc-shadow-menu); }
 .app-shell .database-date-popup button[aria-pressed='true'] { background: var(--oc-accent); color: var(--oc-accent-ink); }
-.app-shell .database-error, .app-shell .row-error, .app-shell .git-action-error { color: var(--oc-error-text); }
+.app-shell .database-error, .app-shell .row-error { color: var(--oc-error-text); }
 .app-shell .error-banner { color: var(--oc-error-text); background: var(--oc-error-tint); border-bottom: 1px solid var(--oc-error-border); font-size: 12px; }
 .app-shell .explorer-tabs { height: var(--code-tabs-height); min-height: var(--code-tabs-height); }
 .app-shell .explorer-tabs svg { width: 14px; height: 14px; }
@@ -201,15 +201,11 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .git-tools { padding: var(--oc-space-5); font-size: 12px; }
 .app-shell .git-group { margin: var(--oc-space-5) 0; padding-top: var(--oc-space-4); }
 .app-shell .git-group-heading { min-height: var(--oc-row-tree); }
-.app-shell .git-group-heading > button:first-child,
-.app-shell .git-options > summary,
-.app-shell .git-history-toggle { color: var(--oc-text); font: var(--oc-text-control); display: flex; align-items: center; gap: var(--oc-space-3); padding: 0; min-height: var(--oc-row-tree); margin: 0; }
+.app-shell .git-group-heading > button:first-child { color: var(--oc-text); font: var(--oc-text-control); display: flex; align-items: center; gap: var(--oc-space-3); padding: 0; min-height: var(--oc-row-tree); margin: 0; }
 .app-shell .git-change { min-height: var(--oc-row-tree); }
-.app-shell .git-change > button:first-child { padding: var(--oc-space-2) 0; }
+.app-shell .git-change > button:first-child { padding: var(--oc-space-2) var(--oc-space-3); }
 .app-shell .git-control { gap: var(--oc-space-3); }
 .app-shell .git-commit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--oc-space-3); }
-.app-shell .git-options { border-top: 1px solid var(--oc-surface); margin: var(--oc-space-5) 0; padding-top: var(--oc-space-4); }
-.app-shell .git-options[open] > summary { margin-bottom: var(--oc-space-4); }
 .app-shell .project-search { padding: var(--oc-space-5); }
 .app-shell .project-search-input { min-height: var(--oc-control); height: var(--oc-control); border-radius: var(--oc-radius-control); background: var(--oc-bg); }
 .app-shell .project-search-input input { min-height: 0; border: 0; background: transparent; }
@@ -245,10 +241,6 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .settings-modal .settings-note { padding: var(--oc-space-5); border: 1px solid var(--oc-border); border-radius: var(--oc-radius-control); background: var(--oc-bg); font-size: 11px; line-height: 18px; color: var(--oc-muted); }
 .app-shell .api-request-search-empty, .app-shell .database-table-search-empty, .app-shell .empty-search { padding: var(--oc-space-6); margin: var(--oc-space-5) 0; border: 1px dashed var(--oc-border-strong); border-radius: var(--oc-radius-control); text-align: center; font-size: 12px; }
 .search-empty-clear { display: block; color: var(--oc-accent); margin: var(--oc-space-4) auto 0; }
-.code-workspace { --diff-left: 268px; }
-.app-shell .git-editor-diff { position: absolute; z-index: 20; top: 0; bottom: 0; left: var(--diff-left); right: 0; padding: 0; background: transparent; pointer-events: none; }
-.app-shell .git-editor-diff .code-review-modal { min-height: 0; min-width: 0; pointer-events: auto; width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
-.app-shell .git-editor-diff .git-hunk-review { background: var(--oc-panel); }
 @media (max-width: 850px) { .app-shell .dashboard { padding: var(--oc-space-7); } .app-shell .project-open-button { display: none; } .titlebar-search { flex-basis: 190px; } .app-shell .service-toolbar-with-actions { height: auto; } .app-shell .shortcut-columns { grid-template-columns: 1fr; } }
 /* Portaled controls inherit the theme even outside the workspace DOM. */
 body .custom-select-menu, body .file-context-menu, body .database-date-popup { color: var(--oc-text); background: var(--oc-raised); border: 1px solid var(--oc-border-strong); border-radius: var(--oc-radius-menu); box-shadow: var(--oc-shadow-menu); }

@@ -344,6 +344,67 @@ pub async fn git_show_commit(
 }
 
 #[tauri::command]
+pub async fn git_history(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    locks: State<'_, Arc<GitLocks>>,
+    project_id: String,
+    root: String,
+    head: String,
+    exclude: Option<String>,
+    offset: usize,
+    query: String,
+) -> Result<git_tools::HistoryPage, String> {
+    let root = repo(&window, &store, &project_id, &root)?;
+    let lock = locks.repository(&root)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        git_tools::history(&git_tools::root(&root)?, &head, exclude.as_deref(), offset, &query)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn git_compare(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    locks: State<'_, Arc<GitLocks>>,
+    project_id: String,
+    root: String,
+    kind: String,
+    name: String,
+) -> Result<git_tools::Comparison, String> {
+    let root = repo(&window, &store, &project_id, &root)?;
+    let lock = locks.repository(&root)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        git_tools::compare(&git_tools::root(&root)?, &kind, &name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn git_compare_diff(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    locks: State<'_, Arc<GitLocks>>,
+    project_id: String,
+    root: String,
+    base_head: String,
+    target_head: String,
+) -> Result<String, String> {
+    let root = repo(&window, &store, &project_id, &root)?;
+    let lock = locks.repository(&root)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        git_tools::compare_diff(&git_tools::root(&root)?, &base_head, &target_head)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub fn load_code_drafts(
     window: WebviewWindow,
     store: State<'_, Store>,

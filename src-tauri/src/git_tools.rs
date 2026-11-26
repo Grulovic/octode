@@ -203,6 +203,9 @@ pub struct Snapshot {
     pub remotes: Vec<String>,
     pub staged_revision: String,
     pub merging: bool,
+    pub rebasing: bool,
+    pub cherry_picking: bool,
+    pub history_has_more: bool,
     pub history: Vec<Commit>,
     pub stashes: Vec<Stash>,
     pub reverting: bool,
@@ -211,6 +214,9 @@ pub struct Snapshot {
 #[serde(rename_all = "camelCase")]
 pub struct Tracking {
     pub name: String,
+    pub reference: String,
+    pub remote: String,
+    pub remote_ref: String,
     pub ahead: Option<u64>,
     pub behind: Option<u64>,
     pub gone: bool,
@@ -224,16 +230,18 @@ fn tracking(root: &Path, branch: &str) -> Result<Option<Tracking>, String> {
         root,
         &[
             "for-each-ref",
-            "--format=%(refname)%09%(upstream)%09%(upstream:short)",
+            "--format=%(refname)%09%(upstream)%09%(upstream:short)%09%(upstream:remotename)%09%(upstream:remoteref)",
             &reference,
         ],
     )?;
-    let Some((upstream, name)) = refs.lines().find_map(|line| {
+    let Some((upstream, name, remote, remote_ref)) = refs.lines().find_map(|line| {
         let mut fields = line.split('\t');
         (fields.next()? == reference).then_some(())?;
         let upstream = fields.next()?;
         let name = fields.next()?;
-        (!upstream.is_empty()).then_some((upstream, name))
+        let remote = fields.next()?;
+        let remote_ref = fields.next()?;
+        (!upstream.is_empty()).then_some((upstream, name, remote, remote_ref))
     }) else {
         return Ok(None);
     };
@@ -241,24 +249,13 @@ fn tracking(root: &Path, branch: &str) -> Result<Option<Tracking>, String> {
     let counts = if gone {
         None
     } else {
-        let comparison = format!("HEAD...{upstream}");
-        let result = output(
-            root,
-            &["rev-list", "--left-right", "--count", &comparison, "--"],
-        )?;
-        if result.ok {
-            let text = String::from_utf8_lossy(&result.stdout);
-            let mut counts = text.split_whitespace();
-            counts
-                .next()
-                .and_then(|ahead| ahead.parse().ok())
-                .zip(counts.next().and_then(|behind| behind.parse().ok()))
-        } else {
-            None
-        }
+        revision_counts(root, "HEAD", upstream).ok()
     };
     Ok(Some(Tracking {
         name: name.into(),
+        reference: upstream.into(),
+        remote: remote.into(),
+        remote_ref: remote_ref.into(),
         ahead: counts.map(|(ahead, _)| ahead),
         behind: counts.map(|(_, behind)| behind),
         gone,
@@ -297,6 +294,195 @@ pub struct Commit {
     author: String,
     date: String,
 }
+const HISTORY_PAGE: usize = 30;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryPage {
+    pub commits: Vec<Commit>,
+    pub has_more: bool,
+}
+
+fn is_commit_hash(hash: &str) -> bool {
+    matches!(hash.len(), 40 | 64) && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn commit_at(root: &Path, reference: &str) -> Result<String, String> {
+    Ok(string(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{reference}^{{commit}}"),
+        ],
+    )?
+    .trim()
+    .into())
+}
+
+pub fn history(
+    root: &Path,
+    head: &str,
+    exclude: Option<&str>,
+    offset: usize,
+    query: &str,
+) -> Result<HistoryPage, String> {
+    if !is_commit_hash(head) || exclude.is_some_and(|hash| !is_commit_hash(hash)) {
+        return Err("Choose a commit or branch before loading history".into());
+    }
+    if query.len() > 1024 || query.contains('\0') {
+        return Err("Enter a search of up to 1024 bytes".into());
+    }
+    let query = query.trim();
+    let mut start = head.to_string();
+    let mut grep = format!("--grep={query}");
+    if (4..=64).contains(&query.len()) && query.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        if let Ok(hash) = commit_at(root, &query.to_ascii_lowercase()) {
+            if hash.starts_with(&query.to_ascii_lowercase())
+                && output(root, &["merge-base", "--is-ancestor", &hash, head])?.ok
+            {
+                start = hash;
+                // Include the matching commit only, even when it has parents.
+                grep.clear();
+            }
+        }
+    }
+    let max_count = format!(
+        "--max-count={}",
+        if grep.is_empty() { 1 } else { HISTORY_PAGE + 1 }
+    );
+    let skip = format!("--skip={offset}");
+    let exclusion = exclude.map(|hash| format!("^{hash}"));
+    let mut args = vec![
+        "log",
+        "--no-show-signature",
+        "-z",
+        "--format=%H%x00%s%x00%an%x00%aI",
+        &max_count,
+        &skip,
+    ];
+    if !query.is_empty() && !grep.is_empty() {
+        args.extend(["--fixed-strings", "--regexp-ignore-case", &grep]);
+    }
+    args.push(&start);
+    if let Some(exclusion) = &exclusion {
+        args.push(exclusion);
+    }
+    args.push("--");
+    let text = string(root, &args)?;
+    let fields: Vec<_> = text.split('\0').collect();
+    let mut commits: Vec<_> = fields
+        .chunks_exact(4)
+        .map(|field| Commit {
+            hash: field[0].into(),
+            subject: field[1].into(),
+            author: field[2].into(),
+            date: field[3].into(),
+        })
+        .collect();
+    let has_more = commits.len() > HISTORY_PAGE;
+    commits.truncate(HISTORY_PAGE);
+    Ok(HistoryPage { commits, has_more })
+}
+
+fn revision_counts(root: &Path, base: &str, target: &str) -> Result<(u64, u64), String> {
+    let comparison = format!("{base}...{target}");
+    let text = string(
+        root,
+        &["rev-list", "--left-right", "--count", &comparison, "--"],
+    )?;
+    let mut counts = text.split_whitespace().map(str::parse::<u64>);
+    match (counts.next(), counts.next()) {
+        (Some(Ok(ahead)), Some(Ok(behind))) => Ok((ahead, behind)),
+        _ => Err("Could not count the commits on either side".into()),
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comparison {
+    name: String,
+    base_head: String,
+    base_branch: String,
+    target_head: String,
+    reference: String,
+    ahead: u64,
+    behind: u64,
+    stat: String,
+}
+
+pub fn compare(root: &Path, kind: &str, name: &str) -> Result<Comparison, String> {
+    let hash = commit_at(root, "HEAD")?;
+    let base_branch = string(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .map(|name| name.trim().to_string())
+        .unwrap_or_else(|_| "Detached HEAD".into());
+    let (reference, name) = match kind {
+        "local" => (format!("refs/heads/{name}"), name.into()),
+        "remote" => (format!("refs/remotes/{name}"), name.into()),
+        "upstream" => {
+            let tracking = tracking(root, &base_branch)?.ok_or("This branch has no upstream")?;
+            (tracking.reference, tracking.name)
+        }
+        _ => return Err("Choose a branch to compare".into()),
+    };
+    run(root, &["check-ref-format", &reference])?;
+    let target_head = commit_at(root, &reference)?;
+    let (ahead, behind) = revision_counts(root, &hash, &target_head)?;
+    let stat = string(
+        root,
+        &[
+            "diff",
+            "--stat=100,70,20",
+            "--no-ext-diff",
+            "--no-textconv",
+            &hash,
+            &target_head,
+            "--",
+        ],
+    )?;
+    Ok(Comparison {
+        name,
+        base_head: hash,
+        base_branch,
+        target_head,
+        reference,
+        ahead,
+        behind,
+        stat,
+    })
+}
+
+pub fn compare_diff(root: &Path, base: &str, target: &str) -> Result<String, String> {
+    if !is_commit_hash(base) || !is_commit_hash(target) {
+        return Err("Open a branch comparison first".into());
+    }
+    string(
+        root,
+        &[
+            "diff",
+            "--stat",
+            "--patch",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            base,
+            target,
+            "--",
+        ],
+    )
+}
+
+fn git_path(root: &Path, name: &str) -> Result<PathBuf, String> {
+    let path = string(root, &["rev-parse", "--git-path", name])?;
+    Ok(root.join(path.strip_suffix('\n').unwrap_or(&path)))
+}
+
+fn rebase_in_progress(root: &Path) -> Result<bool, String> {
+    Ok(git_path(root, "rebase-merge")?.is_dir()
+        || git_path(root, "rebase-apply/rebasing")?.is_file())
+}
+
 pub fn current_branch(root: &Path) -> Result<String, String> {
     let branch = output(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
     if branch.ok {
@@ -350,7 +536,7 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
         .unwrap_or_else(|_| "Detached HEAD".into())
         .trim()
         .into();
-    let head = string(root, &["rev-parse", "--verify", "HEAD"])
+    let head: String = string(root, &["rev-parse", "--verify", "HEAD"])
         .unwrap_or_default()
         .trim()
         .into();
@@ -402,19 +588,10 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
         ],
     )?;
     let merging = output(root, &["rev-parse", "--verify", "MERGE_HEAD"])?.ok;
-    let history = string(root, &["log", "-30", "--format=%H%x00%s%x00%an%x00%aI"])
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| {
-            let fields = line.split('\0').collect::<Vec<_>>();
-            (fields.len() == 4).then(|| Commit {
-                hash: fields[0].into(),
-                subject: fields[1].into(),
-                author: fields[2].into(),
-                date: fields[3].into(),
-            })
-        })
-        .collect();
+    let history = history(root, &head, None, 0, "").unwrap_or(HistoryPage {
+        commits: vec![],
+        has_more: false,
+    });
     Ok(Snapshot {
         stashes: stashes(root)?,
         reverting: output(root, &["rev-parse", "--verify", "REVERT_HEAD"])?.ok,
@@ -427,7 +604,10 @@ pub fn snapshot(root: &Path) -> Result<Snapshot, String> {
         remotes,
         staged_revision,
         merging,
-        history,
+        rebasing: rebase_in_progress(root)?,
+        cherry_picking: output(root, &["rev-parse", "--verify", "--quiet", "CHERRY_PICK_HEAD"])?.ok,
+        history: history.commits,
+        history_has_more: history.has_more,
     })
 }
 fn parse_status(bytes: &[u8]) -> Result<Vec<Entry>, String> {
@@ -648,7 +828,7 @@ pub fn apply_hunks(root: &Path, request: HunkRequest) -> Result<(), String> {
     Ok(())
 }
 pub fn show_commit(root: &Path, hash: &str) -> Result<String, String> {
-    if !(40..=64).contains(&hash.len()) || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+    if !is_commit_hash(hash) {
         return Err("Choose a full commit hash from history".into());
     }
     string(
@@ -679,6 +859,8 @@ pub struct Action {
     #[serde(default)]
     pub expected_head: String,
     #[serde(default)]
+    pub expected_branch: Option<String>,
+    #[serde(default)]
     pub expected_staged: String,
     #[serde(default)]
     pub reviewed_diff: Option<String>,
@@ -696,6 +878,16 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
     let before = snapshot(root)?;
     if before.head != request.expected_head {
         return Err("HEAD changed. Refresh Git and review before retrying.".into());
+    }
+    if request.expected_branch.as_ref().is_some_and(|branch| branch != &before.branch) {
+        return Err("The active branch changed. Refresh Git and review before retrying.".into());
+    }
+    if (before.rebasing || before.cherry_picking)
+        && !matches!(request.action.as_str(),
+            "stage" | "stage-many" | "unstage" | "unstage-many" | "resolve" | "fetch" |
+            "continue-rebase" | "abort-rebase" | "continue-cherry-pick" | "abort-cherry-pick")
+    {
+        return Err("Continue or abort the current Git operation first".into());
     }
     if request.action == "stage" {
         if let Some(reviewed) = &request.reviewed_diff {
@@ -941,34 +1133,160 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
             }
         }
         "fetch" | "pull" | "push" => {
-            if !before.remotes.contains(&request.remote) {
-                return Err("Choose a configured remote".into());
+            if request.action == "fetch" {
+                if !before.remotes.contains(&request.remote) {
+                    return Err("Choose a configured remote".into());
+                }
+                run(root, &["fetch", "--", &request.remote])?
+            } else {
+                if before.branch == "Detached HEAD" {
+                    return Err("Switch to a branch first".into());
+                }
+                if request.action == "pull"
+                    && (!before.entries.is_empty() || before.merging || before.reverting)
+                {
+                    return Err("Commit or stash local changes before pulling".into());
+                }
+                let fallback = format!("refs/heads/{}", before.branch);
+                let (remote, remote_ref) = if let Some(tracking) = &before.tracking {
+                    if request.path == "sync-destination"
+                        && (request.value != tracking.remote_ref
+                            || request.remote != tracking.remote)
+                    {
+                        return Err(
+                            "The upstream changed. Review the destination and try again.".into(),
+                        );
+                    }
+                    if tracking.remote.is_empty() || !tracking.remote_ref.starts_with("refs/heads/")
+                    {
+                        return Err("Configure a branch as the upstream before syncing".into());
+                    }
+                    (tracking.remote.as_str(), tracking.remote_ref.as_str())
+                } else {
+                    if !request.value.is_empty() {
+                        return Err(
+                            "The upstream changed. Review the destination and try again.".into(),
+                        );
+                    }
+                    if !before.remotes.contains(&request.remote) {
+                        return Err("Choose a configured remote".into());
+                    }
+                    (request.remote.as_str(), fallback.as_str())
+                };
+                if request.action == "pull" {
+                    run(root, &["pull", "--ff-only", "--", remote, remote_ref])?
+                } else {
+                    let destination = format!("HEAD:{remote_ref}");
+                    if before.tracking.is_some() {
+                        run(root, &["push", "--", remote, &destination])?
+                    } else {
+                        run(
+                            root,
+                            &[
+                                "push",
+                                "--set-upstream",
+                                "--",
+                                remote,
+                                &format!("{fallback}:{remote_ref}"),
+                            ],
+                        )?
+                    }
+                }
             }
-            if request.action == "pull"
-                && (!before.entries.is_empty() || before.merging || before.reverting)
-            {
-                return Err("Commit or stash local changes before pulling".into());
+        }
+        "merge-upstream" | "rebase-upstream" => {
+            if !before.entries.is_empty() || before.merging || before.reverting {
+                return Err(
+                    "Start with a clean working tree before integrating the upstream".into(),
+                );
             }
-            if before.branch == "Detached HEAD" && request.action != "fetch" {
-                return Err("Switch to a branch first".into());
+            let tracking = before
+                .tracking
+                .as_ref()
+                .ok_or("This branch has no upstream")?;
+            let target = commit_at(root, &tracking.reference)?;
+            if request.path != tracking.reference || request.value != target {
+                return Err("The upstream changed. Review the comparison again.".into());
             }
-            match request.action.as_str() {
-                "fetch" => run(root, &["fetch", "--", &request.remote])?,
-                "pull" => run(
-                    root,
-                    &["pull", "--ff-only", "--", &request.remote, &before.branch],
-                )?,
-                _ => run(
+            if !matches!((tracking.ahead, tracking.behind), (Some(a), Some(b)) if a > 0 && b > 0) {
+                return Err(
+                    "The branches no longer diverge. Refresh and review the comparison.".into(),
+                );
+            }
+            if request.action == "merge-upstream" {
+                let result = output(root, &["merge", "--no-ff", "--no-commit", "--", &target])?;
+                if !result.ok
+                    && !output(root, &["rev-parse", "--verify", "--quiet", "MERGE_HEAD"])?.ok
+                {
+                    return Err(String::from_utf8_lossy(&result.stderr).trim().into());
+                }
+                b"Merge started. Review the changes before committing.".to_vec()
+            } else {
+                let result = output(
                     root,
                     &[
-                        "push",
-                        "--set-upstream",
-                        "--",
-                        &request.remote,
-                        &before.branch,
+                        "-c",
+                        "rebase.updateRefs=false",
+                        "-c",
+                        "core.editor=true",
+                        "rebase",
+                        "--rebase-merges",
+                        "--no-autostash",
+                        "--no-autosquash",
+                        "--no-fork-point",
+                        &target,
                     ],
-                )?,
+                )?;
+                if !result.ok {
+                    return Err(String::from_utf8_lossy(&result.stderr).trim().into());
+                }
+                b"Rebased onto the upstream.".to_vec()
             }
+        }
+        "cherry-pick" => {
+            if !before.entries.is_empty()
+                || before.merging
+                || before.reverting
+                || before.branch == "Detached HEAD"
+            {
+                return Err(
+                    "Switch to a branch with a clean working tree before cherry-picking".into(),
+                );
+            }
+            if !is_commit_hash(&request.value) {
+                return Err("Choose a full commit hash from history".into());
+            }
+            let parents = string(root, &["rev-list", "--parents", "-n", "1", &request.value])?;
+            if parents.split_whitespace().count() > 2 {
+                return Err("Cherry-picking a merge commit requires selecting a mainline parent. Use the terminal for that case.".into());
+            }
+            run(root, &["cherry-pick", &request.value])?
+        }
+        "continue-rebase" | "abort-rebase" | "continue-cherry-pick" | "abort-cherry-pick" => {
+            let rebase = request.action.ends_with("rebase");
+            if !(if rebase {
+                before.rebasing
+            } else {
+                before.cherry_picking
+            }) {
+                return Err("That Git operation is no longer in progress".into());
+            }
+            if before.staged_revision != request.expected_staged {
+                return Err("The index changed. Review the staged changes before retrying.".into());
+            }
+            let continuing = request.action.starts_with("continue");
+            if continuing && before.entries.iter().any(|entry| entry.conflict) {
+                return Err("Resolve and stage all conflicts before continuing".into());
+            }
+            run(
+                root,
+                &[
+                    "-c",
+                    "core.editor=true",
+                    if rebase { "rebase" } else { "cherry-pick" },
+                    if continuing { "--continue" } else { "--abort" },
+                ],
+            )?
         }
         "abort-merge" => {
             if !before.merging {
@@ -1070,22 +1388,40 @@ pub fn action(root: &Path, request: Action) -> Result<String, String> {
         .collect())
 }
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Conflict {
     pub base: String,
     pub ours: String,
     pub theirs: String,
     pub current: String,
+    pub rebasing: bool,
+    pub cherry_picking: bool,
 }
 pub fn conflict(root: &Path, path: &str) -> Result<Conflict, String> {
     path_argument(path)?;
-    if !snapshot(root)?
+    let state = snapshot(root)?;
+    if !state
         .entries
         .iter()
-        .any(|e| e.path == path && e.conflict)
+        .any(|entry| entry.path == path && entry.conflict)
     {
         return Err("Choose a conflicted file".into());
     }
-    let stage = |n| {
+    let stages = run(root, &["ls-files", "--unmerged", "-z", "--", path])?;
+    let stage = |n: u8| {
+        let exists = stages.split(|byte| *byte == 0).any(|record| {
+            record
+                .splitn(2, |byte| *byte == b'\t')
+                .next()
+                .is_some_and(|metadata| metadata.ends_with(&[b' ', b'0' + n]))
+        });
+        if !exists {
+            return if n == 1 {
+                Ok(String::new())
+            } else {
+                Err("This is a deletion or rename conflict. Choose the intended file state in Git’s terminal.".into())
+            };
+        }
         String::from_utf8(run(root, &["show", &format!(":{n}:{path}")])?)
             .map_err(|_| "Binary conflicts must be resolved outside the text editor".to_string())
     };
@@ -1094,6 +1430,8 @@ pub fn conflict(root: &Path, path: &str) -> Result<Conflict, String> {
         ours: stage(2)?,
         theirs: stage(3)?,
         current: crate::file_core::read(&root.join(path))?,
+        rebasing: state.rebasing,
+        cherry_picking: state.cherry_picking,
     })
 }
 #[cfg(test)]
@@ -1125,6 +1463,7 @@ mod tests {
                 value: value.into(),
                 remote: String::new(),
                 expected_head: before.head,
+                expected_branch: None,
                 expected_staged: before.staged_revision,
                 paths: Vec::new(),
                 reviewed_diff: None,
@@ -1425,6 +1764,7 @@ mod tests {
             value: String::new(),
             remote: String::new(),
             expected_head: before.head.clone(),
+            expected_branch: None,
             expected_staged: before.staged_revision.clone(),
             paths: Vec::new(),
             reviewed_diff: Some(patch),
@@ -1537,6 +1877,7 @@ mod tests {
                 value: String::new(),
                 remote: String::new(),
                 expected_head: String::new(),
+                expected_branch: None,
                 expected_staged: String::new(),
                 paths: Vec::new(),
                 reviewed_diff: Some(reviewed),
@@ -1555,6 +1896,7 @@ mod tests {
                 value: "stale".into(),
                 remote: String::new(),
                 expected_head: before.head,
+                expected_branch: None,
                 expected_staged: before.staged_revision,
                 paths: Vec::new(),
                 reviewed_diff: None,
@@ -1590,6 +1932,7 @@ mod tests {
                     value: String::new(),
                     remote: "origin".into(),
                     expected_head: before.head,
+                    expected_branch: None,
                     expected_staged: before.staged_revision,
                     paths: Vec::new(),
                     reviewed_diff: None,
@@ -1609,6 +1952,192 @@ mod tests {
         network("pull").unwrap();
         assert_eq!(std::fs::read_to_string(repo.0.join("file")).unwrap(), "two");
     }
+    #[test]
+    fn sync_uses_the_configured_upstream_even_when_its_branch_name_differs() {
+        let repo = Repo::new();
+        let remote = Repo::new();
+        run(&remote.0, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        run(&remote.0, &["switch", "-c", "team"]).unwrap();
+        run(&remote.0, &["commit", "--allow-empty", "-m", "Team work"]).unwrap();
+        run(&remote.0, &["switch", "main"]).unwrap();
+        let untouched = commit_at(&remote.0, "HEAD").unwrap();
+
+        run(
+            &repo.0,
+            &["remote", "add", "origin", &remote.0.to_string_lossy()],
+        )
+        .unwrap();
+        run(&repo.0, &["fetch", "origin"]).unwrap();
+        run(
+            &repo.0,
+            &["switch", "--create", "personal", "--track", "origin/team"],
+        )
+        .unwrap();
+        run(&remote.0, &["switch", "team"]).unwrap();
+        run(
+            &remote.0,
+            &["commit", "--allow-empty", "-m", "More team work"],
+        )
+        .unwrap();
+        run(&remote.0, &["switch", "main"]).unwrap();
+
+        let sync = |verb: &str, remote_ref: &str| {
+            let before = snapshot(&repo.0).unwrap();
+            action(
+                &repo.0,
+                Action {
+                    action: verb.into(),
+                    path: "sync-destination".into(),
+                    value: remote_ref.into(),
+                    remote: "origin".into(),
+                    expected_head: before.head,
+                    expected_branch: None,
+                    expected_staged: before.staged_revision,
+                    paths: Vec::new(),
+                    reviewed_diff: None,
+                },
+            )
+        };
+        assert!(sync("pull", "refs/heads/wrong")
+            .unwrap_err()
+            .contains("upstream changed"));
+        sync("pull", "refs/heads/team").unwrap();
+        assert_eq!(
+            commit_at(&repo.0, "HEAD").unwrap(),
+            commit_at(&remote.0, "team").unwrap()
+        );
+        run(&repo.0, &["commit", "--allow-empty", "-m", "Personal work"]).unwrap();
+        sync("push", "refs/heads/team").unwrap();
+        assert_eq!(
+            commit_at(&repo.0, "HEAD").unwrap(),
+            commit_at(&remote.0, "team").unwrap()
+        );
+        assert_eq!(commit_at(&remote.0, "main").unwrap(), untouched);
+        assert!(commit_at(&remote.0, "refs/heads/personal").is_err());
+    }
+
+    #[test]
+    fn history_pages_and_searches_an_immutable_commit_range() {
+        let repo = Repo::new();
+        for number in 0..=HISTORY_PAGE {
+            let label = if number == 0 {
+                "[Release] initial"
+            } else {
+                "Later"
+            };
+            run(&repo.0, &["commit", "--allow-empty", "-m", label]).unwrap();
+        }
+        let snapshot = snapshot(&repo.0).unwrap();
+        assert_eq!(snapshot.history.len(), HISTORY_PAGE);
+        assert!(snapshot.history_has_more);
+        let older = history(&repo.0, &snapshot.head, None, HISTORY_PAGE, "").unwrap();
+        assert_eq!(older.commits.len(), 1);
+        assert!(!older.has_more);
+        let first = &older.commits[0];
+        assert_eq!(first.subject, "[Release] initial");
+        let matches = history(&repo.0, &snapshot.head, None, 0, "[release]").unwrap();
+        assert_eq!(matches.commits.len(), 1);
+        assert_eq!(matches.commits[0].hash, first.hash);
+        let matches = history(
+            &repo.0,
+            &snapshot.head,
+            None,
+            0,
+            &first.hash[..10].to_uppercase(),
+        )
+        .unwrap();
+        assert_eq!(matches.commits.len(), 1);
+        assert_eq!(matches.commits[0].hash, first.hash);
+        assert!(
+            history(&repo.0, &snapshot.head, Some(&first.hash), 0, "[release]")
+                .unwrap()
+                .commits
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn divergent_comparison_rebase_and_cherry_pick_can_recover_from_conflicts() {
+        let repo = Repo::new();
+        let file = repo.0.join("shared.txt");
+        std::fs::write(&file, "base\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "Base"]).unwrap();
+        run(&repo.0, &["switch", "-c", "team"]).unwrap();
+        std::fs::write(&file, "team\n").unwrap();
+        run(&repo.0, &["commit", "-am", "Team work"]).unwrap();
+        let target = commit_at(&repo.0, "HEAD").unwrap();
+        run(&repo.0, &["switch", "main"]).unwrap();
+        std::fs::write(&file, "local\n").unwrap();
+        run(&repo.0, &["commit", "-am", "Local work"]).unwrap();
+        let local = commit_at(&repo.0, "HEAD").unwrap();
+        run(&repo.0, &["branch", "--set-upstream-to=team"]).unwrap();
+
+        let comparison = compare(&repo.0, "upstream", "").unwrap();
+        assert_eq!((comparison.ahead, comparison.behind), (1, 1));
+        assert!(comparison.stat.contains("shared.txt"));
+        assert!(
+            compare_diff(&repo.0, &comparison.base_head, &comparison.target_head)
+                .unwrap()
+                .contains("+team")
+        );
+        let incoming = history(
+            &repo.0,
+            &comparison.target_head,
+            Some(&comparison.base_head),
+            0,
+            "",
+        )
+        .unwrap();
+        assert_eq!(incoming.commits[0].hash, target);
+        assert!(act(&repo.0, "rebase-upstream", &comparison.reference, &local).is_err());
+        assert!(!snapshot(&repo.0).unwrap().rebasing);
+        act(&repo.0, "merge-upstream", &comparison.reference, &target).unwrap();
+        assert!(snapshot(&repo.0).unwrap().merging);
+        act(&repo.0, "abort-merge", "", "").unwrap();
+
+        for (operation, abort) in [
+            ("rebase", true),
+            ("rebase", false),
+            ("cherry-pick", true),
+            ("cherry-pick", false),
+        ] {
+            let starting_head = commit_at(&repo.0, "HEAD").unwrap();
+            let failure = if operation == "rebase" {
+                act(&repo.0, "rebase-upstream", &comparison.reference, &target)
+            } else {
+                // Replay the original local commit onto the other side of the conflict.
+                run(&repo.0, &["switch", "team"]).unwrap();
+                act(&repo.0, "cherry-pick", "", &local)
+            };
+            failure.unwrap_err();
+            let paused = snapshot(&repo.0).unwrap();
+            assert_eq!(paused.rebasing, operation == "rebase");
+            assert_eq!(paused.cherry_picking, operation == "cherry-pick");
+            assert!(paused.entries.iter().any(|entry| entry.conflict));
+            assert!(act(&repo.0, &format!("continue-{operation}"), "", "").is_err());
+            assert!(act(&repo.0, "commit", "", "Premature commit").is_err());
+            if abort {
+                act(&repo.0, &format!("abort-{operation}"), "", "").unwrap();
+                let expected = if operation == "rebase" {
+                    &starting_head
+                } else {
+                    &target
+                };
+                assert_eq!(&commit_at(&repo.0, "HEAD").unwrap(), expected);
+            } else {
+                let data = conflict(&repo.0, "shared.txt").unwrap();
+                assert_eq!(data.theirs, "local\n");
+                std::fs::write(&file, "resolved\n").unwrap();
+                act(&repo.0, "resolve", "shared.txt", "").unwrap();
+                act(&repo.0, &format!("continue-{operation}"), "", "").unwrap();
+                assert_eq!(std::fs::read_to_string(&file).unwrap(), "resolved\n");
+            }
+            let after = snapshot(&repo.0).unwrap();
+            assert!(!after.rebasing && !after.cherry_picking && after.entries.is_empty());
+        }
+    }
+
     #[test]
     fn explicit_merge_abort_restores_pre_merge_files() {
         let repo = Repo::new();

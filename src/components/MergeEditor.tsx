@@ -133,7 +133,7 @@ export default function MergeEditor({ document, conflict, modelPath, readOnly, o
       <span>{comparing ? "Comparing…" : `${comparison.regions.length} changes · ${conflictCount} conflict${conflictCount === 1 ? "" : "s"}`}</span>
       <div className="merge-workbench-actions"><button disabled={readOnly} onClick={() => void acceptAll("left")}>Accept all ours</button><button disabled={readOnly} onClick={() => void acceptAll("right")}>Accept all theirs</button></div>
     </div>
-    <div className="merge-workbench-headings"><strong>Ours <span>current branch</span></strong><strong>Result <span>editable · autosaves</span></strong><strong>Theirs <span>incoming branch</span></strong></div>
+    <div className="merge-workbench-headings"><strong>Ours <span>{conflict.rebasing ? "rebased tree" : "current branch"}</span></strong><strong>Result <span>editable · autosaves</span></strong><strong>Theirs <span>{conflict.rebasing ? "commit being replayed" : conflict.cherryPicking ? "picked commit" : "incoming branch"}</span></strong></div>
     <div className="merge-workbench-panes">
       <div className="merge-code-pane"><EditorPane document={sourceDocument(conflict.ours)} modelPath={`${modelPath}:ours`} readOnly wordWrap="off" onChange={() => {}} onReady={leftReady} /></div>
       {gutter("left")}

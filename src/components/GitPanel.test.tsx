@@ -24,6 +24,7 @@ vi.mock("../editor/runtime", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: async () => true }));
 import GitPanel from "./GitPanel";
+import { closeActiveTab } from "../lib/closeTab";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root;
 const props = {
@@ -31,7 +32,6 @@ const props = {
   root: "/project/api",
   visible: true,
   revision: 0,
-  onError: vi.fn(),
   beforeAction: vi.fn(async () => true),
   onChanged: vi.fn(async () => {}),
   onBusy: vi.fn(),
@@ -44,7 +44,6 @@ beforeEach(() => {
   harness.failure = "";
   harness.entries = [];
   harness.invoke.mockReset();
-  props.onError.mockClear();
   harness.invoke.mockImplementation(async (command, args) => {
     if (command === "git_snapshot")
       return {
@@ -128,14 +127,31 @@ it("offers remote tracking checkout without treating remote refs as local branch
   expect(trigger.textContent).toContain("master");
 });
 
-it("keeps the old branch and shows the reason if Git refuses the switch", async () => {
-  harness.failure = "Your local changes would be overwritten";
-  await act(async () => root.render(<GitPanel {...props} />));
+it("keeps the old branch and shows a dismissible failure in the Git workspace", async () => {
+  harness.failure = "Your local changes would be overwritten.\n  src/config.ts\nCommit or stash your changes before switching.";
+  const editorHost = document.createElement("section");
+  document.body.append(editorHost);
+  await act(async () => root.render(<GitPanel {...props} overlayHost={editorHost} />));
   const selector = await switchBranch();
   expect(selector.value).toBe("main");
-  expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-    "would be overwritten",
-  );
+  const alert = editorHost.querySelector('[role="alert"]')!;
+  expect(alert.querySelector("strong")?.textContent).toBe("Couldn’t switch branches");
+  expect(alert.querySelector("p")?.textContent).toBe(harness.failure);
+  expect(document.querySelector('.git-tools [role="alert"]')).toBeNull();
+  await act(async () => editorHost.querySelector<HTMLButtonElement>('[aria-label="Dismiss Git message"]')!.click());
+  expect(editorHost.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("shows repository loading errors in Git and retries the snapshot", async () => {
+  harness.invoke.mockRejectedValueOnce("Not a Git repository");
+  const editorHost = document.createElement("section");
+  document.body.append(editorHost);
+  await act(async () => root.render(<GitPanel {...props} overlayHost={editorHost} />));
+  expect(editorHost.querySelector('[role="alert"]')?.textContent).toContain("Not a Git repository");
+  const retry = [...editorHost.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Retry")!;
+  await act(async () => retry.click());
+  expect(editorHost.querySelector('[role="alert"]')).toBeNull();
+  expect(editorHost.textContent).toContain("No working tree changes.");
 });
 
 it("shows a colored side-by-side comparison and stages the unchanged original patch selection", async () => {
@@ -388,10 +404,35 @@ it("opens a diff in the editor host while keeping staging controls available", a
   document.body.append(editorHost);
   await act(async () => root.render(<GitPanel {...props} overlayHost={editorHost} />));
   await act(async () => document.querySelector<HTMLButtonElement>(".git-change > button")!.click());
+  expect(editorHost.querySelector('[aria-label="Git diff"]')?.getAttribute("aria-modal")).toBeNull();
   expect(editorHost.querySelector('[aria-label="Git diff"]')).not.toBeNull();
+  expect(editorHost.querySelector('[aria-label="Repository controls"]')).not.toBeNull();
   expect(document.querySelector(".git-group-heading button:not([aria-expanded])")).not.toBeNull();
-  await act(async () => editorHost.querySelector<HTMLButtonElement>('[aria-label="Close Git diff"]')!.click());
+  await act(async () => closeActiveTab());
   expect(editorHost.querySelector('[aria-label="Git diff"]')).toBeNull();
+});
+
+it("opens a conflict in the same editor pane and replaces it when a diff is selected", async () => {
+  harness.entries = [
+    { path: "conflict.ts", index: "U", worktree: "U", conflict: true },
+    { path: "changed.ts", index: " ", worktree: "M", conflict: false },
+  ];
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_conflict") return { base: "base", ours: "local", theirs: "incoming" };
+    if (command === "git_hunks") return { patch: "", header: "", hunks: [], supported: false };
+    return original(command, args);
+  });
+  const editorHost = document.createElement("section");
+  document.body.append(editorHost);
+  await act(async () => root.render(<GitPanel {...props} overlayHost={editorHost} renderMerge={() => "Result editor"} />));
+  const [conflict, change] = document.querySelectorAll<HTMLButtonElement>(".git-change > button:first-child");
+  await act(async () => conflict.click());
+  expect(editorHost.querySelector('[aria-label="Merge conflict"]')?.textContent).toContain("Result editor");
+  expect(conflict.getAttribute("aria-pressed")).toBe("true");
+  await act(async () => change.click());
+  expect(editorHost.querySelector('[aria-label="Merge conflict"]')).toBeNull();
+  expect(editorHost.querySelector('[aria-label="Git diff"]')).not.toBeNull();
 });
 
 it("renders recent commits as read-only per-file before/after comparisons", async () => {
@@ -402,7 +443,7 @@ it("renders recent commits as read-only per-file before/after comparisons", asyn
     return original(command, args);
   });
   await act(async () => root.render(<GitPanel {...props} />));
-  await act(async () => document.querySelector<HTMLButtonElement>(".git-history-toggle")!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Git sidebar view"] > button:nth-child(2)')!.click());
   await act(async () => document.querySelector<HTMLButtonElement>(".git-history")!.click());
   const dialog = document.querySelector('[aria-label="Git diff"]')!;
   expect(dialog.querySelector('[aria-label="Code changes before and after"]')).not.toBeNull();
@@ -440,6 +481,42 @@ it("prefills the latest recent message and preserves edits across refreshes and 
   expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!.value).toBe("Other repository");
 });
 
+it("shows actions for the selected local branch and keeps a failed rename editable", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_action") throw new Error("Branch name already exists");
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  const click = (selector: string, label: string) => act(async () => {
+    [...document.querySelectorAll<HTMLButtonElement>(selector)]
+      .find((button) => button.textContent?.trim() === label)!.click();
+  });
+  await click(".git-sidebar-views button", "Branches");
+  const detail = document.querySelector('[aria-label="Branch details"]')!;
+  expect(detail.textContent).toContain("Current branch");
+  expect(detail.textContent).not.toContain("Delete…");
+  expect(document.querySelector(".git-branch-form")).toBeNull();
+
+  await act(async () => document.querySelector<HTMLButtonElement>('.git-branch-row[title="feature"]')!.click());
+  expect(detail.textContent).toContain("Merge into main…");
+  expect(detail.textContent).toContain("Delete…");
+  await click(".git-branch-actions button", "Rename…");
+  const form = detail.querySelector("form")!;
+  const name = form.querySelector("input")!;
+  expect(name.value).toBe("feature");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "updated");
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await click(".git-branch-actions button", "Rename branch");
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({
+    request: expect.objectContaining({ action: "rename-branch", path: "feature", value: "updated", expectedHead: "abc" }),
+  }));
+  expect(document.querySelector('.git-main [role="alert"]')?.textContent).toContain("Branch name already exists");
+  expect(name.value).toBe("updated");
+});
+
 it("applies and drops individually selected stashes using immutable hashes", async () => {
   const original = harness.invoke.getMockImplementation()!;
   const stashes = [{ reference: "stash@{0}", hash: "a".repeat(40), subject: "Newest changes" }, { reference: "stash@{1}", hash: "b".repeat(40), subject: "Older changes" }];
@@ -474,4 +551,82 @@ it.each([
   const status = document.querySelector('[aria-label="Branch tracking status"]')!;
   expect(status.textContent).toContain(expected);
   expect(status.getAttribute("title")).toContain("Fetch to update");
+});
+
+it("opens upstream divergence, loads both sides, and routes a paused rebase to Changes", async () => {
+  const tracking = { name: "origin/team", reference: "refs/remotes/origin/team", remote: "origin", remoteRef: "refs/heads/team", ahead: 1, behind: 1, gone: false };
+  const incoming = { hash: "b".repeat(40), subject: "Team update", author: "Team", date: "2026-11-25" };
+  const outgoing = { hash: "a".repeat(40), subject: "Local update", author: "Local", date: "2026-11-25" };
+  let rebasing = false;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return {
+      branch: "main", head: outgoing.hash, entries: rebasing ? [{ path: "test.ts", conflict: true, index: "U", worktree: "U" }] : [],
+      branches: ["main"], remotes: ["origin"], stagedRevision: "", merging: false, rebasing, history: [outgoing], tracking,
+    };
+    if (command === "git_compare") return {
+      name: tracking.name, reference: tracking.reference, baseHead: outgoing.hash, baseBranch: "main",
+      targetHead: incoming.hash, ahead: 1, behind: 1, stat: "test.ts",
+    };
+    if (command === "git_history") return { commits: [args.head === incoming.hash ? incoming : outgoing], hasMore: false };
+    if (command === "git_action" && args.request.action === "rebase-upstream") {
+      rebasing = true;
+      throw new Error("Resolve the conflict in test.ts");
+    }
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  const click = (selector: string, label: string) => act(async () => {
+    [...document.querySelectorAll<HTMLButtonElement>(selector)]
+      .find((button) => button.textContent?.trim() === label)!.click();
+  });
+  await click(".git-sync-controls button", "Review divergence");
+  expect(document.querySelector('[aria-label="Incoming commits"]')?.textContent).toContain("Team update");
+  expect(document.querySelector('[aria-label="Outgoing commits"]')?.textContent).toContain("Local update");
+  await click(".git-comparison-resolution button", "Rebase onto upstream…");
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({
+    request: expect.objectContaining({
+      action: "rebase-upstream",
+      path: tracking.reference,
+      value: incoming.hash,
+      expectedHead: outgoing.hash,
+      expectedBranch: "main",
+    }),
+  }));
+  expect(document.querySelector('[aria-label="Branch comparison"]')).toBeNull();
+  const recovery = document.querySelector('[aria-label="Git operation in progress"]')!;
+  expect(recovery.textContent).toContain("Rebase in progress");
+  expect(recovery.querySelector<HTMLButtonElement>(".primary-button")?.disabled).toBe(true);
+  expect(document.querySelector(".git-main [role='alert']")?.textContent).toContain("Resolve the conflict in test.ts");
+});
+
+it("pages recent history, searches the Git history, and offers cherry-pick on a commit", async () => {
+  const recent = { hash: "c".repeat(40), subject: "Recent change", author: "Test", date: "2026-11-25" };
+  const older = { ...recent, hash: "d".repeat(40), subject: "Earlier release" };
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return { ...await original(command, args), head: recent.hash, history: [recent], historyHasMore: true };
+    if (command === "git_history") return { commits: [older], hasMore: false };
+    if (command === "git_show_commit") return "commit d";
+    if (command === "git_action") return "Cherry-picked";
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  await act(async () => document.querySelector<HTMLButtonElement>('.git-sidebar-views button:nth-child(2)')!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>('.git-load-older')!.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_history", expect.objectContaining({ offset: 1, query: "", head: recent.hash }));
+  expect(document.querySelectorAll('.git-history')).toHaveLength(2);
+  const field = document.querySelector<HTMLInputElement>('[aria-label="Search commit history"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "release");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => document.querySelector<HTMLButtonElement>('.git-history-search button')!.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_history", expect.objectContaining({ offset: 0, query: "release", head: recent.hash }));
+  expect(document.querySelectorAll('.git-history')).toHaveLength(1);
+  await act(async () => document.querySelector<HTMLButtonElement>('.git-history')!.click());
+  const cherryPick = [...document.querySelectorAll<HTMLButtonElement>('.git-inline-review footer button')]
+    .find((button) => button.textContent?.trim() === "Cherry-pick…")!;
+  await act(async () => cherryPick.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({
+    request: expect.objectContaining({ action: "cherry-pick", value: older.hash, expectedHead: recent.hash }),
+  }));
 });

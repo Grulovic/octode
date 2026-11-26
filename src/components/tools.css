@@ -1041,9 +1041,6 @@ fieldset.service-form-grid {
   padding: 5px;
   font-size: 12px;
 }
-.git-action-error {
-  color: var(--oc-error);
-}
 .service-field :is(select, .custom-select),
 .service-field input:not([type="checkbox"]) {
   min-height: 36px;
