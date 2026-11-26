@@ -42,21 +42,13 @@ export const syntax = {
 
 export const monoFont = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
 
-// Keep editor and terminal content on their established Deep Ocean palette.
+// Share neutral surfaces with the app while retaining Deep Ocean text colors.
 export const deepOceanColors = {
   ...colors,
-  bg: "#091014",
-  panel: "#0e1d24",
-  surface: "#14242b",
-  raised: "#182b33",
-  selection: "#173138",
-  border: "#1a2d34",
-  borderSubtle: "#16282f",
-  borderStrong: "#26414b",
+  selection: "#34373f",
   text: "#c6ccd3",
   textStrong: "#e3e7ea",
   muted: "#8d9aa3",
   faint: "#7d8c96",
   disabled: "#5c6b74",
-  accentInk: "#06201d",
 } as const;

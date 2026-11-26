@@ -55,7 +55,7 @@ export const deepOcean: editor.IStandaloneThemeData = {
     "editorLink.activeForeground": colors.accent, "editorError.foreground": colors.error,
     "diffEditor.insertedTextBackground": "#c3e88d26", "diffEditor.removedTextBackground": "#f071782e",
     "diffEditor.insertedLineBackground": "#c3e88d19", "diffEditor.removedLineBackground": "#f0717821",
-    "scrollbarSlider.background": "#26414b99", "scrollbarSlider.hoverBackground": "#26414bcc",
+    "scrollbarSlider.background": `${colors.borderStrong}99`, "scrollbarSlider.hoverBackground": `${colors.borderStrong}cc`,
     "scrollbarSlider.activeBackground": colors.borderStrong,
   },
 };

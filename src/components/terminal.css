@@ -1,15 +1,15 @@
-/* Ink well terminal, from the supplied T1 design reference. */
+/* Terminal surfaces share the neutral app palette. */
 .app-shell .workspace-terminal-dock {
   position: relative;
   z-index: 70;
   width: 100%;
-  background: #050b0e;
+  background: var(--oc-panel);
   box-shadow: 0 -18px 36px rgb(0 0 0 / 45%);
 }
 .workspace-terminal-host .terminal-panel {
   min-width: 0;
   border-top: 1px solid color-mix(in srgb, var(--oc-accent) 55%, transparent);
-  background: #050b0e;
+  background: var(--oc-panel);
   color: #d4dae0;
 }
 .workspace-terminal-host .terminal-toolbar {
@@ -51,9 +51,9 @@
   overflow: hidden;
 }
 .workspace-terminal-host .local-terminal-tabs > div.selected {
-  background: #050b0e;
+  background: var(--oc-panel);
   border-color: var(--oc-border-strong);
-  border-bottom-color: #050b0e;
+  border-bottom-color: var(--oc-panel);
   box-shadow: inset 0 2px 0 var(--oc-accent);
   color: var(--oc-text-strong);
 }
@@ -135,7 +135,7 @@
 .terminal-folder-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .workspace-terminal-host .terminal-content,
 .workspace-terminal-host .terminal-mount .xterm,
-.workspace-terminal-host .terminal-mount .xterm-viewport { background: #050b0e; }
+.workspace-terminal-host .terminal-mount .xterm-viewport { background: var(--oc-panel); }
 .workspace-terminal-host .terminal-content { padding: 0 16px 12px; }
 .workspace-terminal-host .terminal-search {
   flex: none;

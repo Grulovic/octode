@@ -76,7 +76,7 @@ export default function LocalTerminal({
       fontSize: 12,
       fontFamily: monoFont,
       scrollback: 3000,
-      theme: { ...terminalTheme, background: "#050b0e", foreground: "#d4dae0" },
+      theme: { ...terminalTheme, foreground: "#d4dae0" },
     });
     termRef.current = term;
     const fit = new FitAddon();
