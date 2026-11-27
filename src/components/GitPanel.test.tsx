@@ -655,3 +655,106 @@ it("browses stash files read-only and shows only the selected file diff", async 
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close Git diff"]')!.click());
   expect(document.querySelector(".git-stash-files")).toBeNull();
 });
+
+it("switches branches from the header outside Git with the same save and stale-state guards", async () => {
+  const host = document.createElement("span");
+  document.body.append(host);
+  const beforeAction = vi.fn(async () => true);
+  await act(async () => root.render(<GitPanel {...props} visible={false} branchHost={host} branchVisible beforeAction={beforeAction} />));
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Current project branch"]')!;
+  expect(trigger.textContent).toBe("main");
+  await act(async () => trigger.click());
+  await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>(".git-branch-menu-row")).find((button) => button.textContent === "feature")!.click());
+  expect(beforeAction).toHaveBeenCalledOnce();
+  expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({
+    root: "/project/api", request: expect.objectContaining({ action: "switch", value: "feature", expectedHead: "abc", expectedBranch: "main" }),
+  }));
+  expect(trigger.textContent).toBe("feature");
+});
+it("keeps the branch and reports failed Code flushes from a header switch", async () => {
+  const host = document.createElement("span");
+  document.body.append(host);
+  const onActionError = vi.fn();
+  await act(async () => root.render(<GitPanel {...props} visible={false} branchHost={host} beforeAction={async () => false} onActionError={onActionError} />));
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Current project branch"]')!;
+  await act(async () => trigger.click());
+  await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>(".git-branch-menu-row")).find((button) => button.textContent === "feature")!.click());
+  expect(harness.invoke.mock.calls.some(([command]) => command === "git_action")).toBe(false);
+  expect(trigger.textContent).toBe("main");
+  expect(onActionError).toHaveBeenCalledWith(expect.stringContaining("Save or resolve Code conflicts"));
+});
+it("omits the header branch control when the folder has no Git repository", async () => {
+  harness.invoke.mockRejectedValue(new Error("Not a Git repository"));
+  const host = document.createElement("span");
+  document.body.append(host);
+  await act(async () => root.render(<GitPanel {...props} branchHost={host} />));
+  expect(host.textContent).toBe("");
+  expect(host.querySelector('[role="combobox"]')).toBeNull();
+});
+
+it("searches local and remote branches in the header menu and shows command shortcuts", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => command === "git_snapshot"
+    ? { ...await original(command, args), remotes: ["origin"], remoteBranches: [{ name: "origin/review", localName: "review" }] }
+    : original(command, args));
+  const host = document.createElement("span"); document.body.append(host);
+  await act(async () => root.render(<GitPanel {...props} branchHost={host} />));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Current project branch"]')!.click());
+  expect(document.querySelector('.git-branch-menu-actions')?.textContent).toContain("Update Project…");
+  expect(document.querySelector('.git-branch-menu-actions')?.textContent).toContain("Commit and Push…");
+  expect(document.querySelectorAll('.git-branch-menu-actions kbd')).toHaveLength(4);
+  const input = document.querySelector<HTMLInputElement>('[aria-label="Search Git branches"]')!;
+  expect(document.activeElement).toBe(input);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "review");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(document.querySelector('.git-branch-menu-actions')).toBeNull();
+  expect(document.querySelectorAll('.git-branch-menu-row')).toHaveLength(1);
+  expect(document.querySelector('.git-branch-menu-row')?.textContent).toContain("origin/review");
+  await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector('[aria-label="Git branches and actions"]')).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector('button'));
+});
+
+it.each([
+  { key: "k", shiftKey: false, altKey: false, action: "commit" },
+  { key: "k", shiftKey: true, altKey: false, action: "push" },
+  { key: "k", shiftKey: false, altKey: true, action: "commit-push" },
+  { key: "t", shiftKey: false, altKey: false, action: "pull" },
+])("routes the PhpStorm $action shortcut to Git before executing anything", async ({ key, shiftKey, altKey, action }) => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => command === "git_snapshot"
+    ? { ...await original(command, args), remotes: ["origin"] }
+    : original(command, args));
+  const onShowGit = vi.fn();
+  await act(async () => root.render(<GitPanel {...props} visible={false} branchVisible onShowGit={onShowGit} />));
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key, code: key === "k" ? "KeyK" : "KeyT", metaKey: true, shiftKey, altKey, bubbles: true, cancelable: true })));
+  expect(onShowGit).toHaveBeenCalledOnce();
+  expect(harness.invoke.mock.calls.some(([command]) => command === "git_action")).toBe(false);
+  await act(async () => root.render(<GitPanel {...props} branchVisible onShowGit={onShowGit} />));
+  if (action === "pull" || action === "push") {
+    expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action }) }));
+  } else {
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Commit message");
+    expect(harness.invoke.mock.calls.some(([command]) => command === "git_action")).toBe(false);
+    if (action === "commit-push") expect(document.querySelector('.git-commit-actions .primary-button')?.textContent).toContain("Commit & Push");
+  }
+});
+
+it("opens Git for a menu Push and leaves terminal-focused shortcuts alone", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  harness.invoke.mockImplementation(async (command, args) => command === "git_snapshot"
+    ? { ...await original(command, args), remotes: ["origin"] }
+    : original(command, args));
+  const onShowGit = vi.fn(); const host = document.createElement("span"); document.body.append(host);
+  await act(async () => root.render(<GitPanel {...props} visible={false} branchVisible branchHost={host} onShowGit={onShowGit} />));
+  const terminal = document.createElement("div"); terminal.className = "terminal-panel";
+  const input = document.createElement("textarea"); terminal.append(input); document.body.append(terminal); input.focus();
+  await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "t", metaKey: true, bubbles: true, cancelable: true })));
+  expect(onShowGit).not.toHaveBeenCalled();
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Current project branch"]')!.click());
+  await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>('.git-branch-menu-actions button')).find((button) => button.textContent?.startsWith("Push…"))!.click());
+  expect(onShowGit).toHaveBeenCalledOnce();
+  expect(harness.invoke.mock.calls.some(([command]) => command === "git_action")).toBe(false);
+});

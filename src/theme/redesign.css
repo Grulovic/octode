@@ -15,9 +15,28 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .brand-mark img { width: 26px; height: 26px; }
 .app-shell .brand-navigation { gap: var(--oc-space-6); }
 .app-shell .projects-navigation { padding: 0; border: 0; color: var(--oc-muted); }
-.app-shell .project-breadcrumb { border-left: 1px solid var(--oc-border); padding-left: var(--oc-space-6); gap: var(--oc-space-4); }
+.app-shell .project-breadcrumb { flex-wrap: nowrap; align-self: center; border-left: 1px solid var(--oc-border); padding-left: var(--oc-space-6); gap: var(--oc-space-4); }
 .app-shell .project-nav-name { display: inline-flex; align-items: center; height: var(--oc-control-dense); padding: 0 var(--oc-space-4); border-radius: var(--oc-radius-control); background: var(--project-color, var(--oc-accent)); color: var(--oc-accent-ink); font: var(--oc-text-control); font-weight: 600; }
-.app-shell .project-breadcrumb .project-nav-name:is(:hover,:focus-visible) { background: var(--oc-selection); color: var(--project-color, var(--oc-accent)); }
+.app-shell .project-breadcrumb .custom-select.project-nav-name:is(:hover,:focus-visible,[aria-expanded="true"]) { background: var(--project-color, var(--oc-accent)); color: var(--oc-accent-ink); }
+.project-nav-controls { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--oc-space-4); min-width: 0; }
+.project-nav-controls:empty { display: none; }
+.app-shell .project-nav-controls .project-nav-select { width: auto; min-width: 60px; max-width: 160px; min-height: 24px; height: 24px; padding: 0 28px 0 6px; border-color: transparent; background: transparent; border-radius: var(--oc-radius-control); }
+.app-shell .project-nav-controls .project-nav-select:hover:not(:disabled),
+.app-shell .project-nav-controls .project-nav-select[aria-expanded="true"] { background: var(--oc-selection); border-color: var(--oc-border); }
+.app-shell .project-nav-controls .project-nav-folder { background: color-mix(in srgb, var(--oc-accent) 23%, var(--oc-panel)); border-color: color-mix(in srgb, var(--oc-accent) 25%, transparent); color: var(--oc-accent); font-weight: 600; }
+.app-shell .project-nav-controls .git-branch-menu-trigger { background: var(--oc-accent-tint); color: var(--oc-accent); font: 500 12px/18px var(--oc-font-mono); }
+.app-shell .project-nav-controls .project-nav-folder:is(:hover:not(:disabled),[aria-expanded="true"]) { background: color-mix(in srgb, var(--oc-accent) 32%, var(--oc-panel)); border-color: color-mix(in srgb, var(--oc-accent) 40%, transparent); }
+.app-shell .project-nav-controls .git-branch-menu-trigger:is(:hover:not(:disabled),[aria-expanded="true"]) { background: color-mix(in srgb, var(--oc-accent) 18%, var(--oc-panel)); border-color: color-mix(in srgb, var(--oc-accent) 20%, transparent); }
+.project-nav-controls .project-nav-separator, .project-breadcrumb > .project-nav-separator, .project-breadcrumb > .project-nav-tool, .project-breadcrumb > .projects-navigation { flex-shrink: 0; }
+.app-shell .project-breadcrumb .project-nav-name { min-width: 0; max-width: 180px; }
+.app-shell .brand { padding: 0; flex-shrink: 0; }
+.app-shell .project-breadcrumb .custom-select.project-nav-name { width: auto; height: var(--oc-control-dense); min-height: var(--oc-control-dense); border: 0; padding: 0 var(--oc-space-4); background: var(--project-color, var(--oc-accent)); color: var(--oc-accent-ink); font-weight: 600; }
+.app-shell .project-breadcrumb .custom-select.project-nav-name.custom-select { padding-right: var(--oc-space-4); }
+.project-switch-trigger { display: flex; align-items: center; gap: 6px; }
+.project-switch-trigger > svg { flex-shrink: 0; }
+.project-switch-option { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--project-color); }
+.project-switch-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-switch-color { width: 10px; height: 10px; flex-shrink: 0; border-radius: 3px; background: var(--project-color); }
 .project-pill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .titlebar-search { display: flex; align-items: center; gap: var(--oc-space-4); flex: 0 1 280px; min-width: 150px; height: 26px; padding: 0 var(--oc-space-4); border: 1px solid var(--oc-border); border-radius: var(--oc-radius-control); color: var(--oc-muted); background: var(--oc-panel); font-size: 12px; }
 .titlebar-search kbd { margin-left: auto; }
@@ -184,8 +203,6 @@ body, button, input, textarea, select { font-family: var(--oc-font-ui); }
 .app-shell .error-banner { color: var(--oc-error-text); background: var(--oc-error-tint); border-bottom: 1px solid var(--oc-error-border); font-size: 12px; }
 .app-shell .explorer-tabs { height: var(--code-tabs-height); min-height: var(--code-tabs-height); }
 .app-shell .explorer-tabs svg { width: 14px; height: 14px; }
-.app-shell .root-select { height: var(--oc-section-toolbar-h); min-height: var(--oc-section-toolbar-h); padding: 0 var(--oc-space-5); }
-.app-shell .root-select .custom-select { background: transparent; border: 0; padding-left: 0; height: 100%; font-size: 14px; font-weight: 600; color: var(--oc-text-strong); }
 .app-shell .folder-branch-pill { color: var(--oc-accent); background: var(--oc-accent-tint); border: 0; border-radius: var(--oc-radius-tag); font: 500 12px/18px var(--oc-font-mono); padding: var(--oc-space-1) var(--oc-space-4); }
 .app-shell .file-actions { height: var(--oc-tabstrip-h); padding: 0 var(--oc-space-4); gap: var(--oc-space-2); }
 .app-shell .file-actions button { padding: var(--oc-space-2); }
@@ -475,14 +492,6 @@ body .custom-select-popup { background: var(--oc-raised); box-shadow: var(--oc-s
 .project-remove-row strong { color: var(--oc-text-strong); font-size: 12.5px; font-weight: 500; }
 .project-remove-row small { color: var(--oc-muted); font-size: 11.5px; }
 .app-shell .project-remove-row .danger-outline { color: var(--oc-error); border: 1px solid var(--oc-error-border); background: transparent; white-space: nowrap; }
-/* Folder selection uses a full-row focus tint instead of an inset ring. */
-.app-shell .root-select:focus-within { background: var(--oc-surface); }
-.app-shell .root-select .custom-select:is(:focus,:focus-visible,[aria-expanded='true']) {
-  outline: none;
-  box-shadow: none;
-  border-color: transparent;
-  background: transparent;
-}
 
 .app-shell .document-tabs { min-width: 0; overflow-x: auto; overflow-y: hidden; }
 /* Keep project-search options inside one composite field at sidebar widths. */

@@ -1,3 +1,4 @@
+import GitBranchMenu, { type GitMenuAction } from "./GitBranchMenu";
 import { createPortal } from "react-dom";
 import { filename } from "../lib/workspace";
 import CustomSelect from "./CustomSelect";
@@ -55,6 +56,11 @@ type HistoryView = GitHistoryPage & { head: string; query: string };
 export default function GitPanel({
   project,
   overlayHost,
+  branchHost,
+  branchVisible = false,
+  branchDisabled = false,
+  onActionError,
+  onShowGit,
   root,
   visible,
   revision,
@@ -68,6 +74,11 @@ export default function GitPanel({
 }: {
   project: Project;
   overlayHost?: Element;
+  branchHost?: Element | null;
+  branchVisible?: boolean;
+  branchDisabled?: boolean;
+  onActionError?: (error: string) => void;
+  onShowGit?: () => void;
   root: string;
   visible: boolean;
   revision: number;
@@ -88,6 +99,10 @@ export default function GitPanel({
   const [commit, setCommit] = useState("");
   const commitInitialized = useRef(false);
   const [pushPrompt, setPushPrompt] = useState(false);
+  const [pendingMenuAction, setPendingMenuAction] = useState<GitMenuAction | null>(null);
+  const [commitIntent, setCommitIntent] = useState(false);
+  const commitInput = useRef<HTMLTextAreaElement>(null);
+  const [focusCommit, setFocusCommit] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<BranchSelection | null>(null);
   const [branchForm, setBranchForm] = useState<BranchForm | null>(null);
   const [remote, setRemote] = useState("");
@@ -179,13 +194,13 @@ export default function GitPanel({
     void refresh();
   }, [refresh]);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible && !branchVisible) return;
     void refresh();
     const timer = setInterval(() => {
       if (!working.current) void refresh();
     }, 5000);
     return () => clearInterval(timer);
-  }, [visible, revision, refresh]);
+  }, [visible, branchVisible, revision, refresh]);
   const task = async (failureTitle: string, job: () => Promise<void>) => {
     if (working.current) return;
     working.current = true;
@@ -197,6 +212,7 @@ export default function GitPanel({
       await job();
     } catch (reason) {
       if (mounted.current) {
+        if (!visible) onActionError?.(`${failureTitle}: ${reason instanceof Error ? reason.message : String(reason)}`);
         setActionError({
           title: failureTitle,
           detail: reason instanceof Error ? reason.message : String(reason),
@@ -611,17 +627,65 @@ export default function GitPanel({
     title: state ? "Couldn’t refresh the repository" : "Couldn’t open the repository",
     detail: repositoryError,
   } : null);
-  const toolbar = (
-    <header className="git-workspace-toolbar" aria-label="Repository controls">
-      <div className="git-heading">
-        <GitBranch size={14} />
-        {state ? (
+  const requestMenuAction = (action: GitMenuAction) => {
+    if (busy || branchDisabled) return;
+    window.dispatchEvent(new Event("octode-dismiss-popovers"));
+    onShowGit?.();
+    setPendingMenuAction(action);
+  };
+  useEffect(() => {
+    if (!visible || !pendingMenuAction || !state) return;
+    const action = pendingMenuAction;
+    setPendingMenuAction(null);
+    if (action === "push" || action === "update" || action === "fetch") {
+      showOperation();
+      void act(action === "update" ? "pull" : action);
+    } else if (action === "new-branch") {
+      setSidebarView("branches");
+      setView(null);
+      setMerge(null);
+      setComparison(null);
+      setBranchForm({ kind: "create", value: "" });
+    } else {
+      showOperation();
+      setCommitIntent(action === "commit-push");
+      const ready = !!commit.trim() && (!!state.stagedRevision || state.merging) && !sequencer && !hasConflicts && !!syncRemote && state.branch !== "Detached HEAD";
+      if (action === "commit-push" && ready) setPushPrompt(true);
+      else setFocusCommit(true);
+    }
+  });
+  useEffect(() => {
+    if (visible && sidebarView === "changes" && focusCommit) {
+      commitInput.current?.focus();
+      setFocusCommit(false);
+    }
+  }, [visible, sidebarView, focusCommit]);
+  useEffect(() => {
+    if (!branchVisible || !state || repositoryError) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.repeat || !(event.metaKey || event.ctrlKey) ||
+        document.querySelector('[aria-modal="true"]') ||
+        (document.activeElement instanceof Element && document.activeElement.closest(".terminal-panel, .local-terminal-panel, .xterm"))) return;
+      const name = event.code === "KeyK" ? "k" : event.key.toLowerCase();
+      let action: GitMenuAction | undefined;
+      if (name === "t" && !event.shiftKey && !event.altKey) action = "update";
+      else if (name === "k" && !(event.shiftKey && event.altKey)) action = event.shiftKey ? "push" : event.altKey ? "commit-push" : "commit";
+      if (!action) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (busy || branchDisabled || ((action === "push" || action === "update") && (!syncRemote || !!sequencer))) return;
+      requestMenuAction(action);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  });
+  const branchSelect = (className: string, label: string) => state && (
           <CustomSelect
-            className="git-branch-switch"
-            aria-label={`Switch branch in ${filename(root)}`}
+            className={className}
+            aria-label={label}
             title={`Switch branch in ${root}`}
             value={state.branch}
-            disabled={!canChangeBranch}
+            disabled={!canChangeBranch || branchDisabled}
             onChange={(event) => {
               const value = event.target.value;
               if (value.startsWith("remote:"))
@@ -646,6 +710,13 @@ export default function GitPanel({
               </option>
             ))}
           </CustomSelect>
+  );
+  const toolbar = (
+    <header className="git-workspace-toolbar" aria-label="Repository controls">
+      <div className="git-heading">
+        <GitBranch size={14} />
+        {state ? (
+          branchSelect("git-branch-switch", `Switch branch in ${filename(root)}`)
         ) : (
           <strong>Repository</strong>
         )}
@@ -719,6 +790,13 @@ export default function GitPanel({
   );
   return (
     <div className="git-tools">
+      {branchHost && state && !repositoryError && createPortal(<>
+        <span className="project-nav-separator" aria-hidden="true">/</span>
+        <GitBranchMenu state={state} folder={root} disabled={busy || branchDisabled}
+          canSwitch={canChangeBranch && !branchDisabled} canSync={!!syncRemote && !sequencer}
+          onAction={requestMenuAction}
+          onSwitch={(name, remote) => void act(remote ? "track-branch" : "switch", "", name)} />
+      </>, branchHost)}
       {busy && (
         <p className="git-help" role="status">
           Working…
@@ -857,6 +935,7 @@ export default function GitPanel({
             <label className="git-control">
               Commit message
               <textarea
+                ref={commitInput}
                 aria-label="Commit message"
                 value={commit}
                 onChange={(e) => {
@@ -866,6 +945,7 @@ export default function GitPanel({
                 placeholder="Describe these staged changes"
               />
             </label>
+            {commitIntent && <p className="git-help">Stage the changes and enter a message, then choose Commit &amp; Push to review the destination.</p>}
             <div className="git-commit-actions">
               <button
                 className="secondary-button"
@@ -881,7 +961,6 @@ export default function GitPanel({
                 Commit
               </button>
               <button
-                className="secondary-button"
                 disabled={
                   busy ||
                   !!sequencer ||
@@ -896,6 +975,7 @@ export default function GitPanel({
                     ? "Configure a Git remote before pushing"
                     : "Review the destination, commit, and push"
                 }
+                className={commitIntent ? "primary-button" : "secondary-button"}
                 onClick={() => setPushPrompt(true)}
               >
                 Commit & Push…

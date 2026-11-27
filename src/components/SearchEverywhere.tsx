@@ -309,7 +309,7 @@ export default function SearchEverywhere({
             ? "Looking through project files and declarations…"
             : scope
               ? `Files · Classes · Functions · ${filename(scope)}`
-              : "Files · Classes · Functions · Servers · Database · API"}
+              : "Files · Classes · Servers · Database · API · Functions"}
           {(deep ? deepError : error) && <span role="alert">{deep ? deepError : error}</span>}
           {deep && deepResults?.warnings.map((warning) => <span key={warning}>{warning}</span>)}
         </div>

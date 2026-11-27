@@ -1163,11 +1163,19 @@ describe("browser sandbox workflows", () => {
       document.querySelector("#everywhere-results")?.textContent,
     ).toContain("file");
     await type('[aria-label="Search all sections"]', "index");
-    await waitFor(() =>
-      document
-        .querySelector('#everywhere-results [role="option"]')
-        ?.textContent?.includes("function"),
+    const functionRow = await waitFor(() =>
+      [...document.querySelectorAll('#everywhere-results [role="option"]')]
+        .find((row) => row.querySelector(".search-result-kind")?.textContent === "function"),
     );
+    const searchRows = [...document.querySelectorAll('#everywhere-results [role="option"]')];
+    expect(searchRows[0].querySelector(".search-result-kind")?.textContent).toBe("file");
+    for (let i = 0; i < searchRows.indexOf(functionRow); i++) {
+      await act(async () =>
+        document.querySelector('input[role="combobox"]')!.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+        ),
+      );
+    }
     await act(async () =>
       document.querySelector('input[role="combobox"]')!.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -1397,17 +1405,54 @@ describe("browser sandbox workflows", () => {
     ).toBe(18);
   });
 
-  it("shows one header breadcrumb with clickable project home and the current tool", async () => {
+  it("shows one header breadcrumb with a project dropdown and the current tool", async () => {
     await enterCode();
-    const nav = () =>
-      document.querySelector('[aria-label="Project breadcrumb"]');
-    expect(nav()?.textContent).toBe("Projects/Welcome to Octode/Code");
+    const nav = () => {
+      const copy = document.querySelector('[aria-label="Project breadcrumb"]')?.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll("select").forEach((select) => select.remove());
+      return copy;
+    };
+    expect(nav()?.textContent).toBe("Projects/Welcome to Octode/welcome/Code");
     expect(document.querySelector(".title-context")).toBeNull();
-    await click('[aria-label="Project home"]');
+    await click('button[aria-label="Current project"]');
+    expect(document.querySelector('[aria-label="Current project options"]')).not.toBeNull();
+    await click('[aria-label="Current project options"] [role="option"]');
     expect(document.querySelector(".tools-grid")).toBeNull();
-    expect(nav()?.textContent).toBe("Projects/Welcome to Octode/Code");
+    expect(nav()?.textContent).toBe("Projects/Welcome to Octode/welcome/Code");
     await click('.rail-button[aria-label="Servers"]');
-    expect(nav()?.textContent).toBe("Projects/Welcome to Octode/Servers");
+    expect(nav()?.textContent).toBe("Projects/Welcome to Octode/welcome/Servers");
+  });
+  it("switches all projects from the colored header dropdown, retains editors, and opens Projects from the logo and grid icon", async () => {
+    await act(async () => root.unmount());
+    const alpha = { ...bridge.previewProject, id: "header-alpha", name: "Alpha", color: "#bd9df2" };
+    const beta = { ...bridge.previewProject, id: "header-beta", name: "Beta", color: "#fb9551" };
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([alpha, beta]);
+    root = createRoot(document.getElementById("root")!);
+    await act(async () => root.render(<App />));
+    await click('.project-card[aria-keyshortcuts="1"]');
+    await click(".tree-root");
+    await click('.file-tree [title="/welcome/README.md"]');
+    await type('[aria-label="Edit README.md"]', "Retain this workspace");
+    const editor = document.querySelector('[aria-label="Edit README.md"]');
+    const switchTo = async (name: string) => {
+      await click('button[aria-label="Current project"]');
+      const options = Array.from(document.querySelectorAll<HTMLButtonElement>('[aria-label="Current project options"] [role="option"]'));
+      expect(options.map((option) => option.textContent)).toEqual(["Alpha", "Beta"]);
+      expect((options[0].querySelector(".project-switch-option") as HTMLElement).style.getPropertyValue("--project-color")).toBe(alpha.color);
+      expect((options[1].querySelector(".project-switch-option") as HTMLElement).style.getPropertyValue("--project-color")).toBe(beta.color);
+      await act(async () => options.find((option) => option.textContent === name)!.click());
+      await waitFor(() => document.querySelector(".project-nav-name")?.textContent === name);
+    };
+    await switchTo("Beta");
+    expect(document.documentElement.style.getPropertyValue("--oc-accent")).toBe(beta.color);
+    await switchTo("Alpha");
+    expect(document.querySelector('[aria-label="Edit README.md"]')).toBe(editor);
+    expect((editor as HTMLTextAreaElement).value).toBe("Retain this workspace");
+    await click('[aria-label="Open projects"]');
+    await waitFor(() => document.querySelector(".dashboard"));
+    await click('.project-card[aria-keyshortcuts="1"]');
+    await act(async () => document.querySelector('[aria-label="Back to projects"] svg')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await waitFor(() => document.querySelector(".dashboard"));
   });
   it("creates, renames, and deletes an open file while preserving autosaved content", async () => {
     await enterCode();
@@ -2464,7 +2509,7 @@ describe("browser sandbox workflows", () => {
     await click(".project-card");
     const selector = await waitFor(() =>
       document.querySelector<HTMLSelectElement>(
-        '[aria-label="Active project folder"]',
+        '[aria-label="Current project folder"]',
       ),
     );
     const chooseFolder = async (path: string) =>
@@ -2472,15 +2517,19 @@ describe("browser sandbox workflows", () => {
         selector.value = path;
         selector.dispatchEvent(new Event("change", { bubbles: true }));
       });
+    const headerFolder = document.querySelector<HTMLSelectElement>('select[aria-label="Current project folder"]')!;
+    expect(headerFolder.value).toBe("/welcome/app");
+    expect(document.querySelector('[aria-label="Current project branch"]')).toBeNull();
     expect(selector.value).toBe("/welcome/app");
-    await waitFor(
-      () =>
-        document.querySelector(".root-select .folder-branch-pill")
-          ?.textContent === "preview",
-    );
-    expect(
-      document.querySelector(".root-select .folder-name")?.textContent,
-    ).toBe("app");
+    await act(async () => {
+      headerFolder.value = "/welcome";
+      headerFolder.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(selector.value).toBe("/welcome");
+    await chooseFolder("/welcome/app");
+    expect(headerFolder.value).toBe("/welcome/app");
+    expect(document.querySelector(".explorer .root-select")).toBeNull();
+    expect(document.querySelectorAll('button[aria-label="Current project folder"]')).toHaveLength(1);
     expect(document.querySelector(".file-tree .folder-branch-pill")).toBeNull();
     expect(document.querySelectorAll(".file-tree .tree-root")).toHaveLength(1);
     expect(
@@ -2508,6 +2557,7 @@ describe("browser sandbox workflows", () => {
     await type('[aria-label="Search project files"]', "WelcomeController.php");
     await click('.quick-open-results [role="option"]');
     await waitFor(() => selector.value === "/welcome/app");
+    expect(headerFolder.value).toBe("/welcome/app");
     expect(document.querySelectorAll(".file-tree .tree-root")).toHaveLength(1);
     expect(
       document.querySelector(".file-tree .tree-root")?.getAttribute("title"),

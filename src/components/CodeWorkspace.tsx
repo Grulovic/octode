@@ -1,9 +1,9 @@
+import { createPortal } from "react-dom";
 import { useTabReorder, moveTab } from "../hooks/useTabReorder";
 import { useSaveShortcut } from "../lib/saveShortcut";
 import MarkdownToolbar from "./MarkdownToolbar";
 import type { MarkdownCommand } from "../lib/markdownEditing";
 import FileIcon from "./FileIcon";
-import { useRootBranches } from "../hooks/useRootBranches";
 import CustomSelect from "./CustomSelect";
 import FileContextMenu, {
   copyPathToClipboard,
@@ -38,7 +38,6 @@ import {
   filename,
   language,
   rootForPath,
-  folderBranchLabel,
 } from "../lib/workspace";
 import type {
   Document,
@@ -88,8 +87,16 @@ export default function CodeWorkspace({
   onAutosaveReady,
   searchTarget,
   filesRequest = 0,
+  breadcrumbHost,
+  headerVisible = false,
+  onHeaderError,
+  onShowCode,
 }: {
   project: Project;
+  breadcrumbHost?: Element | null;
+  headerVisible?: boolean;
+  onHeaderError?: (error: string) => void;
+  onShowCode?: () => void;
   searchTarget?: SearchEntry;
   filesRequest?: number;
   visible: boolean;
@@ -216,7 +223,6 @@ export default function CodeWorkspace({
   recoveryPending.current = recoveredDrafts;
   const recoveryError = useRef(false);
   const [treeVersion, setTreeVersion] = useState(0);
-  const rootBranches = useRootBranches(project, visible, treeVersion);
   // Restoring the layout never starts a shell automatically.
   const terminalDock = useContext(WorkspaceTerminalContext);
   const terminal = terminalDock.visible;
@@ -986,49 +992,27 @@ export default function CodeWorkspace({
   };
   return (
     <div className="code-workspace">
+      {breadcrumbHost && createPortal(<>
+        <span className="project-nav-separator" aria-hidden="true">/</span>
+        <CustomSelect
+          className="project-nav-select project-nav-folder"
+          aria-label="Current project folder"
+          title={root}
+          disabled={restoring || gitBusy || fileBusy}
+          value={root}
+          onChange={(event) => {
+            setRoot(event.target.value);
+            setSelectedEntry({ path: event.target.value, name: filename(event.target.value), directory: true });
+          }}
+        >
+          {project.roots.map((path) => <option key={path} value={path}>{filename(path)}</option>)}
+        </CustomSelect>
+      </>, breadcrumbHost)}
       <aside
         className="explorer"
         ref={sidebarRef}
         style={{ width: sidebarWidth }}
       >
-        <label className="root-select">
-          <CustomSelect
-            aria-label="Active project folder"
-            renderLabel={(path, label) => {
-              const name = filename(path);
-              const branch = label === name ? "" : label.slice(name.length + 3);
-              return (
-                <span className="folder-branch-label">
-                  <span className="folder-name">{name}</span>
-                  {branch && (
-                    <span
-                      className="folder-branch-pill"
-                      title={`Branch: ${branch}`}
-                    >
-                      {branch}
-                    </span>
-                  )}
-                </span>
-              );
-            }}
-            disabled={gitBusy || fileBusy}
-            value={root}
-            onChange={(event) => {
-              setRoot(event.target.value);
-              setSelectedEntry({
-                path: event.target.value,
-                name: filename(event.target.value),
-                directory: true,
-              });
-            }}
-          >
-            {project.roots.map((item) => (
-              <option key={item} value={item}>
-                {folderBranchLabel(item, rootBranches[item])}
-              </option>
-            ))}
-          </CustomSelect>
-        </label>
         <div className="explorer-tabs">
           <button
             className={tab === "files" ? "active" : ""}
@@ -1160,13 +1144,20 @@ export default function CodeWorkspace({
             onOpen={(path) => void open(path)}
             onError={onError}
           />
-        ) : gitEditorHost && (
+        ) : null}
+        {gitEditorHost && (
+          <div style={{ display: tab === "git" ? "contents" : "none" }}>
           <Suspense fallback={null}>
             <GitPanel
               key={root}
               project={project}
               root={root}
               overlayHost={gitEditorHost}
+              branchHost={breadcrumbHost}
+              branchVisible={headerVisible}
+              branchDisabled={fileBusy || restoring}
+              onActionError={onHeaderError}
+              onShowGit={() => { onShowCode?.(); setTab("git"); }}
               visible={visible && tab === "git"}
               revision={treeVersion}
               onBusy={setGitBusy}
@@ -1207,6 +1198,7 @@ export default function CodeWorkspace({
               }}
             />
           </Suspense>
+          </div>
         )}
       </aside>
       <PanelResize

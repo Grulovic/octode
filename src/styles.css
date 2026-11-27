@@ -860,29 +860,6 @@ kbd {
   color: var(--oc-accent);
   border-color: var(--oc-muted);
 }
-.root-select {
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  position: relative;
-  margin: 0;
-  padding: 0;
-  border-bottom: 1px solid var(--oc-border);
-  color: var(--oc-muted);
-}
-.root-select :is(select, .custom-select) {
-  height: 100%;
-  min-width: 0;
-  width: 100%;
-  appearance: none;
-  border: 0;
-  background: transparent;
-  font-size: 11px;
-  padding: 0 36px 0 16px;
-  outline: none;
-}
 .file-tree {
   flex: 1;
   overflow: auto;
@@ -1678,18 +1655,6 @@ input[type="checkbox"]:focus-visible {
   min-height: 100%;
 }
 
-.folder-branch-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.folder-branch-label .folder-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .folder-branch-pill {
   flex-shrink: 0;
   max-width: 55%;

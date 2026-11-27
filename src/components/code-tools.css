@@ -1234,3 +1234,24 @@
 .git-stash-open > span { min-width: 0; overflow-wrap: anywhere; }
 .git-stash-open[aria-expanded="true"] { color: var(--oc-accent); }
 .git-stash-files { padding-left: 12px; }
+.git-branch-menu-trigger .custom-select-label { display: flex; align-items: center; gap: 6px; }
+.git-branch-menu-trigger .custom-select-label > span { overflow: hidden; text-overflow: ellipsis; }
+.git-branch-popup { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.git-branch-menu-search { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 32px; padding: 0 8px; border: 1px solid var(--oc-border); border-radius: var(--oc-radius-control); color: var(--oc-muted); }
+.git-branch-menu-search:focus-within { border-color: var(--oc-accent); }
+.git-branch-popup .git-branch-menu-search input,
+.git-branch-popup .git-branch-menu-search input:focus-visible { width: 100%; min-width: 0; height: 30px; padding: 0; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--oc-text); font: inherit; font-size: 12px; appearance: none; }
+.git-branch-menu-context { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; color: var(--oc-muted); font-size: 11px; }
+.git-branch-menu-actions { padding-bottom: 5px; border-bottom: 1px solid var(--oc-border); }
+.git-branch-popup .custom-select-option { min-height: 30px; padding: 5px 8px; gap: 8px; }
+.git-branch-popup .custom-select-option > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.git-branch-popup .custom-select-option > svg { flex-shrink: 0; color: var(--oc-muted); }
+.git-branch-popup .custom-select-option kbd { color: var(--oc-muted); border: 0; padding: 0; background: transparent; font: inherit; font-size: 11px; }
+.git-branch-popup .custom-select-option:is(:hover,:focus-visible),
+.git-branch-popup .git-branch-menu-row[aria-current="true"] { background: var(--oc-selection); }
+.git-branch-popup .custom-select-option:disabled { opacity: .45; }
+.git-branch-menu-branches { min-height: 0; overflow: auto; }
+.git-branch-popup .git-branch-menu-group { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 4px; color: var(--oc-muted); font-size: 12px; text-align: left; }
+.git-branch-menu-row small { overflow: hidden; max-width: 45%; text-overflow: ellipsis; white-space: nowrap; color: var(--oc-muted); font-size: 11px; }
+
+.git-branch-menu-actions button[data-action="new-branch"] { margin-top: 5px; padding-top: 8px; border-top: 1px solid var(--oc-border); border-radius: 0; }

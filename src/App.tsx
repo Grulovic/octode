@@ -1,3 +1,4 @@
+import CustomSelect from "./components/CustomSelect";
 import VaultWorkspace from "./components/VaultWorkspace";
 import { VaultProvider, useVaults } from "./components/VaultProvider";
 import WindowLayoutControls from "./components/WindowLayoutControls";
@@ -29,7 +30,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, RotateCcw, ArrowDownUp, ArrowRight, Code2, Database, Folder, FolderOpen, Grid2X2, Keyboard, Plus, Pencil, Settings2, Search, Server, TerminalSquare, X } from "./components/DesignIcons";
+import { AlertTriangle, RotateCcw, ArrowDownUp, ArrowRight, Code2, Database, Folder, FolderOpen, Grid2X2, Keyboard, Plus, Pencil, Settings2, Search, Server, TerminalSquare, X, ChevronDown } from "./components/DesignIcons";
 import {
   createProject,
   desktop,
@@ -236,6 +237,7 @@ function WorkspaceApp({
   }, [project, active]);
   const [tool, setTool] = useState<Tool>("home");
   const [codeVisited, setCodeVisited] = useState(false);
+  const [breadcrumbHost, setBreadcrumbHost] = useState<HTMLSpanElement | null>(null);
   const [codeFilesRequest, setCodeFilesRequest] = useState(0);
   const [visited, setVisited] = useState({
     api: false,
@@ -356,7 +358,7 @@ function WorkspaceApp({
     });
   }, [project, flushSession, runtime]);
   useEffect(() => {
-    if (active && !project)
+    if (active)
       void listProjects()
         .then(setProjects)
         .catch((reason) => setError(String(reason)));
@@ -547,6 +549,15 @@ function WorkspaceApp({
     window.dispatchEvent(new Event("octode-dismiss-popovers"));
     onProjects();
   };
+  const showProjects = () => {
+    notes.setVisible(false); vault.setVisible(false);
+    if (project) void leaveProject().catch((reason) => setError(String(reason)));
+    else {
+      setEverywhere(false);
+      window.dispatchEvent(new Event("octode-dismiss-popovers"));
+      onProjects();
+    }
+  };
   const restartApp = async () => {
     if (!desktop || restartPending.current) return;
     restartPending.current = true;
@@ -573,8 +584,15 @@ function WorkspaceApp({
   };
   const openProject = async (next: Project) => {
     try {
+      if (project && next.id !== project.id) {
+        if (codeAutosave.current) await codeAutosave.current();
+        await flushSession();
+      }
       if (desktop) await invoke("activate_project", { projectId: next.id });
       localStorage.setItem("octode-active-project", next.id);
+      notes.setVisible(false); vault.setVisible(false);
+      setEverywhere(false);
+      window.dispatchEvent(new Event("octode-dismiss-popovers"));
       onOpenProject(next);
     } catch (reason) {
       setError(String(reason));
@@ -630,26 +648,20 @@ function WorkspaceApp({
       >
         <header className="titlebar" data-tauri-drag-region>
           <div className="brand-navigation">
-            <div className="brand">
+            <button type="button" className="brand" aria-label="Open projects" title={`Projects (${modifier}0)`} onClick={showProjects}>
               <span className="brand-mark">
                 <img src="/octode.svg" width={32} height={32} alt="" />
               </span>
               <span>
                 octode<span className="brand-dot">.</span>
               </span>
-            </div>
+            </button>
             <nav className="project-breadcrumb" aria-label="Project breadcrumb">
               <button
                 className="projects-navigation"
                 aria-label="Back to projects"
                 aria-current={!project && !notes.visible && !vault.visible ? "page" : undefined}
-                onClick={() => {
-                  notes.setVisible(false); vault.setVisible(false);
-                  if (project)
-                    void leaveProject().catch((reason) =>
-                      setError(String(reason)),
-                    );
-                }}
+                onClick={showProjects}
               >
                 <Grid2X2 size={14} />
                 Projects
@@ -659,20 +671,29 @@ function WorkspaceApp({
                   <span className="project-nav-separator" aria-hidden="true">
                     /
                   </span>
-                  <button
+                  <CustomSelect
                     className="project-nav-name"
                     title={initialProject?.name ?? project.name}
-                    aria-label="Project home"
-                    aria-current={tool === "home" ? "page" : undefined}
-                    onClick={() => navigate("code")}
-                    style={{
-                      "--project-color": projectColor(
-                        initialProject?.color ?? project.color,
-                      ),
-                    } as React.CSSProperties}
+                    aria-label="Current project"
+                    value={project.id}
+                    triggerContent={<span className="project-switch-trigger"><span className="project-pill-name">{initialProject?.name ?? project.name}</span><ChevronDown size={12} aria-hidden="true" /></span>}
+                    style={{ "--project-color": projectColor(initialProject?.color ?? project.color) } as React.CSSProperties}
+                    renderLabel={(id, label) => {
+                      const item = projects.find((entry) => entry.id === id);
+                      return <span className="project-switch-option" style={{ "--project-color": projectColor(id === project.id ? initialProject?.color ?? project.color : item?.color) } as React.CSSProperties}>
+                        <span className="project-switch-color" aria-hidden="true" /><span>{label}</span>
+                      </span>;
+                    }}
+                    onChange={(event) => {
+                      const next = projects.find((item) => item.id === event.target.value);
+                      if (next && next.id !== project.id) void openProject(next);
+                    }}
                   >
-                    <span className="project-pill-name">{initialProject?.name ?? project.name}</span>
-                  </button>
+                    {(projects.some((item) => item.id === project.id) ? projects : [initialProject ?? project, ...projects]).map((item) =>
+                      <option key={item.id} value={item.id}>{item.id === project.id ? initialProject?.name ?? item.name : item.name}</option>,
+                    )}
+                  </CustomSelect>
+                  <span className="project-nav-controls" ref={setBreadcrumbHost} />
                   {(notes.visible || vault.visible || tool !== "home") && (
                     <>
                       <span
@@ -918,6 +939,10 @@ function WorkspaceApp({
                     >
                       <CodeWorkspace
                         project={project}
+                        breadcrumbHost={breadcrumbHost}
+                        headerVisible={active}
+                        onHeaderError={setError}
+                        onShowCode={() => navigate("code")}
                         filesRequest={codeFilesRequest}
                         searchTarget={searchTarget}
                         initialSession={session}
@@ -1271,9 +1296,10 @@ function WorkspaceApp({
               <div className="shortcut-columns">
                 {[
                   {title: "Sections", items: [["Projects", "0"], ["Code", "1"], ["Local terminal", "2"], ["Servers", "3"], ["Database", "4"], ["API", "5"], ["Notes", "6"]]},
+                  {title: "Git", items: [["Update project", "T"], ["Commit", "K"], ["Commit and push", "Alt K"], ["Push", "Shift K"]]},
                   {title: "Edit & search", items: [["Save current section", "S"], ["New note in Notes", "N"], ["Cycle selected text case", "Option Shift U"], ["Find in file", "F"], ["Quick open file", "P"], ["Search project", "Shift F"], ["Search all sections", "Shift Shift"], ["Close active tab", "W"], ["New tab in focused terminal", "T"], ["Run terminal launch command", "2 2"]]},
                 ].map((group) => <section className="shortcut-group" key={group.title}><h3>{group.title}</h3>{group.items.map(([title, key]) => (
-                  <div className="shortcut-row" key={title}><span>{title}</span><kbd>{key === "Shift Shift" ? "⇧ ⇧" : key === "Option Shift U" ? navigator.platform.toLowerCase().includes("mac") ? "⌥ ⇧ U" : "Alt Shift U" : `${modifier} ${key.replace("Shift", "⇧")}`}</kbd></div>
+                  <div className="shortcut-row" key={title}><span>{title}</span><kbd>{key === "Shift Shift" ? "⇧ ⇧" : key === "Option Shift U" ? navigator.platform.toLowerCase().includes("mac") ? "⌥ ⇧ U" : "Alt Shift U" : `${modifier} ${key.replace("Shift", "⇧").replace("Alt", navigator.platform.toLowerCase().includes("mac") ? "⌥" : "Alt")}`}</kbd></div>
                 ))}</section>)}
               </div>
             </section>
