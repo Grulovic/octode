@@ -46,7 +46,7 @@ import { exportText, resultCsv } from "../lib/export";
 import { copyTextToClipboard } from "../lib/clipboard";
 import type { TableMetadata } from "../lib/databaseRows";
 import { desktop } from "../lib/bridge";
-const DatabaseCsvImport = lazy(() => import("./DatabaseCsvImport"));
+const DatabaseTransfer = lazy(() => import("./DatabaseTransfer"));
 const SqlEditor = lazy(() => import("./EditorPane"));
 export default function DatabaseWorkspace({
   project,
@@ -112,7 +112,8 @@ export default function DatabaseWorkspace({
   const [loadingRows, setLoadingRows] = useState(false);
   const [metadata, setMetadata] = useState<TableMetadata | null>(null);
   const [tableInfo, setTableInfo] = useState(false);
-  const [csvImport, setCsvImport] = useState(false);
+  const [transferOpened, setTransferOpened] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<{ table: DbTable; columns: TableMetadata["columns"]; nonce: number } | null>(null);
   const [history, setHistory] = useState<
     { sql: string; time: string; rows: number; error?: string }[]
   >([]);
@@ -313,6 +314,8 @@ export default function DatabaseWorkspace({
   };
   const disconnect = async () => {
     setSession(null);
+    setTransferOpened(false);
+    setTransferTarget(null);
     setTableInfo(false);
     browseVersion.current++;
     setLoadingRows(false);
@@ -459,6 +462,7 @@ export default function DatabaseWorkspace({
     }
   };
   const showDataTab = (value: string) => {
+    if (value === "database") setTransferOpened(true);
     setTableInfo(false);
     browseVersion.current++;
     setLoadingRows(false);
@@ -621,7 +625,7 @@ export default function DatabaseWorkspace({
                 <span className={`connection-dot ${connectionLost || recovery.length ? "" : "connected"}`} aria-hidden="true"/><span>{current?.name}</span><span className="connection-engine">{current?.engine}</span>
               </button>
               <div className="service-tabs">
-                {["tables", "console"].map((value) => (
+                {["tables", "console", "database"].map((value) => (
                   <button
                     key={value}
                     className={tab === value ? "active" : ""}
@@ -630,7 +634,7 @@ export default function DatabaseWorkspace({
                       showDataTab(value);
                     }}
                   >
-                    {value === "tables" ? `Tables ${tables.length}` : "Console"}
+                    {value === "tables" ? `Tables ${tables.length}` : value === "console" ? "Console" : "Database"}
                   </button>
                 ))}
               </div>
@@ -665,7 +669,7 @@ export default function DatabaseWorkspace({
               </button>
             ))}
           </div>
-          {session && screen === "workspace" && tab !== "console" && (
+          {session && screen === "workspace" && tab === "tables" && (
             <div className="database-table-list" aria-label="Tables">
               <div className="database-table-search">
                 <Search size={14} aria-hidden="true" />
@@ -716,6 +720,7 @@ export default function DatabaseWorkspace({
               </div>
             </div>
           )}
+          {session && screen === "workspace" && tab === "database" && <p className="service-hint">Import and export data for this connection. Choose formats and tables on the right.</p>}
           <div
             hidden={screen !== "workspace" || tab !== "console"}
             className="database-query-list"
@@ -867,7 +872,7 @@ export default function DatabaseWorkspace({
                   >
                     <span>{current.name}</span>
                     <span aria-hidden="true">/</span>
-                    <span>{tab === "console" ? "Console" : "Tables"}</span>
+                    <span>{tab === "console" ? "Console" : tab === "database" ? "Database" : "Tables"}</span>
                     {tab === "tables" && table && (
                       <>
                         <span aria-hidden="true">/</span>
@@ -903,6 +908,19 @@ export default function DatabaseWorkspace({
               )}
             </div>
           )}
+          {session && transferOpened && <div hidden={screen !== "workspace" || tab !== "database"} className="database-transfer-panel">
+            <Suspense fallback={<p className="database-notice">Loading database tools…</p>}>
+              <DatabaseTransfer key={selected} session={session} initialTable={table} importTarget={transferTarget} name={current.name} readOnly={current.readOnly}
+                tables={tables} disabled={busy || connectionLost} onBusy={setBusy}
+                onImported={async () => {
+                  const info = await nativeTool<DbResult>("database_tables", { id: session });
+                  const next = info.rows.map((row) => ({ schema: row[0].value, name: row[1].value }));
+                  setTables(next); setMetadata(null); setResult(null);
+                  setTable((previous) => previous && next.some((item) => item.schema === previous.schema && item.name === previous.name) ? previous : null);
+                }}
+ />
+            </Suspense>
+          </div>}
           {screen === "connections" && (
             <div className="service-content">
               <fieldset
@@ -1241,18 +1259,12 @@ export default function DatabaseWorkspace({
                   <strong>
                     {result.rows.length} rows · {result.rowsAffected} affected
                   </strong>
-                {tab === "tables" && metadata && (
-                  <div className="database-table-edit-actions">
-                    <button
-                      className="secondary-button"
-                      disabled={busy || !metadata.editable}
-                      onClick={() => setCsvImport(true)}
-                    >
-                      Import CSV…
-                    </button>
-
-                  </div>
-                )}
+                  {tab === "tables" && table && metadata && <div className="database-table-edit-actions">
+                    <button className="secondary-button" disabled={busy || current.readOnly} onClick={() => {
+                      setTransferTarget({ table, columns: metadata.columns, nonce: Date.now() });
+                      showDataTab("database");
+                    }}>Import CSV…</button>
+                  </div>}
                   <span>
                     {tab === "console" && (
                       <button
@@ -1312,7 +1324,7 @@ export default function DatabaseWorkspace({
                   table={tab === "tables" ? (table?.name ?? "") : ""}
                   result={result}
                   metadata={tab === "tables" ? metadata : null}
-                  disabled={operationBusy || loadingRows || csvImport || recovery.length > 0}
+                  disabled={operationBusy || loadingRows || recovery.length > 0}
                   sort={sort}
                   descending={descending}
                   onSort={(column) =>
@@ -1337,19 +1349,6 @@ export default function DatabaseWorkspace({
               </div>
             )}
         </>
-      )}
-      {csvImport && session && table && metadata && (
-        <Suspense fallback={null}>
-          <DatabaseCsvImport
-            session={session}
-            schema={table.schema}
-            table={table.name}
-            metadata={metadata}
-            onClose={() => setCsvImport(false)}
-            onApplied={() => browse()}
-            onDirty={rowDirtyChange}
-          />
-        </Suspense>
       )}
     </ToolLayout>
   );

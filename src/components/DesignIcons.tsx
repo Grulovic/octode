@@ -84,3 +84,6 @@ export const WindowLeft = icon('<rect x="3" y="5" width="18" height="14" rx="2"/
 export const WindowRight = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14"/><path d="M14 7h5v10h-5z" fill="currentColor" stroke="none"/>');
 export const WindowCenter = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M16 5v14"/><path d="M10 7h4v10h-4z" fill="currentColor" stroke="none"/>');
 export const WindowFull = icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 7h14v10H5z" fill="currentColor" stroke="none"/>');
+
+export const Download = icon("<path d=\"M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5\"/>");
+export const Upload = icon("<path d=\"M12 15V3m-5 5 5-5 5 5M4 16v5h16v-5\"/>");

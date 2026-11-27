@@ -432,6 +432,7 @@ fn restart_app(
     window
         .state::<Arc<Terminals>>()
         .close_window(window.label());
+    window.state::<database::PreparedImports>().close_window(window.label());
     window.state::<ssh::Servers>().close_window(window.label());
     window
         .state::<database::Databases>()
@@ -467,6 +468,7 @@ pub fn run() {
         .manage(operations::Operations::default())
         .manage(ssh::Servers::default())
         .manage(database::Databases::default())
+        .manage(database::PreparedImports::default())
         .setup(|app| {
             tab_menu::install(app)?;
             let data_dir = app.path().app_data_dir()?;
@@ -483,6 +485,7 @@ pub fn run() {
                 window
                     .state::<Arc<Terminals>>()
                     .close_window(window.label());
+                window.state::<database::PreparedImports>().close_window(window.label());
                 window.state::<ssh::Servers>().close_window(window.label());
                 window
                     .state::<database::Databases>()
@@ -522,6 +525,10 @@ pub fn run() {
             database_apply_rows,
             database_query,
             database_browse,
+            database_export,
+            database_prepare_import,
+            database_release_import,
+            database_import_file,
             close_project_services,
             file_action,
             inspect_files,

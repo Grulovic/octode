@@ -200,7 +200,13 @@ pub async fn database_connect(
         .await
 }
 #[tauri::command]
-pub fn database_close(window: WebviewWindow, databases: State<'_, Databases>, id: String) {
+pub fn database_close(
+    window: WebviewWindow,
+    databases: State<'_, Databases>,
+    imports: State<'_, crate::database::PreparedImports>,
+    id: String,
+) {
+    imports.close_session(window.label(), &id);
     databases.close(window.label(), &id);
 }
 #[tauri::command]
@@ -228,6 +234,74 @@ pub async fn database_query(
     let session = databases.get(window.label(), &id)?;
     let token = operations.begin(window.label(), &request.operation_id)?;
     let result = tokio::select! {_=token.cancelled()=>Err("Query connection dropped. Verify the server outcome before retrying a write.".into()),result=session.query(&request.sql,1000)=>result};
+    operations.finish(window.label(), &request.operation_id);
+    result
+}
+#[tauri::command]
+pub async fn database_export(
+    window: WebviewWindow,
+    databases: State<'_, Databases>,
+    operations: State<'_, Operations>,
+    id: String,
+    request: crate::database::ExportRequest,
+    progress: Channel<crate::database::TransferProgress>,
+) -> Result<crate::database::TransferSummary, String> {
+    let session = databases.get(window.label(), &id)?;
+    let cancel = operations.begin(window.label(), &request.operation_id)?;
+    let result = session.export_file(&request, cancel, &progress).await;
+    operations.finish(window.label(), &request.operation_id);
+    result
+}
+#[tauri::command]
+pub async fn database_prepare_import(
+    window: WebviewWindow,
+    databases: State<'_, Databases>,
+    imports: State<'_, crate::database::PreparedImports>,
+    operations: State<'_, Operations>,
+    id: String,
+    path: String,
+    format: String,
+    operation_id: String,
+    progress: Channel<crate::database::TransferProgress>,
+) -> Result<crate::database::ImportPreview, String> {
+    let session = databases.get(window.label(), &id)?;
+    let cancel = operations.begin(window.label(), &operation_id)?;
+    let closed = session.cancellation();
+    let engine = session.engine();
+    let owner = window.label().to_string();
+    let imports = imports.inner().clone();
+    let result = tokio::task::spawn_blocking(move || {
+        imports.prepare(owner, id, path, format, engine, cancel, closed, progress)
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    operations.finish(window.label(), &operation_id);
+    result
+}
+#[tauri::command]
+pub fn database_release_import(
+    window: WebviewWindow,
+    imports: State<'_, crate::database::PreparedImports>,
+    token: String,
+) {
+    imports.release(window.label(), &token);
+}
+#[tauri::command]
+pub async fn database_import_file(
+    window: WebviewWindow,
+    databases: State<'_, Databases>,
+    imports: State<'_, crate::database::PreparedImports>,
+    operations: State<'_, Operations>,
+    id: String,
+    request: crate::database::ImportRequest,
+    progress: Channel<crate::database::TransferProgress>,
+) -> Result<crate::database::TransferSummary, String> {
+    let session = databases.get(window.label(), &id)?;
+    let cancel = operations.begin(window.label(), &request.operation_id)?;
+    let result = session
+        .import_file(&imports, window.label(), &id, &request, cancel, &progress)
+        .await;
     operations.finish(window.label(), &request.operation_id);
     result
 }

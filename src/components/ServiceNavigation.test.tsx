@@ -413,3 +413,30 @@ it("retains WHERE drafts and applied filters separately across tables and pagina
   expect(harness.native).toHaveBeenLastCalledWith("database_browse", expect.objectContaining({ request: expect.objectContaining({ filter: "id > 10" }) }));
   await click("roomsmain"); expect(input().value).toBe("id > 20");
 });
+
+it("opens Database transfers as the third tab without running database actions", async () => {
+  harness.document = { version: 1, connections: [{ ...databaseConnection(), id: "db", name: "Fixture" }], queries: [] };
+  harness.native.mockImplementation(async (command) => {
+    if (command === "database_connect") return "db-session";
+    if (command === "database_tables") return { rows: [[{ value: "main" }, { value: "rooms" }], [{ value: "main" }, { value: "guests" }]] };
+  });
+  await act(async () => root.render(<DatabaseWorkspace {...props} />));
+  await click("Fixturesqlite");
+  await click("Connect");
+  expect([...document.querySelectorAll(".database-connection-nav .service-tabs button")].map((item) => item.textContent)).toEqual(["Tables 2", "Console", "Database"]);
+  await click("Database");
+  await act(async () => { await import("./DatabaseTransfer"); });
+  expect(document.querySelector('[aria-label="Database breadcrumb"]')?.textContent).toBe("Fixture/Database");
+  expect(document.querySelectorAll('.database-transfer-tables input[type="checkbox"]:checked')).toHaveLength(2);
+  expect(document.querySelector('.database-table-list')).toBeNull();
+  await click("Clear");
+  expect(document.querySelectorAll('.database-transfer-tables input:checked')).toHaveLength(0);
+  expect(buttons().find((button) => button.textContent === "Export selected tables…")?.disabled).toBe(true);
+  await click("Import");
+  expect(document.querySelector('.database-transfer')?.textContent).toContain("Reconnect with writes enabled");
+  expect(buttons().find((button) => button.textContent === "Choose SQL file…")?.disabled).toBe(true);
+  await click("Console");
+  await click("Database");
+  expect(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Import");
+  expect(harness.native.mock.calls.some(([command]) => ["database_export", "database_import_file", "database_query", "database_apply_rows"].includes(command))).toBe(false);
+});

@@ -205,91 +205,147 @@ macro_rules! cells {
             .collect::<Vec<_>>()
     }};
 }
+fn transfer_text(value: impl ToString, limited: bool) -> DbCell {
+    if limited {
+        DbCell::text(value)
+    } else {
+        DbCell {
+            kind: "text",
+            value: value.to_string(),
+        }
+    }
+}
+fn transfer_binary(value: Vec<u8>, limited: bool) -> DbCell {
+    if limited {
+        DbCell::binary(value)
+    } else {
+        DbCell {
+            kind: "binary",
+            value: BASE64_STANDARD.encode(value),
+        }
+    }
+}
 fn sqlite_cell(row: &sqlx::sqlite::SqliteRow, i: usize, t: &str) -> DbCell {
+    sqlite_cell_value(row, i, t, true)
+}
+fn sqlite_export_cell(row: &sqlx::sqlite::SqliteRow, i: usize, t: &str) -> DbCell {
+    sqlite_cell_value(row, i, t, false)
+}
+fn sqlite_cell_value(row: &sqlx::sqlite::SqliteRow, i: usize, t: &str, limited: bool) -> DbCell {
     match t {
-        "INTEGER" => row.try_get::<i64, _>(i).map(DbCell::text),
-        "REAL" => row.try_get::<f64, _>(i).map(DbCell::text),
-        "BLOB" => row.try_get::<Vec<u8>, _>(i).map(DbCell::binary),
-        _ => row.try_get::<String, _>(i).map(DbCell::text),
+        "INTEGER" => row.try_get::<i64, _>(i).map(|v| transfer_text(v, limited)),
+        "REAL" => row.try_get::<f64, _>(i).map(|v| transfer_text(v, limited)),
+        "BLOB" => row
+            .try_get::<Vec<u8>, _>(i)
+            .map(|v| transfer_binary(v, limited)),
+        _ => row
+            .try_get::<String, _>(i)
+            .map(|v| transfer_text(v, limited)),
     }
     .unwrap_or_else(|_| DbCell::unsupported())
 }
 fn pg_cell(row: &sqlx::postgres::PgRow, i: usize, t: &str) -> DbCell {
+    pg_cell_value(row, i, t, true)
+}
+fn pg_export_cell(row: &sqlx::postgres::PgRow, i: usize, t: &str) -> DbCell {
+    pg_cell_value(row, i, t, false)
+}
+fn pg_cell_value(row: &sqlx::postgres::PgRow, i: usize, t: &str, limited: bool) -> DbCell {
     match t {
-        "UUID" => row.try_get::<sqlx::types::Uuid, _>(i).map(DbCell::text),
-        "INT2" => row.try_get::<i16, _>(i).map(DbCell::text),
-        "INT4" => row.try_get::<i32, _>(i).map(DbCell::text),
-        "INT8" => row.try_get::<i64, _>(i).map(DbCell::text),
-        "FLOAT4" => row.try_get::<f32, _>(i).map(DbCell::text),
-        "FLOAT8" => row.try_get::<f64, _>(i).map(DbCell::text),
-        "BOOL" => row.try_get::<bool, _>(i).map(DbCell::text),
-        "BYTEA" => row.try_get::<Vec<u8>, _>(i).map(DbCell::binary),
-        "NUMERIC" => row.try_get::<sqlx::types::Decimal, _>(i).map(DbCell::text),
+        "UUID" => row
+            .try_get::<sqlx::types::Uuid, _>(i)
+            .map(|v| transfer_text(v, limited)),
+        "INT2" => row.try_get::<i16, _>(i).map(|v| transfer_text(v, limited)),
+        "INT4" => row.try_get::<i32, _>(i).map(|v| transfer_text(v, limited)),
+        "INT8" => row.try_get::<i64, _>(i).map(|v| transfer_text(v, limited)),
+        "FLOAT4" => row.try_get::<f32, _>(i).map(|v| transfer_text(v, limited)),
+        "FLOAT8" => row.try_get::<f64, _>(i).map(|v| transfer_text(v, limited)),
+        "BOOL" => row.try_get::<bool, _>(i).map(|v| transfer_text(v, limited)),
+        "BYTEA" => row
+            .try_get::<Vec<u8>, _>(i)
+            .map(|v| transfer_binary(v, limited)),
+        "NUMERIC" => row
+            .try_get::<sqlx::types::Decimal, _>(i)
+            .map(|v| transfer_text(v, limited)),
         "JSON" | "JSONB" => row
             .try_get::<sqlx::types::Json<Box<serde_json::value::RawValue>>, _>(i)
-            .map(json_cell),
+            .map(|v| transfer_text(v.0.get(), limited)),
         "DATE" => row
             .try_get::<sqlx::types::chrono::NaiveDate, _>(i)
-            .map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
         "TIME" => row
             .try_get::<sqlx::types::chrono::NaiveTime, _>(i)
-            .map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
         "TIMESTAMP" => row
             .try_get::<sqlx::types::chrono::NaiveDateTime, _>(i)
-            .map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
         "TIMESTAMPTZ" => row
             .try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>(i)
-            .map(DbCell::text),
-        _ => row.try_get::<String, _>(i).map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
+        _ => row
+            .try_get::<String, _>(i)
+            .map(|v| transfer_text(v, limited)),
     }
     .unwrap_or_else(|_| DbCell::unsupported())
 }
+#[cfg(test)]
 fn json_cell(value: sqlx::types::Json<Box<serde_json::value::RawValue>>) -> DbCell {
     // Preserve numbers, escapes and duplicate keys exactly as returned by the server.
     DbCell::text(value.0.get())
 }
+#[cfg(test)]
 fn mysql_timestamp_cell(value: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>) -> DbCell {
     DbCell::text(value.naive_utc())
 }
 fn mysql_cell(row: &sqlx::mysql::MySqlRow, i: usize, t: &str) -> DbCell {
+    mysql_cell_value(row, i, t, true)
+}
+fn mysql_export_cell(row: &sqlx::mysql::MySqlRow, i: usize, t: &str) -> DbCell {
+    mysql_cell_value(row, i, t, false)
+}
+fn mysql_cell_value(row: &sqlx::mysql::MySqlRow, i: usize, t: &str, limited: bool) -> DbCell {
     match t {
         // BOOLEAN is TINYINT(1); retain its exact stored integer (including 2/-1),
         // rather than turning every nonzero value into the SQL string true.
         "BOOLEAN" | "BOOL" => row
             .try_get::<i64, _>(i)
-            .map(DbCell::text)
-            .or_else(|_| row.try_get::<u64, _>(i).map(DbCell::text)),
-        "TINYINT" => row.try_get::<i8, _>(i).map(DbCell::text),
-        "SMALLINT" => row.try_get::<i16, _>(i).map(DbCell::text),
-        "INT" | "MEDIUMINT" => row.try_get::<i32, _>(i).map(DbCell::text),
-        "BIGINT" => row.try_get::<i64, _>(i).map(DbCell::text),
+            .map(|v| transfer_text(v, limited))
+            .or_else(|_| row.try_get::<u64, _>(i).map(|v| transfer_text(v, limited))),
+        "TINYINT" => row.try_get::<i8, _>(i).map(|v| transfer_text(v, limited)),
+        "SMALLINT" => row.try_get::<i16, _>(i).map(|v| transfer_text(v, limited)),
+        "INT" | "MEDIUMINT" => row.try_get::<i32, _>(i).map(|v| transfer_text(v, limited)),
+        "BIGINT" => row.try_get::<i64, _>(i).map(|v| transfer_text(v, limited)),
         "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "INT UNSIGNED" | "MEDIUMINT UNSIGNED"
-        | "BIGINT UNSIGNED" => row.try_get::<u64, _>(i).map(DbCell::text),
-        "FLOAT" => row.try_get::<f32, _>(i).map(DbCell::text),
-        "DOUBLE" => row.try_get::<f64, _>(i).map(DbCell::text),
-        "DECIMAL" => row.try_get::<sqlx::types::Decimal, _>(i).map(DbCell::text),
-        "BINARY" | "VARBINARY" | "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BIT" => {
-            row.try_get::<Vec<u8>, _>(i).map(DbCell::binary)
-        }
+        | "BIGINT UNSIGNED" => row.try_get::<u64, _>(i).map(|v| transfer_text(v, limited)),
+        "FLOAT" => row.try_get::<f32, _>(i).map(|v| transfer_text(v, limited)),
+        "DOUBLE" => row.try_get::<f64, _>(i).map(|v| transfer_text(v, limited)),
+        "DECIMAL" => row
+            .try_get::<sqlx::types::Decimal, _>(i)
+            .map(|v| transfer_text(v, limited)),
+        "BINARY" | "VARBINARY" | "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BIT" => row
+            .try_get::<Vec<u8>, _>(i)
+            .map(|v| transfer_binary(v, limited)),
         "JSON" => row
             .try_get::<sqlx::types::Json<Box<serde_json::value::RawValue>>, _>(i)
-            .map(json_cell),
+            .map(|v| transfer_text(v.0.get(), limited)),
         "DATE" => row
             .try_get::<sqlx::types::chrono::NaiveDate, _>(i)
-            .map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
         "TIME" => row
             .try_get::<sqlx::types::chrono::NaiveTime, _>(i)
-            .map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
         "DATETIME" => row
             .try_get::<sqlx::types::chrono::NaiveDateTime, _>(i)
-            .map(DbCell::text),
+            .map(|v| transfer_text(v, limited)),
         // SQLx's NaiveDateTime type check only accepts DATETIME. Its UTC
         // DateTime decoder accepts TIMESTAMP and wraps the server's fields;
         // naive_utc returns those same fields without a display-time conversion.
         "TIMESTAMP" => row
             .try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>(i)
-            .map(mysql_timestamp_cell),
-        _ => row.try_get::<String, _>(i).map(DbCell::text),
+            .map(|v| transfer_text(v.naive_utc(), limited)),
+        _ => row
+            .try_get::<String, _>(i)
+            .map(|v| transfer_text(v, limited)),
     }
     .unwrap_or_else(|_| DbCell::unsupported())
 }
@@ -330,14 +386,15 @@ macro_rules! run_query {
                                 .collect();
                         }
                         if result.rows.len() >= $limit
-                            || (result.rows.len() + 1) * row.columns().len() > 20000
+                            || ($limit != usize::MAX
+                                && (result.rows.len() + 1) * row.columns().len() > 20000)
                         {
                             result.truncated = true;
                             break;
                         }
                         let cells = cells!(&row, $decode);
                         total += cells.iter().map(|c| c.value.len()).sum::<usize>();
-                        if total > 8 * 1024 * 1024 {
+                        if $limit != usize::MAX && total > 8 * 1024 * 1024 {
                             result.truncated = true;
                             break;
                         }
@@ -480,7 +537,7 @@ impl DatabaseSession {
     }
     pub async fn tables(&self) -> Result<DbResult, String> {
         let sql=match self.config.engine.as_str(){"sqlite"=>"SELECT 'main' AS schema, name FROM sqlite_schema WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name","postgres"=>"SELECT table_schema AS schema, table_name AS name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema,table_name",_=>"SELECT CAST(table_schema AS CHAR CHARACTER SET utf8mb4) AS `schema`, CAST(table_name AS CHAR CHARACTER SET utf8mb4) AS name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name"};
-        self.metadata_query(sql, 10000).await
+        self.metadata_query(sql, usize::MAX).await
     }
     pub async fn browse(
         &self,
@@ -806,3 +863,8 @@ enum DbConnection {
 #[path = "database_edit.rs"]
 mod editing;
 pub use editing::{RowChange, RowPlan, TableMetadata};
+#[path = "database_transfer.rs"]
+mod transfer;
+pub use transfer::{
+    ExportRequest, ImportPreview, ImportRequest, PreparedImports, TransferProgress, TransferSummary,
+};
