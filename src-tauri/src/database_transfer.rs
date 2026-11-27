@@ -318,6 +318,46 @@ fn csv_field(value: &str) -> String {
 fn csv_line(values: impl Iterator<Item = String>) -> String {
     values.map(|s| csv_field(&s)).collect::<Vec<_>>().join(",") + "\r\n"
 }
+fn export_columns_sql(engine: &str, table: &TransferTable) -> Result<String, String> {
+    let literal = |value: &str| {
+        sql_value(
+            &DbCell {
+                kind: "text",
+                value: value.into(),
+            },
+            engine,
+        )
+    };
+    let schema = literal(&table.schema)?;
+    let name = literal(&table.name)?;
+    Ok(match engine {
+        "sqlite" => format!("SELECT name, type, hidden FROM pragma_table_xinfo({name}, {schema}) ORDER BY cid"),
+        "postgres" => format!("SELECT column_name, data_type, CASE WHEN is_generated='ALWAYS' THEN 1 ELSE 0 END FROM information_schema.columns WHERE table_schema={schema} AND table_name={name} ORDER BY ordinal_position"),
+        _ => format!("SELECT CAST(COLUMN_NAME AS CHAR CHARACTER SET utf8mb4), CAST(DATA_TYPE AS CHAR CHARACTER SET utf8mb4), CASE WHEN EXTRA LIKE '%VIRTUAL GENERATED%' OR EXTRA LIKE '%STORED GENERATED%' THEN 1 ELSE 0 END FROM information_schema.columns WHERE TABLE_SCHEMA={schema} AND TABLE_NAME={name} ORDER BY ORDINAL_POSITION"),
+    })
+}
+fn export_columns(rows: Vec<Vec<DbCell>>) -> Result<Vec<DbColumn>, String> {
+    let mut columns = Vec::new();
+    for mut row in rows {
+        for cell in &mut row {
+            decode_metadata_text(cell);
+        }
+        if row.len() != 3 || row.iter().any(|c| matches!(c.kind, "unsupported" | "null")) {
+            return Err("Could not read complete export column metadata".into());
+        }
+        if row[2].value != "0" {
+            continue;
+        }
+        columns.push(DbColumn {
+            name: row[0].value.clone(),
+            data_type: row[1].value.clone(),
+        });
+    }
+    if columns.is_empty() {
+        return Err("The selected table has no exportable columns".into());
+    }
+    Ok(columns)
+}
 fn decimal_column(engine: &str, column: &DbColumn) -> bool {
     matches!(engine, "postgres" | "mysql")
         && ["numeric", "decimal"].contains(&column.data_type.to_ascii_lowercase().as_str())
@@ -437,33 +477,30 @@ impl DatabaseSession {
         } else {
             '"'
         };
+        let latest = Mutex::new((TransferProgress::default(), Instant::now()));
+        let report = |value: TransferProgress| {
+            if let Ok(mut latest) = latest.lock() {
+                *latest = (value.clone(), Instant::now());
+            }
+            let _ = progress.send(value);
+        };
+        report(TransferProgress {
+            phase: "Validating table selection".into(),
+            ..Default::default()
+        });
         let future = async {
-            let mut selections = Vec::new();
+            // Validate once. Export only needs column names, types and generated flags;
+            // the grid's full metadata also queries indexes, relationships and editability.
+            let available = self.tables().await?;
+            let available: std::collections::HashSet<_> = available
+                .rows
+                .iter()
+                .filter_map(|row| Some((row.first()?.value.as_str(), row.get(1)?.value.as_str())))
+                .collect();
             for table in &request.tables {
-                let metadata = self.metadata(&table.schema, &table.name).await?;
-                let columns: Vec<DbColumn> = metadata
-                    .columns
-                    .into_iter()
-                    .filter(|c| !c.generated)
-                    .map(|c| DbColumn {
-                        name: c.name,
-                        data_type: c.data_type,
-                    })
-                    .collect();
-                if columns.is_empty() {
-                    return Err("The selected table has no exportable columns".into());
+                if !available.contains(&(table.schema.as_str(), table.name.as_str())) {
+                    return Err("Select a table from this database".into());
                 }
-                let name = format!(
-                    "{}.{}",
-                    quote_identifier(&table.schema, q),
-                    quote_identifier(&table.name, q)
-                );
-                let names = columns
-                    .iter()
-                    .map(|c| quote_identifier(&c.name, q))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                selections.push((table, columns, name, names));
             }
             let initial = match request.format.as_str() { "sql" => format!("-- Octode table data ({}). Destination tables must already exist.\n-- Generated columns are omitted. Existing rows are not removed.\n", self.config.engine), "json" => format!("{{\"format\":\"octode-table-data\",\"version\":1,\"engine\":{},\"tables\":[", serde_json::to_string(&self.config.engine).unwrap()), _ => String::new() };
             writer
@@ -475,7 +512,14 @@ impl DatabaseSession {
                 let mut connection = $connection;
                 let mut tx = connection.begin().await.map_err(db_error)?;
                 let mut tick = Instant::now();
-                for (table_index, (table, columns, name, names)) in selections.into_iter().enumerate() {
+                for (table_index, table) in request.tables.iter().enumerate() {
+                    let table_label = format!("{}.{}", table.schema, table.name);
+                    report(TransferProgress { phase: format!("Reading columns ({}/{})", table_index+1, request.tables.len()), table: table_label.clone(), rows: summary.rows, bytes: summary.bytes, ..Default::default() });
+                    let column_sql = export_columns_sql(&self.config.engine, table)?;
+                    let raw_columns = sqlx::query(&column_sql).fetch_all(&mut *tx).await.map_err(db_error)?;
+                    let columns = export_columns(raw_columns.iter().map(|row| cells!(row, $decode)).collect())?;
+                    let name = format!("{}.{}", quote_identifier(&table.schema,q), quote_identifier(&table.name,q));
+                    let names = columns.iter().map(|c| quote_identifier(&c.name,q)).collect::<Vec<_>>().join(", ");
                     let header = match request.format.as_str() {
                         "json" => format!("{}{{\"schema\":{},\"name\":{},\"result\":{{\"columns\":{},\"rows\":[", if table_index > 0 { "," } else { "" }, serde_json::to_string(&table.schema).unwrap(), serde_json::to_string(&table.name).unwrap(), serde_json::to_string(&columns).map_err(|e|e.to_string())?),
                         "csv" if request.headers => csv_line(columns.iter().map(|c| c.name.clone())),
@@ -483,6 +527,7 @@ impl DatabaseSession {
                     };
                     writer.write_all(header.as_bytes()).await.map_err(|e|e.to_string())?; summary.bytes += header.len() as u64;
                     let sql = format!("SELECT {} FROM {name}", export_selection(&self.config.engine, &columns, q));
+                    report(TransferProgress { phase: format!("Reading rows ({}/{})", table_index+1, request.tables.len()), table: table_label.clone(), rows: summary.rows, bytes: summary.bytes, ..Default::default() });
                     let mut stream = sqlx::query(&sql).fetch(&mut *tx); let mut table_rows = 0u64;
                     while let Some(row) = stream.try_next().await.map_err(db_error)? {
                         let mut cells = cells!(&row, $decode); type_cells(&row, &mut cells, &self.config.engine);
@@ -498,13 +543,17 @@ impl DatabaseSession {
                             _ => csv_line(cells.iter().map(|c| match c.kind { "null" => String::new(), "binary" => format!("base64:{}",c.value), _ => c.value.clone() })),
                         };
                         writer.write_all(line.as_bytes()).await.map_err(|e|e.to_string())?; summary.bytes += line.len() as u64; summary.rows += 1; table_rows += 1;
-                        if tick.elapsed() >= Duration::from_millis(100) { let _ = progress.send(TransferProgress { phase:"Exporting".into(),rows:summary.rows,bytes:summary.bytes,table:format!("{}.{}",table.schema,table.name),..Default::default() }); tick=Instant::now(); }
+                        if tick.elapsed() >= Duration::from_millis(100) { report(TransferProgress { phase:format!("Exporting ({}/{})", table_index+1, request.tables.len()),rows:summary.rows,bytes:summary.bytes,table:table_label.clone(),..Default::default() }); tick=Instant::now(); }
                     }
                     drop(stream);
                     if request.format == "json" { let end = b"],\"rowsAffected\":0,\"elapsedMs\":0,\"truncated\":false}}"; writer.write_all(end).await.map_err(|e|e.to_string())?; summary.bytes += end.len() as u64; }
                 }
                 tx.rollback().await.map_err(db_error)?; let _ = connection.close().await;
             }}; }
+            report(TransferProgress {
+                phase: "Opening export connection".into(),
+                ..Default::default()
+            });
             match self.open().await? {
                 DbConnection::Sqlite(c) => export!(c, sqlite_export_cell),
                 DbConnection::Postgres(c) => export!(c, pg_export_cell),
@@ -514,6 +563,12 @@ impl DatabaseSession {
                 writer.write_all(b"]}\n").await.map_err(|e| e.to_string())?;
                 summary.bytes += 3;
             }
+            report(TransferProgress {
+                phase: "Finishing export file".into(),
+                rows: summary.rows,
+                bytes: summary.bytes,
+                ..Default::default()
+            });
             writer.flush().await.map_err(|e| e.to_string())?;
             writer
                 .get_ref()
@@ -522,7 +577,25 @@ impl DatabaseSession {
                 .map_err(|e| e.to_string())?;
             Ok::<(), String>(())
         };
-        tokio::select! { _=cancel.cancelled()=>return Err("Export cancelled; no partial file was saved".into()), _=self.cancel.cancelled()=>return Err("Connection closed; no partial file was saved".into()), result=future=>result? }
+        {
+            tokio::pin!(future);
+            let mut heartbeat = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tokio::select! {
+                    _=cancel.cancelled()=>return Err("Export cancelled; no partial file was saved".into()),
+                    _=self.cancel.cancelled()=>return Err("Connection closed; no partial file was saved".into()),
+                    result=&mut future=>{ result?; break; },
+                    _=heartbeat.tick()=>{
+                        let value = latest.lock().ok().map(|latest| { let (value, since) = &*latest;
+                            let mut value = value.clone();
+                            if since.elapsed().as_secs() >= 2 { value.phase = format!("{} · waiting {}s", value.phase, since.elapsed().as_secs()); }
+                            value
+                        });
+                        if let Some(value) = value { let _ = progress.send(value); }
+                    }
+                }
+            }
+        }
         drop(writer);
         // Cancellation is checked before the atomic replacement; an existing file is preserved on failure.
         if cancel.is_cancelled() || self.cancel.is_cancelled() {
@@ -1046,5 +1119,82 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_reader(File::open(file).unwrap()).unwrap();
         assert_eq!(json["tables"].as_array().unwrap().len(), 201);
+    }
+    #[tokio::test]
+    async fn export_reports_each_stage_before_rows_even_for_empty_tables() {
+        let f = fixture();
+        let messages = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let captured = messages.clone();
+        let progress = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_str(&json).unwrap());
+            }
+            Ok(())
+        });
+        let destination = f.directory.join("progress.json");
+        f.session
+            .export_file(
+                &request(&destination, "json", vec![table("items"), table("copies")]),
+                CancellationToken::new(),
+                &progress,
+            )
+            .await
+            .unwrap();
+        let messages = messages.lock().unwrap();
+        let phases: Vec<_> = messages
+            .iter()
+            .map(|v| v["phase"].as_str().unwrap())
+            .collect();
+        assert_eq!(phases[0], "Validating table selection");
+        assert!(phases.contains(&"Opening export connection"));
+        assert!(phases.contains(&"Reading columns (1/2)"));
+        assert!(phases.contains(&"Reading rows (1/2)"));
+        assert!(phases.contains(&"Reading columns (2/2)"));
+        assert!(phases.contains(&"Reading rows (2/2)"));
+        assert!(phases.contains(&"Finishing export file"));
+        assert!(messages
+            .iter()
+            .any(|v| v["phase"] == "Reading columns (2/2)" && v["table"] == "main.copies"));
+    }
+    #[tokio::test]
+    async fn export_reports_waiting_and_can_cancel_during_locked_metadata() {
+        let f = fixture();
+        let lock = rusqlite::Connection::open(&f.session.config.file).unwrap();
+        lock.execute_batch("BEGIN EXCLUSIVE").unwrap();
+        let cancel = CancellationToken::new();
+        let stop = cancel.clone();
+        let saw_wait = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let captured = saw_wait.clone();
+        let progress = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+                if value["phase"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("waiting 2s")
+                {
+                    captured.store(true, std::sync::atomic::Ordering::Relaxed);
+                    stop.cancel();
+                }
+            }
+            Ok(())
+        });
+        let destination = f.directory.join("existing.sql");
+        std::fs::write(&destination, "original").unwrap();
+        let result = f
+            .session
+            .export_file(
+                &request(&destination, "sql", vec![table("items")]),
+                cancel,
+                &progress,
+            )
+            .await;
+        lock.execute_batch("ROLLBACK").unwrap();
+        assert!(result.unwrap_err().contains("cancelled"));
+        assert!(saw_wait.load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(std::fs::read_to_string(destination).unwrap(), "original");
     }
 }
