@@ -344,6 +344,25 @@ pub async fn git_show_commit(
 }
 
 #[tauri::command]
+pub async fn git_show_stash(
+    window: WebviewWindow,
+    store: State<'_, Store>,
+    locks: State<'_, Arc<GitLocks>>,
+    project_id: String,
+    root: String,
+    hash: String,
+) -> Result<String, String> {
+    let root = repo(&window, &store, &project_id, &root)?;
+    let lock = locks.repository(&root)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        git_tools::show_stash(&git_tools::root(&root)?, &hash)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn git_history(
     window: WebviewWindow,
     store: State<'_, Store>,

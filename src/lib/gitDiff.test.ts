@@ -70,3 +70,8 @@ it("decodes quoted Git paths and leaves combined merge patches available as raw 
   expect(merge.files[0].hunks).toEqual([]);
   expect(merge.files[0].header).toContain("++merged");
 });
+
+it("removes Git's tab delimiter from filenames containing spaces", () => {
+  const result = parseCommitDiff("diff --git a/new file.txt b/new file.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new file.txt\t\n@@ -0,0 +1 @@\n+saved\n");
+  expect(result.files[0].path).toBe("new file.txt");
+});

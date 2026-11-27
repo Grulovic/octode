@@ -550,6 +550,7 @@ pub fn run() {
             git_hunks,
             git_apply_hunks,
             git_show_commit,
+            git_show_stash,
             git_history,
             git_compare,
             git_compare_diff,

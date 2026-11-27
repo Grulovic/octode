@@ -126,8 +126,8 @@ export function parseCommitDiff(source: string): { header: string; files: Commit
     else if (file.hunks.length) file.hunks[file.hunks.length - 1] += line + "\n";
     else {
       file.header += line + "\n";
-      if (line.startsWith("--- ") && line.slice(4) !== "/dev/null") file.path = path(line.slice(4));
-      if (line.startsWith("+++ ") && line.slice(4) !== "/dev/null") file.path = path(line.slice(4));
+      if (line.startsWith("--- ") && line.slice(4) !== "/dev/null") file.path = path(line.slice(4).replace(/\t.*$/, ""));
+      if (line.startsWith("+++ ") && line.slice(4) !== "/dev/null") file.path = path(line.slice(4).replace(/\t.*$/, ""));
       if (line.startsWith("rename to ")) file.path = path(line.slice(10));
     }
   }

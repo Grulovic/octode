@@ -827,6 +827,20 @@ pub fn apply_hunks(root: &Path, request: HunkRequest) -> Result<(), String> {
     }
     Ok(())
 }
+pub fn show_stash(root: &Path, hash: &str) -> Result<String, String> {
+    if !is_commit_hash(hash) {
+        return Err("Choose a full stash hash from the stash list".into());
+    }
+    // Resolve by immutable hash so a shifted reflog cannot select another stash.
+    if !stashes(root)?.iter().any(|stash| stash.hash == hash) {
+        return Err("This stash disappeared; refresh and select it again".into());
+    }
+    string(root, &[
+        "stash", "show", "--patch", "--include-untracked", "--no-ext-diff",
+        "--no-textconv", "--no-color", hash, "--",
+    ])
+}
+
 pub fn show_commit(root: &Path, hash: &str) -> Result<String, String> {
     if !is_commit_hash(hash) {
         return Err("Choose a full commit hash from history".into());
@@ -2219,6 +2233,37 @@ mod tests {
             .contains("Base"));
         assert!(show_commit(&repo.0, "HEAD;echo bad").is_err());
     }
+    #[test]
+    fn stash_preview_includes_staged_unstaged_deleted_and_untracked_files_without_applying() {
+        let repo = Repo::new();
+        std::fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
+        std::fs::write(repo.0.join("deleted.txt"), "remove me\n").unwrap();
+        run(&repo.0, &["add", "."]).unwrap();
+        run(&repo.0, &["commit", "-m", "Base"]).unwrap();
+        std::fs::write(repo.0.join("tracked.txt"), "staged\n").unwrap();
+        run(&repo.0, &["add", "tracked.txt"]).unwrap();
+        std::fs::write(repo.0.join("tracked.txt"), "saved work\n").unwrap();
+        std::fs::remove_file(repo.0.join("deleted.txt")).unwrap();
+        std::fs::write(repo.0.join("new file.txt"), "untracked\n").unwrap();
+        run(&repo.0, &["stash", "push", "--include-untracked"]).unwrap();
+        let stash = stashes(&repo.0).unwrap().remove(0);
+        // Moving the reflog does not change which saved contents the hash opens.
+        std::fs::write(repo.0.join("tracked.txt"), "newer work\n").unwrap();
+        run(&repo.0, &["stash", "push"]).unwrap();
+        let before = string(&repo.0, &["status", "--porcelain=v1", "-z"]).unwrap();
+        let patch = show_stash(&repo.0, &stash.hash).unwrap();
+        assert!(patch.contains("+saved work"));
+        assert!(patch.contains("-remove me"));
+        assert!(patch.contains("+untracked"));
+        assert!(!patch.contains("+newer work"));
+        assert_eq!(std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(), "base\n");
+        assert_eq!(string(&repo.0, &["status", "--porcelain=v1", "-z"]).unwrap(), before);
+        assert_eq!(stashes(&repo.0).unwrap().len(), 2);
+        assert!(show_stash(&repo.0, "--all").is_err());
+        run(&repo.0, &["stash", "drop", "stash@{1}"]).unwrap();
+        assert!(show_stash(&repo.0, &stash.hash).is_err());
+    }
+
     #[test]
     fn branch_management_stash_selection_and_revert_leave_reviewable_state() {
         let repo = Repo::new();

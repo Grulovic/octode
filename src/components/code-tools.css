@@ -1219,3 +1219,18 @@
   user-select: text;
   font: var(--oc-text-code);
 }
+
+.git-stash-row > .git-stash-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  border: 0;
+  text-align: left;
+  white-space: normal;
+}
+.git-stash-open > svg { flex-shrink: 0; }
+.git-stash-open > span { min-width: 0; overflow-wrap: anywhere; }
+.git-stash-open[aria-expanded="true"] { color: var(--oc-accent); }
+.git-stash-files { padding-left: 12px; }

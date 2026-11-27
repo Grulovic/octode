@@ -97,6 +97,7 @@ export default function GitPanel({
     staged: boolean;
     hunks?: { header: string; hunks: string[]; supported: boolean };
     historical?: boolean;
+    stash?: { hash: string; subject: string; fileIndex: number };
     compared?: boolean;
     commitDiff?: { header: string; files: CommitDiffFile[] };
   } | null>(null);
@@ -307,6 +308,7 @@ export default function GitPanel({
       if (mounted.current) {
         setMessage(result || `${action} completed`);
         if (action === "resolve") setMerge(null);
+        if (action === "stash-drop" && view?.stash?.hash === value) setView(null);
         if (action === "stage" || action === "unstage" || action === "rollback")
           setView(null);
         if (action === "create-branch" || action === "rename-branch") {
@@ -533,6 +535,17 @@ export default function GitPanel({
       });
       setMerge(null);
       setView({ path: hash, text, staged: false, historical: true, commitDiff: parseCommitDiff(text) });
+    });
+  const inspectStash = (stash: NonNullable<GitSnapshot["stashes"]>[number]) =>
+    task("Couldn’t open the stash", async () => {
+      const text = await invoke<string>("git_show_stash", {
+        projectId: project.id, root, hash: stash.hash,
+      });
+      setMerge(null);
+      setComparison(null);
+      setView({ path: stash.reference, text, staged: false,
+        stash: { hash: stash.hash, subject: stash.subject, fileIndex: 0 },
+        commitDiff: parseCommitDiff(text) });
     });
   const conflict = (entry: GitEntry) =>
     task("Couldn’t open the conflict", async () => {
@@ -896,10 +909,31 @@ export default function GitPanel({
                 </button>
               </div>
               {(state.stashes ?? []).map((stash) => (
-                <div key={`${stash.reference}:${stash.hash}`} className="git-stash-row">
-                  <span title={stash.subject}><code>{stash.reference}</code> {stash.subject}</span>
-                  <button title={hasChanges ? "Commit or stash local changes first" : "Apply and keep this stash"} disabled={hasChanges || !canChangeBranch} onClick={() => void act("stash-apply", stash.reference, stash.hash)}>Apply</button>
-                  <button className="danger-outline" disabled={!canChangeBranch} onClick={() => void act("stash-drop", stash.reference, stash.hash)}>Drop</button>
+                <div key={stash.hash}>
+                  <div className="git-stash-row">
+                    <button className="git-stash-open" disabled={busy}
+                      aria-label={`Browse ${stash.reference}: ${stash.subject}`}
+                      aria-expanded={view?.stash?.hash === stash.hash}
+                      title={stash.subject}
+                      onClick={() => view?.stash?.hash === stash.hash ? setView(null) : void inspectStash(stash)}>
+                      {view?.stash?.hash === stash.hash ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      <span><code>{stash.reference}</code> {stash.subject}</span>
+                    </button>
+                    <button title={hasChanges ? "Commit or stash local changes first" : "Apply and keep this stash"} disabled={hasChanges || !canChangeBranch} onClick={() => void act("stash-apply", stash.reference, stash.hash)}>Apply</button>
+                    <button className="danger-outline" disabled={!canChangeBranch} onClick={() => void act("stash-drop", stash.reference, stash.hash)}>Drop</button>
+                  </div>
+                  {view?.stash?.hash === stash.hash && <div className="git-stash-files" aria-label={`Files in ${stash.reference}`}>
+                    {view.commitDiff?.files.length ? view.commitDiff.files.map((file, fileIndex) => (
+                      <div className="git-change" key={fileIndex}>
+                        <button disabled={busy} title={file.path} aria-pressed={view.stash?.fileIndex === fileIndex}
+                          onClick={() => setView((current) => current?.stash?.hash === stash.hash
+                            ? { ...current, stash: { ...current.stash, fileIndex } } : current)}>
+                          <span className="git-change-name">{filename(file.path)}</span>
+                          {/[\\/]/.test(file.path) && <span className="git-change-path">{file.path.slice(0, file.path.lastIndexOf("/"))}</span>}
+                        </button>
+                      </div>
+                    )) : <p className="git-help">No file changes in this stash.</p>}
+                  </div>}
                 </div>
               ))}
             </section>
@@ -1090,7 +1124,7 @@ export default function GitPanel({
             >
               <header>
                 <strong>
-                  {view.compared ? "Branch diff" : view.historical
+                  {view.stash ? "Stash" : view.compared ? "Branch diff" : view.historical
                     ? "Commit"
                     : view.staged
                       ? "Staged"
@@ -1101,13 +1135,13 @@ export default function GitPanel({
                   <X size={17} />
                 </button>
               </header>
-              {(view.historical || view.compared) && view.commitDiff?.files.length ? (
+              {(view.stash || view.historical || view.compared) && view.commitDiff?.files.length ? (
                 <div className="git-hunk-review">
-                  <details className="git-patch-details">
+                  {view.stash ? <p className="git-help">{view.stash.subject}</p> : <details className="git-patch-details">
                     <summary>{view.compared ? "Diff summary" : "Commit details"}</summary>
                     <pre className="git-patch-header">{view.commitDiff.header}</pre>
-                  </details>
-                  {view.commitDiff.files.map((file, fileIndex) => <section className="git-commit-file" key={fileIndex}>
+                  </details>}
+                  {(view.stash ? view.commitDiff.files.filter((_, index) => index === view.stash!.fileIndex) : view.commitDiff.files).map((file, fileIndex) => <section className="git-commit-file" key={fileIndex}>
                     <h3>{file.path}</h3>
                     {file.hunks.length ? <>
                       <details className="git-patch-details"><summary>File details</summary><pre className="git-patch-header">{file.header}</pre></details>
@@ -1177,7 +1211,7 @@ export default function GitPanel({
                   </button>
                 )}
                 {view.historical && <button className="secondary-button" disabled={busy || hasChanges || inProgress} onClick={() => { const hash = view.path; setView(null); void act("revert", "", hash); }}>Revert commit…</button>}
-                {!view.historical && !view.compared && (
+                {!view.stash && !view.historical && !view.compared && (
                   <>
                     <button
                       onClick={() => {

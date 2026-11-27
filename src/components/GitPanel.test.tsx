@@ -527,9 +527,9 @@ it("applies and drops individually selected stashes using immutable hashes", asy
   });
   await act(async () => root.render(<GitPanel {...props} />));
   const rows = document.querySelectorAll('.git-stash-row'); expect(rows).toHaveLength(2);
-  await act(async () => rows[1].querySelector<HTMLButtonElement>('button')!.click());
+  await act(async () => rows[1].querySelector<HTMLButtonElement>('button[title="Apply and keep this stash"]')!.click());
   expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action: "stash-apply", path: "stash@{1}", value: "b".repeat(40) }) }));
-  await act(async () => document.querySelectorAll('.git-stash-row')[0].querySelectorAll<HTMLButtonElement>('button')[1].click());
+  await act(async () => document.querySelectorAll('.git-stash-row')[0].querySelector<HTMLButtonElement>('.danger-outline')!.click());
   expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({ request: expect.objectContaining({ action: "stash-drop", path: "stash@{0}", value: "a".repeat(40) }) }));
 });
 
@@ -629,4 +629,29 @@ it("pages recent history, searches the Git history, and offers cherry-pick on a 
   expect(harness.invoke).toHaveBeenCalledWith("git_action", expect.objectContaining({
     request: expect.objectContaining({ action: "cherry-pick", value: older.hash, expectedHead: recent.hash }),
   }));
+});
+
+it("browses stash files read-only and shows only the selected file diff", async () => {
+  const original = harness.invoke.getMockImplementation()!;
+  const stash = { reference: "stash@{1}", hash: "b".repeat(40), subject: "Saved work" };
+  harness.invoke.mockImplementation(async (command, args) => {
+    if (command === "git_snapshot") return { ...await original(command, args), stashes: [stash] };
+    if (command === "git_show_stash") return "diff --git a/first.txt b/first.txt\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-old\n+saved\ndiff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+untracked\n";
+    return original(command, args);
+  });
+  await act(async () => root.render(<GitPanel {...props} />));
+  await act(async () => document.querySelector<HTMLButtonElement>(".git-stash-open")!.click());
+  expect(harness.invoke).toHaveBeenCalledWith("git_show_stash", { projectId: "p", root: "/project/api", hash: stash.hash });
+  expect(document.querySelector(".git-inline-review footer")?.textContent).not.toContain("Stage");
+  expect(document.querySelector(".git-inline-review footer")?.textContent).not.toContain("Open in Code");
+  const files = document.querySelectorAll<HTMLButtonElement>(".git-stash-files button");
+  expect(files).toHaveLength(2);
+  expect(document.querySelector(".git-commit-file h3")?.textContent).toBe("first.txt");
+  await act(async () => files[1].click());
+  expect(document.querySelector(".git-commit-file h3")?.textContent).toBe("new.txt");
+  expect(document.querySelectorAll(".git-commit-file")).toHaveLength(1);
+  expect(document.querySelector('.git-stash-files button[aria-pressed="true"]')?.textContent).toBe("new.txt");
+  expect(harness.invoke.mock.calls.some(([command]) => command === "git_action")).toBe(false);
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close Git diff"]')!.click());
+  expect(document.querySelector(".git-stash-files")).toBeNull();
 });
